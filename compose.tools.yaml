@@ -1,0 +1,17 @@
+name: hono-drizzle-tools
+
+services:
+  tools:
+    image: node:24-bookworm-slim
+    working_dir: /app
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    environment:
+      npm_config_cache: /tmp/npm-cache
+    volumes:
+      - .:/app
+    tmpfs:
+      # Tools such as esbuild run native programs from this temporary folder.
+      - /app/node_modules:exec,mode=1777
+    ports:
+      - "127.0.0.1:3000:3000"
+    command: ["sh", "-c", "npm ci && npm run check"]

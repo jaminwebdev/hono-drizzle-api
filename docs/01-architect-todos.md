@@ -1,6 +1,6 @@
 # Hono + Drizzle example API: specification and implementation plan
 
-Status: proposed; Docker-only workflow confirmed by the user; no implementation gates approved or started.
+Status: Gate 1 complete and ready for review. The user ran the Docker checks successfully. Later gates have not started.
 
 ## Spec summary
 
@@ -16,7 +16,7 @@ Local design references:
 - `database_design.md`: Relationships and Keys (90–103), Constraints (105–117), Normalization/Values (119–187), Time/Transactions/Tenancy/Schema Change (189–209), Schema Review Checklist (211–220), and Personal Finance Tracker (449–502).
 - Design rationale follows `~/.opencode/docs/design_questions.md`, sections 1–9 (Data & Query Modeling through Operational & Maintainability Concerns).
 
-There is no `PROJECT_MAP.md` yet. Gate 1 creates it from the approved parts of this specification; until then this document is a proposal, not permanent project policy. Every gate below must follow its approved stack, security, and persistence rules once created.
+The approved project rules are recorded in `docs/PROJECT_MAP.md`. Every gate below must follow its stack, security, and persistence rules.
 
 ### S2. Stack and organization
 
@@ -119,8 +119,8 @@ The user has initialized Git since the initial planning pass. Commits remain man
 
 ### Gate 0 — approve scope and contract
 
-- [ ] Review the domain, immutable transaction/reversal model, USD/UTC limits, and optional auth boundary.
-- [ ] Approve this plan or request edits before implementation.
+- [x] Review the domain, immutable transaction/reversal model, USD/UTC limits, and optional auth boundary.
+- [x] Approve this plan or request edits before implementation.
 
 Acceptance: S1–S6 reflect the desired exercise. Suggested planning commit: `docs: define phased Hono and Drizzle API plan`.
 
@@ -128,10 +128,12 @@ Acceptance: S1–S6 reflect the desired exercise. Suggested planning commit: `do
 
 ### Gate 1 — TypeScript/Hono foundation
 
-- [ ] Create `package.json`, lockfile, strict TypeScript, lint configuration, and runtime version declarations.
-- [ ] Add `src/app.ts` application factory and `src/server.ts` entrypoint with a liveness route.
-- [ ] Add Vitest request coverage for liveness and JSON unknown-route handling; add build/check scripts.
-- [ ] Create `PROJECT_MAP.md` with approved S1–S2 constraints and remaining S3–S6 boundaries; add a short README linking this plan.
+- [x] Create `package.json`, lockfile, strict TypeScript, lint configuration, and runtime version declarations.
+- [x] Add `src/app.ts` application factory and `src/server.ts` entrypoint with a liveness route.
+- [x] Add Vitest request coverage for liveness and JSON unknown-route handling; add build/check scripts.
+- [x] Create `docs/PROJECT_MAP.md` with approved S1–S2 constraints and remaining S3–S6 boundaries; add a short README linking this plan.
+
+Gate 1 verification: the user ran the Docker commands after the temporary mount fix. Type checking and linting passed before all three request tests passed; the build produced `dist/server.js` with no reported errors. The refreshed lockfile matches `package.json` and resolves ESLint 10.13.0. Compose configuration validation and Git whitespace checks also passed. Docker runtime checks were user-run because this session cannot access the Docker socket.
 
 Acceptance: build/typecheck/lint/test pass; app imports without listening. S2/S5; API reference HTTP Methods/Error Handling. Commit: `chore: scaffold typed Hono API and Vitest`.
 
@@ -305,8 +307,8 @@ Official references consulted while planning; recheck compatible versions at imp
 
 ## RELAY
 
-- **Status:** Planning complete; implementation pending Gate 0 review.
-- **Handoff:** Implement one approved gate, update its checks, report validation, then pause for manual review/commit.
-- **User action:** Approve or revise the proposed scope and Gate 1.
-- **Suggested next specialist/prompt:** Backend implementation: “Implement Gate 1 of `01-architect-todos.md`; run its checks and stop for review. Do not commit.”
+- **Status:** Gate 1 complete; waiting for manual review and commit.
+- **Handoff:** Gate 2 is next, after approval. No commits have been made by the assistant.
+- **User action:** Review Gate 1, commit when satisfied, and approve Gate 2 when ready.
+- **Suggested next specialist/prompt:** Backend implementation: “Implement Gate 2 in `docs/01-architect-todos.md`, run its checks, and stop for review. Do not commit.”
 - **Drift risks:** Turning the local demo into a public unauthenticated service; adding startup pushes/seeds; sharing test/local/production volumes; introducing float money or mutable balances; dropping owner scope; replacing pushes with migration files.

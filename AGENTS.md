@@ -13,5 +13,5 @@
 ## Development workflow
 
 - Run the application, database, development tools, and checks in Docker. Do not require a host Node.js installation.
-- Follow the approved gates in `01-architect-todos.md`. Pause for review between gates.
+- Follow the approved gates in `docs/01-architect-todos.md`. Pause for review between gates.
 - Leave Git commits to the user.
