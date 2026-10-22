@@ -1,6 +1,6 @@
 # Hono + Drizzle example API: specification and implementation plan
 
-Status: Gate 1 complete and ready for review. The user ran the Docker checks successfully. Later gates have not started.
+Status: Gate 1 approved. Gate 2 complete and ready for review after successful user-run Docker checks. Later gates have not started.
 
 ## Spec summary
 
@@ -141,9 +141,11 @@ Acceptance: build/typecheck/lint/test pass; app imports without listening. S2/S5
 
 ### Gate 2 — environment configuration
 
-- [ ] Add `.env.example`, `.gitignore`, and `.dockerignore` rules for actual secrets.
-- [ ] Implement validated configuration and explicit local/production environment selection with context-aware database fields.
-- [ ] Add meaningful tests for missing credentials, environment isolation, invalid ports, and passwords containing URL-reserved characters.
+- [x] Add `.env.example`, `.gitignore`, and `.dockerignore` rules for actual secrets.
+- [x] Implement validated configuration and explicit local/production environment selection with context-aware database fields.
+- [x] Add meaningful tests for missing credentials, environment isolation, invalid ports, and passwords containing URL-reserved characters.
+
+Gate 2 verification: the user refreshed the lockfile and ran Docker checks. Type checking, linting, all 25 tests, and the build passed. The lockfile matches the manifest and resolves Zod 4.6.7. Compose configuration, Git ignore rules, and whitespace checks also passed. File-based startup reads only the selected file and ignores inherited values. Production container startup accepts explicitly supplied values with a matching `APP_ENV`. Container database connections always use `db:5432`; there is no host connection mode in this Docker-only project.
 
 Acceptance: no secrets in source/build context; production never falls back to local. S3; API Security. Commit: `feat: validate environment-specific API and database configuration`.
 
@@ -307,8 +309,8 @@ Official references consulted while planning; recheck compatible versions at imp
 
 ## RELAY
 
-- **Status:** Gate 1 complete; waiting for manual review and commit.
-- **Handoff:** Gate 2 is next, after approval. No commits have been made by the assistant.
-- **User action:** Review Gate 1, commit when satisfied, and approve Gate 2 when ready.
-- **Suggested next specialist/prompt:** Backend implementation: “Implement Gate 2 in `docs/01-architect-todos.md`, run its checks, and stop for review. Do not commit.”
+- **Status:** Gate 2 complete; waiting for review and manual commit.
+- **Handoff:** Gate 3 is next, after approval. No commits have been made by the assistant.
+- **User action:** Review Gate 2, commit when satisfied, and approve Gate 3 when ready.
+- **Suggested next specialist/prompt:** Backend implementation: “Implement Gate 3 in `docs/01-architect-todos.md`, run its checks, and stop for review. Do not commit.”
 - **Drift risks:** Turning the local demo into a public unauthenticated service; adding startup pushes/seeds; sharing test/local/production volumes; introducing float money or mutable balances; dropping owner scope; replacing pushes with migration files.

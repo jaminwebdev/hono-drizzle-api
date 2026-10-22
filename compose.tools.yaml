@@ -13,5 +13,5 @@ services:
       # Tools such as esbuild run native programs from this temporary folder.
       - /app/node_modules:exec,mode=1777
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${API_PORT:-3000}:${API_PORT:-3000}"
     command: ["sh", "-c", "npm ci && npm run check"]

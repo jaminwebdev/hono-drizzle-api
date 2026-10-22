@@ -1,15 +1,26 @@
 import { serve } from '@hono/node-server';
 import { createApp } from './app.js';
+import { loadConfig } from './lib/config.js';
 
-const app = createApp();
+try {
+  const config = loadConfig({
+    environment: process.argv[2],
+    source: process.argv[3],
+  });
+  const app = createApp();
 
-serve(
-  {
-    fetch: app.fetch,
-    hostname: '0.0.0.0',
-    port: 3000,
-  },
-  () => {
-    console.info('API listening on port 3000');
-  },
-);
+  serve(
+    {
+      fetch: app.fetch,
+      hostname: '0.0.0.0',
+      port: config.apiPort,
+    },
+    () => {
+      console.info(`API listening on port ${config.apiPort}`);
+    },
+  );
+} catch (error) {
+  // Configuration errors name fields without printing their values.
+  console.error(error instanceof Error ? error.message : 'Unable to start the API.');
+  process.exitCode = 1;
+}

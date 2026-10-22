@@ -9,13 +9,14 @@ Build a personal finance API to learn Hono, PostgreSQL, and Drizzle. Work follow
 - Node.js 24, TypeScript 5.9, Hono, and the Hono Node adapter.
 - npm manages dependencies. `package-lock.json` must accompany the first code commit and all dependency changes.
 - Vitest tests behavior. TypeScript and ESLint check for coding mistakes.
-- PostgreSQL 18 is the selected database major for Gate 3. Drizzle ORM, Drizzle Kit, `pg`, `drizzle-seed`, and Zod join in later gates.
-- All development, builds, tools, and checks run in Docker. The current tooling image is `node:24-bookworm-slim`; no host Node installation is required. Resolve exact dependency versions in the lockfile using Docker before accepting Gate 1.
+- Zod validates startup settings. PostgreSQL 18 is the selected database major for Gate 3. Drizzle ORM, Drizzle Kit, `pg`, and `drizzle-seed` join in later gates.
+- All development, builds, tools, and checks run in Docker. The current tooling image is `node:24-bookworm-slim`; no host Node installation is required. Update exact dependency versions in the lockfile using Docker.
 
 ## Code boundaries
 
 - `src/app.ts` creates the Hono app without opening a port.
-- `src/server.ts` starts the server. It currently listens on container port 3000.
+- `src/server.ts` validates settings before starting the server on `API_PORT`, which defaults to 3000.
+- `src/lib/config.ts` reads one explicitly selected settings source. File mode reads only `.env.local` or `.env.production`; environment mode uses container-supplied values. Both require the matching `APP_ENV` value. Errors never print credential values.
 - `tests/` contains request tests that call the app directly.
 - Future feature code belongs in `src/modules/`; shared helpers in `src/lib/`; database code in `src/db/`.
 - Documentation lives in `docs/`, with the entry-point README and project instructions at the repository root.
@@ -24,6 +25,7 @@ Build a personal finance API to learn Hono, PostgreSQL, and Drizzle. Work follow
 
 - Run the API and PostgreSQL in separate containers. Container clients connect to `db:5432`.
 - Select `.env.local` or `.env.production` explicitly. Never commit real secrets or copy them into images.
+- Database connection options always use `db:5432` with separate user/password/database fields. `POSTGRES_PORT` controls only optional access from the host computer.
 - Keep database data in named volumes. Separate local, production, and test data. Normal shutdown preserves data.
 - Use Drizzle schema pushes, with explicit review for destructive changes. Do not generate migration files or push/seed during server startup.
 - Scope all finance records to an owner. Use server-selected demo identity until optional session authentication is implemented.

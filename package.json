@@ -7,9 +7,11 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx watch src/server.ts local file",
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/server.js",
+    "start": "node dist/server.js production environment",
+    "start:local": "node dist/server.js local file",
+    "start:production:file": "node dist/server.js production file",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -18,7 +20,8 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.0.12",
-    "hono": "^4.12.9"
+    "hono": "^4.12.9",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
