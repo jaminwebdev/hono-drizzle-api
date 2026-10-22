@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts local file",
+    "dev:container": "tsx watch src/server.ts local environment",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js production environment",
     "start:local": "node dist/server.js local file",
@@ -16,7 +17,14 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "check": "npm run typecheck && npm run lint && npm test && npm run build"
+    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "docker:up": "sh scripts/docker.sh local up",
+    "docker:down": "sh scripts/docker.sh local down",
+    "docker:logs": "sh scripts/docker.sh local logs",
+    "docker:check": "sh scripts/docker.sh local check",
+    "docker:up:production": "sh scripts/docker.sh production up",
+    "docker:down:production": "sh scripts/docker.sh production down",
+    "docker:logs:production": "sh scripts/docker.sh production logs"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.12",

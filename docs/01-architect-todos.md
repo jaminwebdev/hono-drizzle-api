@@ -1,6 +1,6 @@
 # Hono + Drizzle example API: specification and implementation plan
 
-Status: Gate 1 approved. Gate 2 complete and ready for review after successful user-run Docker checks. Later gates have not started.
+Status: Gates 1 and 2 approved. Gate 3 verified and ready for review. Later gates have not started.
 
 ## Spec summary
 
@@ -153,9 +153,11 @@ Acceptance: no secrets in source/build context; production never falls back to l
 
 ### Gate 3 — containers and persistent PostgreSQL
 
-- [ ] Add Dockerfile development/build/runtime stages and Compose API/database services with health dependency.
-- [ ] Add loopback port bindings, separate named volumes/projects, development source watch, and compiled production command.
-- [ ] Add Docker up/down/log scripts and initial README startup instructions.
+- [x] Add Dockerfile development/build/runtime stages and Compose API/database services with health dependency.
+- [x] Add loopback port bindings, separate named volumes/projects, development source watch, and compiled production command.
+- [x] Add Docker up/down/log scripts and initial README startup instructions.
+
+Gate 3 verification: the user ran `sh scripts/verify-docker.sh` successfully. Type checking, linting, 26 tests, and compilation passed. Both local services became healthy; the published API responded before and after shutdown/restart; the database retained its probe row. The production image built successfully and passed checks for a non-root user and absence of TypeScript and environment files. Both Compose configurations also validate with loopback port bindings, the database health dependency, and distinct volume names. Shell syntax, dependency-lock consistency, and whitespace checks pass. Runtime results were user-run because this session cannot access Docker's socket. The full production stack has not been started.
 
 Acceptance: Compose validates without exposing resolved credentials; both containers start; API is reachable; a temporary database probe survives down/up; local and production volumes differ. S3 and PROJECT_MAP persistence rules. Commit: `feat: run Hono and persistent Postgres with Docker Compose`.
 
@@ -166,6 +168,7 @@ Acceptance: Compose validates without exposing resolved credentials; both contai
 - [ ] Add pooled database client, Drizzle configuration, explicit push/Studio tooling commands, and production push variant.
 - [ ] Add bounded database readiness and graceful HTTP/pool shutdown.
 - [ ] Verify actual container connectivity, readiness failure/recovery, shutdown, and local-only Studio reachability.
+- [ ] Update `docs/docker-guide.md` to explain the new connection, readiness checks, and database-tool commands.
 
 Acceptance: no migration files/startup push; tools and API share selected credentials; unavailable DB yields `503`. S2/S3/S6; API Connection Pooling. Commit: `feat: connect Drizzle and add database tooling`.
 
@@ -309,8 +312,8 @@ Official references consulted while planning; recheck compatible versions at imp
 
 ## RELAY
 
-- **Status:** Gate 2 complete; waiting for review and manual commit.
-- **Handoff:** Gate 3 is next, after approval. No commits have been made by the assistant.
-- **User action:** Review Gate 2, commit when satisfied, and approve Gate 3 when ready.
-- **Suggested next specialist/prompt:** Backend implementation: “Implement Gate 3 in `docs/01-architect-todos.md`, run its checks, and stop for review. Do not commit.”
+- **Status:** Gate 3 verified; waiting for review and manual commit.
+- **Handoff:** Gate 4 is next, after approval. Local services remain running. No commits have been made by the assistant.
+- **User action:** Review Gate 3, commit when satisfied, and approve Gate 4 when ready.
+- **Suggested next specialist/prompt:** Backend implementation: “Implement Gate 4 in `docs/01-architect-todos.md`, run its checks, and stop for review. Do not commit.”
 - **Drift risks:** Turning the local demo into a public unauthenticated service; adding startup pushes/seeds; sharing test/local/production volumes; introducing float money or mutable balances; dropping owner scope; replacing pushes with migration files.

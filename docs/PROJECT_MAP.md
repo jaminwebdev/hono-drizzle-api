@@ -9,8 +9,8 @@ Build a personal finance API to learn Hono, PostgreSQL, and Drizzle. Work follow
 - Node.js 24, TypeScript 5.9, Hono, and the Hono Node adapter.
 - npm manages dependencies. `package-lock.json` must accompany the first code commit and all dependency changes.
 - Vitest tests behavior. TypeScript and ESLint check for coding mistakes.
-- Zod validates startup settings. PostgreSQL 18 is the selected database major for Gate 3. Drizzle ORM, Drizzle Kit, `pg`, and `drizzle-seed` join in later gates.
-- All development, builds, tools, and checks run in Docker. The current tooling image is `node:24-bookworm-slim`; no host Node installation is required. Update exact dependency versions in the lockfile using Docker.
+- Zod validates startup settings. PostgreSQL uses `postgres:18.6-bookworm`. Drizzle ORM, Drizzle Kit, `pg`, and `drizzle-seed` join in later gates.
+- All development, builds, tools, and checks run in Docker with `node:24.22.1-bookworm-slim`. No host Node installation is required. Update exact dependency versions in the lockfile using Docker.
 
 ## Code boundaries
 
@@ -34,6 +34,15 @@ Build a personal finance API to learn Hono, PostgreSQL, and Drizzle. Work follow
 - Use `/api/v1` for business routes, camelCase JSON, bounded pagination, validated input, and safe error messages.
 - Never log credentials, cookies, request bodies, or query strings.
 - Use actual PostgreSQL in an isolated test database for constraint and transaction checks.
+
+## Docker setup
+
+- `compose.yaml` runs local API and database services. `compose.production.yaml` runs compiled API code and a separate database. API startup waits for the PostgreSQL health check. Database queries and application readiness begin in Gate 4.
+- `Dockerfile` has development, build, production-dependencies, and runtime stages. Development dependencies stay in the development image. Runtime runs as the non-root `node` user and contains compiled code and production dependencies only.
+- Local source changes reach the API through a read-only shared `src/` folder. Tools share source, tests, and configuration while using dependencies from the development image.
+- Projects `hono-drizzle-local` and `hono-drizzle-production` have separate networks and named `postgres_data` volumes. PostgreSQL 18 stores data under the volume mounted at `/var/lib/postgresql`.
+- `scripts/docker.sh` selects the matching file and clears inherited project settings. Down commands preserve volumes. Published ports bind to `127.0.0.1`.
+- `compose.tools.yaml` is only the bootstrap helper for dependency updates. Its temporary dependencies disappear on exit; normal checks reuse dependencies from the development image.
 
 ## Scope limits
 
