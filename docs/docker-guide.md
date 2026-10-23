@@ -4,7 +4,7 @@ This guide brings the local startup explanation and the full instruction walkthr
 
 It describes the project at Gate 3. The API and PostgreSQL run in separate containers. The API does not query PostgreSQL yet; Gate 4 adds that connection.
 
-Assume you have Node.js, npm, and Docker on your computer. Start locally with `npm run docker:up`. Your computer's npm launches our Docker helper; the API, dependency installation, and checks run inside Docker. No host `npm install` is needed.
+Use Node.js 24 and npm in your WSL project for editor support. Run the API, PostgreSQL, and verification checks in Docker. Install locked dependencies both locally and in the development image; they remain separate and use the same lockfile. Docker uses Node.js 24.22.1.
 
 ## How to read this guide
 
@@ -16,6 +16,14 @@ Assume you have Node.js, npm, and Docker on your computer. Start locally with `n
 There is one application configuration path: Compose reads the selected file, passes values into the container, and `config.ts` validates `process.env`. The application has no environment-file reader.
 
 The application has two startup commands: `dev` watches local source edits, and `start` runs compiled production code. Both use supplied environment values. The `docker:*` shortcuts arrange those values for you.
+
+## Prepare the editor
+
+Run `npm ci` in your WSL project folder to install dependencies for type hints, imports, and code navigation. The editor needs these local packages even though the application runs in Docker.
+
+Open the project through your editor's WSL connection. For VS Code, `.vscode/settings.json` points to `node_modules/typescript/lib`. Choose **TypeScript: Select TypeScript Version → Use Workspace Version** if prompted.
+
+For a first setup or after dependency changes, use `npm run docker:rebuild` after preparing `.env.local`. It runs local `npm ci`, builds the API and tools images, and starts or updates services. It does not update the lockfile or run tests. Use `npm run docker:check` separately for verification.
 
 ## Prepare your local settings
 
@@ -87,7 +95,7 @@ docker compose --env-file .env.local -f compose.yaml up --build --detach --wait 
 
 `--detach` leaves the containers running in the background. `--wait` means this command reports success only after their health checks pass.
 
-Host npm only launches this helper. Dependencies, application code, and code checks run in Docker; you do not need a host `npm install`.
+For `docker:up`, host npm only launches this helper. The separate `docker:rebuild` command first runs `npm ci` locally for the editor, then builds the Docker images and updates services. Neither command runs the API locally.
 
 ## Before reading either file
 
@@ -179,7 +187,7 @@ RUN npm ci
 
 Install the locked dependency versions during the image build. This includes development tools such as TypeScript, ESLint, and Vitest.
 
-The packages go into `/app/node_modules` inside the image. This step does not install them into your computer's project folder.
+The packages go into `/app/node_modules` inside the image. This build step does not install them into your computer's project folder. Your separate local `npm ci` supplies the editor installation.
 
 ```dockerfile
 COPY --chown=node:node . .
@@ -701,7 +709,7 @@ No `networks` section is required here. Compose creates a project network automa
 | Does `COPY` keep files synchronized after building? | No. The local bind mount is what makes new source edits visible. |
 | Does `EXPOSE` publish the API on my computer? | No. Compose's `ports` section does that. |
 | Are the API and PostgreSQL in one container? | No. Docker Desktop groups their separate containers under the project name. |
-| Are installed dependencies in my local `node_modules`? | No. The main development setup uses dependencies installed in the image. |
+| Are installed dependencies in my local `node_modules`? | Yes, for editor support. Containers use a separate installation in the image, from the same lockfile. |
 | Does normal shutdown erase my database? | No. The named database volume survives. |
 | Does healthy API status prove a database query works? | Not yet. That connection comes in Gate 4. |
 
@@ -729,7 +737,8 @@ Use these commands from your computer:
 
 | Task | Command | What happens |
 | --- | --- | --- |
-| Start or rebuild services | `npm run docker:up` | Reuse unchanged build steps and apply current settings. |
+| Start services | `npm run docker:up` | Reuse unchanged build steps and apply current settings. |
+| Synchronize editor dependencies and rebuild | `npm run docker:rebuild` | Run local `npm ci`, rebuild API and tools images, and update services. |
 | Follow logs | `npm run docker:logs` | Show API and database logs until you press Ctrl+C. |
 | Run code checks | `npm run docker:check` | Build a development tools image if needed, then run a one-time check container. |
 | Stop local services | `npm run docker:down` | Remove service containers and their network while keeping database data. |
@@ -744,21 +753,30 @@ Normal shutdown preserves the volume, so restarting restores the same database d
 
 ## Part 4. Other workflows
 
-### Update dependencies
+### Update dependencies and rebuild
 
-This is when [compose.tools.yaml](../compose.tools.yaml) becomes relevant. It is not part of normal API startup.
-
-Its temporary Node container shares the whole project so npm can update your package files. Its installed dependencies use temporary storage, keeping them out of host `node_modules`.
-
-After manually changing dependencies in `package.json`, update the lockfile:
+From your WSL terminal:
 
 ```bash
-docker compose -f compose.tools.yaml run --rm tools npm install --package-lock-only
+npm install package-name
+npm run docker:rebuild
 npm run docker:check
-npm run docker:up
 ```
 
-The last two commands rebuild the normal development image with the updated dependencies, check it, and update the API container. The empty local `node_modules` folder the temporary helper may leave is harmless.
+`npm install` updates package declarations and the lockfile. `docker:rebuild` first runs local `npm ci`, then builds both development images and starts or updates the local services. Tests remain a separate Docker command, `docker:check`.
+
+After manually changing dependency declarations, update the lockfile with `npm install --package-lock-only` before rebuilding. `npm ci` checks that the package declarations and lockfile agree; it does not resolve changes into a new lockfile.
+
+The local and container installations are independent. Host `node_modules` is ignored by Git, excluded from image builds, and never mounted over container dependencies. Database data stays in its named volume through the rebuild.
+
+`compose.tools.yaml` remains an optional way to update dependencies in Docker. It shares the project so npm can write package files back, while its installed dependencies use temporary storage. For example:
+
+```bash
+docker compose -f compose.tools.yaml run --rm tools npm install package-name
+npm run docker:rebuild
+```
+
+You normally do not need this extra helper in the hybrid workflow. Local `npm ci` is allowed specifically to give the editor the project's packages and types. The application and verification checks still run in Docker.
 
 ### Try production
 

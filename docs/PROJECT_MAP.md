@@ -10,7 +10,7 @@ Build a personal finance API to learn Hono, PostgreSQL, and Drizzle. Work follow
 - npm manages dependencies. `package-lock.json` must accompany the first code commit and all dependency changes.
 - Vitest tests behavior. TypeScript and ESLint check for coding mistakes.
 - Zod validates startup settings. PostgreSQL uses `postgres:18.6-bookworm`. Drizzle ORM, Drizzle Kit, `pg`, and `drizzle-seed` join in later gates.
-- All development, builds, tools, and checks run in Docker with `node:24.22.1-bookworm-slim`. No host Node installation is required. Update exact dependency versions in the lockfile using Docker.
+- Use the hybrid workflow: Node.js 24 and local `npm ci` provide editor types; the API, PostgreSQL, and verification checks run in Docker with `node:24.22.1-bookworm-slim`. Both dependency installations use the same lockfile and stay separate. `.vscode/settings.json` selects the local TypeScript SDK.
 
 ## Code boundaries
 
@@ -42,7 +42,7 @@ Build a personal finance API to learn Hono, PostgreSQL, and Drizzle. Work follow
 - Local source changes reach the API through a read-only shared `src/` folder. Tools share source, tests, and configuration while using dependencies from the development image.
 - Projects `hono-drizzle-local` and `hono-drizzle-production` have separate networks and named `postgres_data` volumes. PostgreSQL 18 stores data under the volume mounted at `/var/lib/postgresql`.
 - `scripts/docker.sh` selects the matching file and clears inherited project settings. Down commands preserve volumes. Published ports bind to `127.0.0.1`.
-- `compose.tools.yaml` is only the bootstrap helper for dependency updates. Its temporary dependencies disappear on exit; normal checks reuse dependencies from the development image.
+- `npm run docker:rebuild` runs local `npm ci`, builds local API and tools images, and updates local services without deleting database volumes. It stops on failure; checks remain a separate `docker:check` command. `compose.tools.yaml` remains an optional dependency-update helper; normal checks reuse the development image.
 
 ## Scope limits
 

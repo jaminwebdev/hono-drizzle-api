@@ -12,6 +12,6 @@
 
 ## Development workflow
 
-- Run the application, database, development tools, and checks in Docker. Do not require a host Node.js installation.
+- Use the hybrid workflow: install locked dependencies locally for editor type checking, while running the application, database, and verification checks in Docker. Local dependencies must stay separate from container dependencies.
 - Follow the approved gates in `docs/01-architect-todos.md`. Pause for review between gates.
 - Leave Git commits to the user.

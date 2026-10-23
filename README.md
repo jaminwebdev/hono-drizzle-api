@@ -8,7 +8,7 @@ Read the [Docker setup guide and instruction walkthrough](docs/docker-guide.md) 
 
 ## Start locally
 
-You need Docker with Docker Compose. No host Node.js, npm, or PostgreSQL installation is required. In WSL, enable your distro in Docker Desktop's WSL Integration settings.
+Use Node.js 24 and npm in your WSL project for editor support, and Docker with Docker Compose to run the API, database, and checks. Docker uses Node.js 24.22.1. In WSL, enable your distro in Docker Desktop's WSL Integration settings.
 
 Copy the example settings, then replace its example password:
 
@@ -16,11 +16,15 @@ Copy the example settings, then replace its example password:
 cp .env.example .env.local
 ```
 
-Start both containers:
+Install local editor dependencies, build the development images, and start both containers:
 
 ```bash
-sh scripts/docker.sh local up
+npm run docker:rebuild
 ```
+
+In VS Code, open this project through WSL and choose **TypeScript: Select TypeScript Version → Use Workspace Version** if prompted. `.vscode/settings.json` points the editor to the project's TypeScript installation.
+
+For later startups with unchanged dependencies, use `npm run docker:up`.
 
 The first run downloads images and installs dependencies. Later builds reuse unchanged steps. The command waits for PostgreSQL and the API to become healthy.
 
@@ -49,9 +53,7 @@ flowchart LR
     Tools["Temporary tools container"] --> Checks["Type checks, lint, tests, build"]
 ```
 
-The local API shares your `src/` folder, so source edits restart it automatically. Dependencies stay in the image rather than your computer's `node_modules`. After changing dependencies, rebuild with the up command. Tool containers use the same development image, so checks no longer reinstall dependencies on every run.
-
-The empty local `node_modules` folder left by the earlier bootstrap helper is harmless. The main Compose setup does not use it.
+The local API shares your `src/` folder, so source edits restart it automatically. Local `node_modules` supplies editor types; each development image has its own installed dependencies. The containers do not share host `node_modules`, and `.dockerignore` excludes it from image builds. Both installations use the same lockfile. Tool containers reuse the development image's dependencies.
 
 PostgreSQL stores data in a named volume, which is storage managed by Docker. Removing a container does not remove this volume. [Docker explains persistent volumes here](https://docs.docker.com/engine/storage/volumes/).
 
@@ -59,16 +61,16 @@ PostgreSQL stores data in a named volume, which is storage managed by Docker. Re
 
 ```bash
 # Stop both services and preserve database data.
-sh scripts/docker.sh local down
+npm run docker:down
 
 # Follow API and database logs. Ctrl+C stops following the logs.
-sh scripts/docker.sh local logs
+npm run docker:logs
 
 # Show container status.
 sh scripts/docker.sh local ps
 
 # Build the development image and run all code checks.
-sh scripts/docker.sh local check
+npm run docker:check
 ```
 
 The helper always selects the matching environment file. It clears inherited project settings so another terminal's credentials cannot override that file.
@@ -84,7 +86,7 @@ docker compose --env-file .env.local -f compose.yaml --profile tools run --build
 
 Direct Compose commands allow shell variables to override file values. Use the helper when you want the selected file to be the only source of project settings.
 
-The equivalent `docker:up`, `docker:down`, `docker:logs`, and `docker:check` npm scripts are optional host conveniences. Do not run them inside a container; the containers do not contain Docker.
+`docker:up`, `docker:down`, `docker:logs`, `docker:check`, and `docker:rebuild` run from your computer. Do not run these shortcuts inside a container; the containers do not contain Docker.
 
 ## Environment settings
 
@@ -144,23 +146,25 @@ This runs the code checks, checks the API through its published port, saves a pr
 
 ## Change dependencies
 
-`compose.tools.yaml` remains a bootstrap helper for dependency updates. It uses temporary dependency storage and shares the project folder so changes to `package.json` and `package-lock.json` stay on your computer.
-
-For example, add a package inside Docker:
+Add a package from your WSL terminal, then synchronize the local editor installation and Docker images:
 
 ```bash
-docker compose -f compose.tools.yaml run --rm tools npm install package-name
-sh scripts/docker.sh local check
-sh scripts/docker.sh local up
+npm install package-name
+npm run docker:rebuild
+npm run docker:check
 ```
 
-After manually editing `package.json`, refresh the lockfile with:
+After manually editing dependency declarations in `package.json`, run `npm install --package-lock-only` before the rebuild command. `npm ci` requires an up-to-date lockfile; it does not update one.
 
-```bash
-docker compose -f compose.tools.yaml run --rm tools npm install --package-lock-only
-```
+`docker:rebuild` runs these steps in order:
 
-Commit both package files after reviewing dependency changes. The bootstrap container uses user ID and group ID `1000`; if yours differ, prefix its command with `LOCAL_UID=$(id -u) LOCAL_GID=$(id -g)`.
+1. `npm ci` installs exact locked dependencies locally for your editor.
+2. Docker builds the local API and tools images, reusing unchanged build steps.
+3. Compose starts or updates local services and waits for health checks. Database storage is preserved.
+
+A failed step stops the command. Code checks remain a separate `npm run docker:check` command. Rebuilding starts services too, so `.env.local` must already exist.
+
+Commit `package.json` and `package-lock.json` after dependency changes. Do not commit `node_modules`. `compose.tools.yaml` remains available as an optional Docker-based dependency-update helper.
 
 ## Application scripts
 

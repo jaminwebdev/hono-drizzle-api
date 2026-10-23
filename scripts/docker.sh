@@ -27,6 +27,14 @@ compose() {
 
 case "$action" in
   up) compose up --build --detach --wait --wait-timeout 120 ;;
+  rebuild)
+    if [ "$mode" != local ]; then
+      echo 'Use local rebuild for the development images.' >&2
+      exit 1
+    fi
+    compose --profile tools build api tools
+    compose up --detach --wait --wait-timeout 120
+    ;;
   down) compose down ;;
   logs) compose logs --follow api db ;;
   ps) compose ps ;;
@@ -38,5 +46,5 @@ case "$action" in
     fi
     compose --profile tools run --build --rm tools
     ;;
-  *) echo 'Choose up, down, logs, ps, config, or check.' >&2; exit 1 ;;
+  *) echo 'Choose up, rebuild, down, logs, ps, config, or check.' >&2; exit 1 ;;
 esac

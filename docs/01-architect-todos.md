@@ -1,6 +1,6 @@
 # Hono + Drizzle example API: specification and implementation plan
 
-Status: Gate 3 and the approved configuration simplification are verified based on user-run checks. Gate 4 has not started.
+Status: Gate 3, configuration simplification, and hybrid editor support verified. The user confirmed installation and checks passed. Gate 4 has not started.
 
 ## Spec summary
 
@@ -29,7 +29,7 @@ The approved project rules are recorded in `docs/PROJECT_MAP.md`. Every gate bel
 
 ### S3. Runtime, secrets, and persistence
 
-- Confirmed workflow: everything runs in Docker. Two long-running Compose services: `api` and `db`. Database tooling, tests, lint, and type checking run in one-off containers using the API development image. No host Node.js/npm installation is required.
+- Confirmed hybrid workflow: run the API, PostgreSQL, and verification checks in Docker. Install locked dependencies locally with Node.js 24 for editor support. Keep local and container installations separate. Two long-running Compose services: `api` and `db`; one-off development containers run database tooling and checks.
 - Default host bindings: API `127.0.0.1:3000`, PostgreSQL `127.0.0.1:5433` mapped to container port `5432`; ports configurable. API listens on `0.0.0.0` inside its container.
 - Local commands explicitly select `.env.local`; production variants explicitly select `.env.production`. Never load both or silently fall back to local credentials for a production command.
 - Commit `.env.example` with placeholders and descriptions. Ignore actual environment files and exclude them from image build contexts. Never put credentials in Docker build arguments or image layers.
@@ -86,12 +86,13 @@ Planned commands (implement with their owning gate):
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `dev`, `build`, `start`                                       | Container-internal commands: watch mounted source, compile, run compiled API.                                   |
 | `docker:up`, `docker:down`, `docker:logs`                     | Explicit local env selection; build/start both services; preserve data on down.                                 |
+| `docker:rebuild` | Run local `npm ci`, build local API and tools images, then update services while preserving database volumes. |
 | `docker:up:production`, `docker:down:production`              | Explicit production env and separate project/volume; compiled runtime.                                          |
 | `db:push`, `db:studio`, `db:seed`                             | One-off development tooling container against the Compose DB using `.env.local`; Studio bound to host loopback. |
 | `db:push:production`                                          | Explicit production target; interactive review; no unconditional destructive flags.                             |
 | `test`, `test:watch`, `test:integration`, `typecheck`, `lint` | Fast Vitest suite, watch, PostgreSQL-backed suite, strict type checking, linting.                               |
 
-The README must provide direct `docker compose` commands for all workflows, including startup, pushes, Studio, seeds, builds, and checks. Keep the requested package.json scripts as conveniences, but never make host npm a prerequisite: invoke application/tooling scripts inside containers. Bootstrap the development image with Docker before any package-script invocation; Docker lifecycle scripts are host conveniences and must not recursively launch Docker from inside a container.
+The README leads with host npm shortcuts and also provides direct Compose commands. The approved hybrid setup uses local `npm ci` for editor support and `docker:rebuild` to synchronize dependencies and rebuild the local images. Application and database-tool execution and verification remain in Docker. Docker lifecycle shortcuts run on the host and must not recursively launch Docker inside a container.
 
 Use Drizzle Kit pushes only: no migration generator, migration directory, or automatic destructive push. Seeding uses `drizzle-seed` with fixed IDs/seed and fixed business dates; generated relationships must satisfy ownership constraints. Re-running `db:seed` against an existing demo fixture must not duplicate or overwrite user edits: detect the fixture identity and no-op, with a clear message; fail on partial/conflicting fixtures. No automatic reset. Block seeds against production.
 
@@ -312,8 +313,8 @@ Official references consulted while planning; recheck compatible versions at imp
 
 ## RELAY
 
-- **Status:** Configuration simplification verified. The user confirmed verification succeeded and shared healthy API and database status. Gate 4 has not started.
-- **Handoff:** Pause for review and manual commit before Gate 4. No commits have been made by the assistant.
-- **User action:** Review the simplification and consolidated guide; approve Gate 4 when ready.
+- **Status:** Hybrid editor support and `docker:rebuild` verified based on the user's successful installation and checks. Local TypeScript server files are present.
+- **Handoff:** Ready for review and manual commit. Gate 4 is next, after approval. No commits have been made by the assistant.
+- **User action:** Review and commit the hybrid setup when satisfied; approve Gate 4 when ready.
 - **Suggested next specialist/prompt:** Backend implementation: "Implement Gate 4 in docs/01-architect-todos.md, run its checks, and stop for review. Do not commit."
-- **Drift risks:** Reintroducing an application file loader; adding startup pushes/seeds; sharing test/local/production volumes; introducing float money or mutable balances; dropping owner scope.
+- **Drift risks:** Running the API locally unintentionally; sharing host node_modules with containers; reintroducing an application file loader; adding startup pushes/seeds; sharing database volumes across environments.
