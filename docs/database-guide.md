@@ -1,6 +1,6 @@
 # Database schema and tests
 
-Gate 5 adds four reference tables in [src/db/schema.ts](../src/db/schema.ts). These identify owners and organize future financial entries. Transactions and budgets come in Gate 6; demo rows come in Gate 7. This gate adds no business API routes or login system.
+The schema through Gate 6 is defined in [src/db/schema.ts](../src/db/schema.ts). Four reference tables identify owners and organize transactions, tags, and monthly budgets. Demo rows come in Gate 7; business API routes and login are later work.
 
 ## How the tables connect
 
@@ -40,7 +40,7 @@ One user can own many accounts, categories, and tags. Every reference must belon
 
 A UUID is a generated identifier. A primary key uniquely identifies a row; a foreign key requires a matching row in another table. PostgreSQL generates IDs when callers omit them. `timestamptz` stores a point in time, so an input with a timezone offset still represents the same instant when read in UTC.
 
-## Rules PostgreSQL enforces
+## Reference-table rules
 
 | Field or rule | Behavior |
 | --- | --- |
@@ -56,18 +56,93 @@ PostgreSQL rejects an uppercase or untrimmed email rather than silently changing
 
 ## Why there are owner-and-ID pairs
 
-Each reference table has a unique `(owner_id, id)` pair in addition to its primary key. Gate 6 can reference both fields together. That lets PostgreSQL reject a transaction that names one owner but links to another owner's account or category.
+Accounts, categories, tags, and transactions have unique `(owner_id, id)` pairs in addition to their primary keys. Financial relationships reference both fields together. That lets PostgreSQL reject a transaction that names one owner but links to another owner's account or category.
 
 ```mermaid
 flowchart LR
-    Entry["Future entry with owner A"] --> Check{"Do owner and resource ID match?"}
+    Entry["Transaction with owner A"] --> Check{"Do owner and resource ID match?"}
     Check -->|"Account also belongs to A"| Accept["Accept the link"]
     Check -->|"Account belongs to B"| Reject["Reject the link"]
 ```
 
-Gate 5 tests this with a small probe table inside a transaction. The test rolls back the transaction afterward, removing the probe table and its rows. The actual financial tables remain for Gate 6.
+The tests check both valid and cross-owner links. The reference-table suite also creates a small probe table inside a transaction, then rolls it back to remove the probe and its rows.
 
 Each table's name index starts with `owner_id`, then the lowercase name. The owner-and-ID unique index also starts with `owner_id`. These support owner-scoped lookups and owner references; a separate index on `owner_id` alone would duplicate work already covered here. [Drizzle constraints and indexes](https://orm.drizzle.team/docs/indexes-constraints)
+
+## Financial tables
+
+```mermaid
+erDiagram
+    users ||--o{ transactions : owns
+    accounts ||--o{ transactions : records
+    categories |o--o{ transactions : classifies
+    transactions ||--o{ transaction_tags : has
+    tags ||--o{ transaction_tags : labels
+    users ||--o{ budgets : owns
+    categories ||--o{ budgets : limits
+    transactions |o--o| transactions : reverses
+    transactions {
+        uuid id PK
+        uuid owner_id FK
+        uuid account_id FK
+        uuid category_id FK
+        numeric amount
+        text description
+        timestamptz occurred_at
+        timestamptz created_at
+        uuid reversal_of_id FK
+    }
+    transaction_tags {
+        uuid owner_id PK,FK
+        uuid transaction_id PK,FK
+        uuid tag_id PK,FK
+    }
+    budgets {
+        uuid id PK
+        uuid owner_id FK
+        uuid category_id FK
+        date month
+        numeric limit_amount
+    }
+```
+
+A transaction requires an account and may have a category. `transaction_tags` connects transactions and tags, allowing many tags per transaction and many transactions per tag. A budget belongs to one owner's category for one calendar month. All these relationships enforce matching owners in PostgreSQL.
+
+| Table | Stored rules |
+| --- | --- |
+| `transactions` | Required owner, account, nonzero signed amount, and finite business timestamp. Description is trimmed, 1–500 characters, without control characters. Creation time defaults to now. There is no update timestamp because financial fields will be immutable through the API. |
+| `transaction_tags` | The owner/transaction/tag combination is its primary key, so a tag cannot be attached twice to the same transaction. Both referenced rows must belong to the same owner. |
+| `budgets` | Required owner, category, positive `limit_amount`, and finite `month` date on the first day. One budget per owner/category/month. Creation/update timestamps follow the reference-table convention. Drizzle exposes `limit_amount` as `limitAmount`. |
+
+`occurred_at` is the business date used for reports. `created_at` records when the row was inserted. Budget months are date strings such as `2026-01-01`; they do not carry a time of day or timezone.
+
+### Exact money
+
+Positive transactions represent income; negative transactions represent expenses. Account currency is constrained to USD, and this version treats budgets as USD too. Transactions and budget limits allow values up to `999999999999.99` in magnitude. A transaction cannot be zero; a budget limit must be positive. Fractions of a cent, `NaN`, and infinity are rejected.
+
+We use `numeric` with explicit range and whole-cent checks. PostgreSQL's `numeric(14,2)` would round `1.239` before a check could reject it. The selected representation preserves the intended range while refusing that value. Trailing zeros such as `1.2300` are allowed because the value is still an exact number of cents. [PostgreSQL numeric behavior](https://www.postgresql.org/docs/18/datatype-numeric.html)
+
+Drizzle returns money as strings. Later API code must format two decimal places and perform calculations in SQL or another exact representation, never JavaScript floating-point arithmetic. No balance column is stored; account balances will be calculated from transactions.
+
+### Reversals and deletion
+
+An optional `reversal_of_id` points to another transaction belonging to the same owner. A unique rule allows one reversal per original, and a check prevents a row from reversing itself. Two competing reversal inserts cannot both succeed.
+
+PostgreSQL blocks deletion of an account/category referenced by a transaction, a category referenced by a budget, a tag referenced by a tag link, or a transaction referenced by a reversal or tag link. Archiving an account/category preserves its rows and related history. A budget can be edited/deleted, and tag links can be removed explicitly.
+
+The later reversal service must insert the exact opposite amount and copy the original account, category, business timestamp, and tags atomically. It must also reject reversing a reversal and coordinate writes with archiving. These cross-row business operations are not implemented in this schema gate. Direct administrative SQL remains outside the API's immutability boundary; no trigger makes transaction rows globally read-only.
+
+### Indexes and their purpose
+
+| Lookup | Supporting index |
+| --- | --- |
+| Owner's transactions in date order | Owner, descending business timestamp, descending ID. The ID gives equal timestamps a stable order. |
+| Transactions for an account or category in a date range | Owner/account/date/ID and owner/category/date/ID indexes. Their leading columns also support foreign-key checks. |
+| Reversal for an original | Unique `reversal_of_id` index, also useful when checking whether an original is referenced. |
+| Tags for a transaction; transactions carrying a tag | Owner/transaction/tag primary key and owner/tag/transaction index. |
+| Budget for a category/month; owner's monthly budget list | Unique owner/category/month rule and owner/month/ID index. |
+
+Description substring search has no specialized index yet. The planned API bounds that search; a more complex index should follow a measured need.
 
 ## Apply and inspect the schema
 
@@ -78,7 +153,7 @@ bun run db:push
 bun run db:studio
 ```
 
-Review the push before accepting changes. Studio opens at [local.drizzle.studio](https://local.drizzle.studio/?host=127.0.0.1). After the first push, expect `users`, `accounts`, `categories`, and `tags`. The tables can be empty; no demo rows are created yet.
+Review the push before accepting changes. Studio opens at [local.drizzle.studio](https://local.drizzle.studio/?host=127.0.0.1). After the push, expect `users`, `accounts`, `categories`, `tags`, `transactions`, `transaction_tags`, and `budgets`. The tables can be empty; no demo rows are created yet.
 
 The API still does not push or seed during startup. Its readiness query works without business rows. Local and production pushes retain strict review, and no migration files are generated.
 
@@ -87,7 +162,11 @@ The API still does not push or seed during startup. Its readiness query works wi
 | Command | Purpose |
 | --- | --- |
 | `bun run check` | Run local type checking, lint, fast tests, and the application build. Database integration tests are discovered but skipped here. |
-| `bun run test:integration` | Start temporary PostgreSQL, push the schema into a fresh test database, run real constraint tests in local Bun, and clean up. |
+| `bun run test:integration` | Start temporary PostgreSQL, push the schema into a fresh test database, run reference/financial constraint tests in local Bun, and clean up. |
+
+The database suites cover a small set of rules declared in our schema: owner isolation, reserved names, money limits, unique reversals and monthly budgets, and protected financial history. They use real tables, including competing reversal inserts. They do not check UUID generation, timestamp conversion, SQL arithmetic, or every field-validation example.
+
+These tests cover database safeguards only. Tests for creating transactions, copying reversal tags, refusing writes to archived accounts, and calculating reports belong at the service or HTTP boundary when those features exist.
 
 Integration tests deliberately attempt invalid inserts and deletions. A passing test confirms PostgreSQL rejected them with the expected error. The local runner prints test output; database container logs can contain expected `ERROR` entries because those invalid writes are intentional.
 
@@ -106,6 +185,8 @@ flowchart TD
 ```
 
 The runner connects first to a dedicated admin database named `finance_test`. It creates a fresh database named `finance_test_` followed by a generated identifier. Tests check the actual database name and connected user before clearing fixture rows. Cleanup checks the admin connection again and drops only the database this run created, even if assertions fail. Unexpected credentials, target names, ports, and non-loopback hosts are rejected.
+
+The installed stable Drizzle Kit can propose rebuilding unchanged composite keys or indexes on later pushes. This tooling issue is documented and deferred at the user's request. The integration suite checks the stored financial rules and does not require a repeat push to report no changes. Ordinary local pushes still require review.
 
 The test-only Drizzle configuration applies changes without interactive review because its target is newly created and disposable. It uses no force flags for schema pushes. Ordinary `db:push` still requires review.
 

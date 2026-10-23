@@ -1,6 +1,6 @@
 # Hono + Drizzle example API: specification and implementation plan
 
-Status: Gate 5 is complete. The user approved a pivot to host development before Gate 6. Implementation is ready; local checks pass and Docker/runtime verification is pending.
+Status: Local development and Gate 6 schema/push are verified. The user requested narrower database tests; the 19 trimmed tests await integration verification. Pause for review before Gate 7 seeds.
 
 ## Spec summary
 
@@ -53,10 +53,12 @@ Start with one seeded demo user and server-selected owner context. Clients canno
 | `users`            | UUID primary key, unique normalized email, timestamps; one demo identity initially; no public user CRUD.                                                                                |
 | `accounts`         | Owner FK, name, checking/savings/cash type, USD currency, optional `archived_at`; names unique per owner ignoring case.                                                                 |
 | `categories`       | Owner FK, name, archive timestamp; names unique per owner ignoring case; all categories private rather than nullable global defaults.                                                   |
-| `transactions`     | Owner, account, optional category, nonzero signed `numeric(14,2)` amount, bounded description, `occurred_at`, `created_at`, optional unique `reversal_of_id`; immutable after creation. |
+| `transactions`     | Owner, account, optional category, nonzero signed exact numeric amount with whole-cent/range checks, bounded description, `occurred_at`, `created_at`, optional unique `reversal_of_id`; immutable after creation. |
 | `tags`             | Owner FK, case-insensitive unique name per owner.                                                                                                                                       |
 | `transaction_tags` | Owner, transaction, tag; composite primary key prevents duplicate associations.                                                                                                         |
-| `budgets`          | Owner, category, month as first-of-month `date`, positive `numeric(14,2)` limit; unique owner/category/month.                                                                           |
+| `budgets`          | Owner, category, month as first-of-month `date`, positive exact numeric `limit_amount` with whole-cent/range checks; unique owner/category/month.                                                                           |
+
+Money uses plain `numeric` with explicit whole-cent and range checks, allowing magnitudes through `999999999999.99`. This refines the original `numeric(14,2)` plan because PostgreSQL rounds excess decimal places before checks; the chosen representation rejects fractional cents instead. Drizzle returns strings, and future JSON output must format two decimals.
 
 Use UUIDs for standalone resources, snake_case SQL identifiers, camelCase JSON, and `timestamptz` for instants. Represent money as two-decimal strings in JSON; never calculate money using JavaScript floating point. This first version accepts USD only, with a database constraint, so reports cannot accidentally sum currencies.
 
@@ -206,9 +208,9 @@ The user approved host development with Bun, keeping PostgreSQL in Docker and th
 - [x] Run integration tests in local Bun with automatically provisioned, isolated PostgreSQL and guarded cleanup.
 - [x] Keep a production-only Dockerfile and optional deployment Compose example.
 - [x] Update application scaffolding, commands, project instructions, and guides.
-- [ ] Verify the local API, Studio, push, integration lifecycle, and production image build through the user's Docker-enabled terminal.
+- [x] Verify the local API, Studio, push, integration lifecycle, and production image build through the user's Docker-enabled terminal.
 
-Local verification: type checking, lint, 66 fast tests, and bundling pass. Integration tests remain skipped by the fast suite. Docker execution is unavailable to the assistant in this session.
+Verification: type checking, lint, 66 fast tests, and bundling passed locally. After fixing Bun environment-file password escaping, the user confirmed the local workflow worked and approved proceeding to Gate 6. Docker-dependent verification was user-run because this session cannot access its socket.
 
 Suggested commit: `refactor: develop locally with Dockerized PostgreSQL`.
 
@@ -216,11 +218,17 @@ Pause for workflow review before Gate 6.
 
 ### Gate 6 — financial schema
 
-- [ ] Define transactions, transaction tags, and budgets with decimal/date checks, composite owner FKs, reversal uniqueness, and deletion policies.
-- [ ] Add query-driven indexes and integration coverage for ownership violations, duplicate links/budgets/reversals, precision, and protected history.
-- [ ] Push twice and verify the second push requires no schema changes.
+- [x] Define transactions, transaction tags, and budgets with decimal/date checks, composite owner FKs, reversal uniqueness, and deletion policies.
+- [x] Add query-driven indexes and integration coverage for ownership violations, duplicate links/budgets/reversals, precision, and protected history.
+- [x] Apply the financial schema locally through Drizzle Kit and verify the PostgreSQL suite. The user deferred the original repeat-push/no-change requirement after reviewing stable Drizzle Kit's unnecessary key/index rebuilds.
 
-Acceptance: schema satisfies S4; both pushes use Drizzle Kit only. S4/S6; database Normalization/Transactions/Schema Review Checklist. Commit: `feat: model transactions tags and monthly budgets`.
+Implementation: transaction amounts and budget limits use exact numeric strings with whole-cent/range checks. Transactions are nonzero; budget limits are positive. Budget dates must be finite first-of-month dates, and transaction business timestamps must be finite. Transactions have a 1–500 character trimmed description. Composite owner foreign keys cover accounts, categories, reversals, and tag links. Unique rules prevent duplicate monthly budgets, links, and reversals; restricted deletes protect referenced rows. Indexes support owner/date, account/category/date, tag filters, and budget-month lookups. See [database-guide.md](database-guide.md).
+
+Verification: local type checking, lint, 66 fast tests, and bundling passed. The user ran all 109 PostgreSQL integration tests successfully and confirmed the local `db:push` applied. Tests include fractional-cent/zero/nonfinite/range rejection, exact SQL sums, cross-owner references, duplicate insert/update rejection, competing reversals, date rules, archive preservation, and protected deletion. The test runner removes its temporary database/container normally. No seeds, API routes, migration files, dependency patch, or dependency upgrade were added.
+
+Deferred tooling issue: repeated pushes can propose rebuilding unchanged composite keys/indexes in the installed stable Drizzle Kit. The user explicitly asked to move on without fixing it; the extra repeat-push guard was removed. Keep normal push review. Opposite-amount/copy/no-chain reversal behavior and archived-parent write coordination belong to later service gates, not this schema gate.
+
+Acceptance: schema satisfies S4's database rules, using Drizzle pushes only. The repeat-push acceptance condition is waived by the user. S4/S6; database Normalization/Transactions/Schema Review Checklist. Commit: `feat: model transactions tags and monthly budgets`.
 
 **PAUSE — user must approve before continuing to next batch.**
 
@@ -342,8 +350,8 @@ Official references consulted while planning; recheck compatible versions at imp
 
 ## RELAY
 
-- **Status:** Local-development pivot implemented after Gate 5; local checks passed. Awaiting user-run Docker/database/API verification.
-- **Handoff:** Finish verification and stop for workflow review. No assistant commits.
-- **User action:** Verify the new commands and local runtime, then review the pivot before approving Gate 6.
-- **Next gate:** Transactions, transaction tags, and budgets with owner-aware relationships and financial checks.
-- **Drift risks:** Reintroducing container-only development commands, automatic environment-file mixing, or guessed database addresses; tests touching real storage; startup pushes/seeds; missing owner pairs on future foreign keys.
+- **Status:** Gate 6 implemented and the local schema push passed. The original 109 integration tests passed; the 19 trimmed tests await a fresh integration run.
+- **Handoff:** Ready for review and manual commit. No assistant commits. Stop before Gate 7.
+- **User action:** Review the financial schema and updated database guide, commit when ready, and approve Gate 7 separately.
+- **Next gate:** Reproducible demo seeds with production guards and safe rerun behavior.
+- **Drift risks:** Money rounding or JavaScript floating-point calculations; cross-owner links; treating schema uniqueness as the complete reversal operation; tests touching real data. Stable Drizzle repeat-push churn is deferred by explicit user instruction; no tooling patch/upgrade or repeat-push guard is planned.

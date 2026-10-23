@@ -1,6 +1,6 @@
 # Bun, Hono, and Drizzle finance API
 
-A personal finance API built in reviewable gates. Users, accounts, categories, and tags are defined; transactions and business routes come next. See the [implementation plan](docs/01-architect-todos.md), [database guide](docs/database-guide.md), and [Docker walkthrough](docs/docker-guide.md).
+A personal finance API built in reviewable gates. Users, accounts, categories, tags, transactions, tag links, and monthly budgets are defined. Demo data and business routes come next. See the [implementation plan](docs/01-architect-todos.md), [database guide](docs/database-guide.md), and [Docker walkthrough](docs/docker-guide.md).
 
 Develop locally with Bun 1.3.14. PostgreSQL runs in Docker. The API, Drizzle, type checking, lint, and tests run directly on your machine. In WSL, install Bun in the distro and enable Docker Desktop's WSL Integration for it.
 
@@ -31,7 +31,7 @@ Expected response:
 {"data":{"status":"ready"}}
 ```
 
-Schema pushes remain explicit and reviewed. Startup never pushes or seeds. The four current tables can be empty. VS Code uses the local TypeScript installation through `.vscode/settings.json`.
+Schema pushes remain explicit and reviewed. Startup never pushes or seeds. The current tables can be empty. VS Code uses the local TypeScript installation through `.vscode/settings.json`.
 
 ```mermaid
 flowchart LR
@@ -90,7 +90,9 @@ If the browser keeps connecting, allow **Apps on device** or the local/loopback 
 
 ## Checks and database tests
 
-Use `bun run check` during development. After schema changes, also run `bun run test:integration`.
+Use `bun run check` during development. After schema changes, also run `bun run test:integration`. The database suites focus on our ownership, money, uniqueness, and history safeguards. Service and HTTP behavior tests will accompany those features as they are implemented.
+
+The schema enforces matching owners, whole-cent money within the allowed range, unique monthly budgets/tag links/reversals, and protected references. See the [database guide](docs/database-guide.md#financial-tables) for the rules and later API work.
 
 The integration runner starts PostgreSQL in a uniquely named Docker project, uses an available loopback port, creates a generated test database, pushes the schema, and runs the tests in local Bun. It checks database identity before clearing fixtures or dropping that database, then removes its container/network. Local and production data volumes stay separate. See the [database guide](docs/database-guide.md#how-database-tests-stay-separate).
 
