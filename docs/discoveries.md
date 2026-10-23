@@ -2,7 +2,7 @@
 
 ## Initial planning — 2026-10-22
 
-- The workspace initially contains `setup.md`, `API_design.md`, and `database_design.md`; no application, package manifest, or project ledger exists. **Why this matters:** the plan starts with scaffolding and treats architecture choices as proposed until reviewed.
+- The workspace initially contains `setup.md`, `./docs/archive/API_design.md`, and `./docs/archive/database_design.md`; no application, package manifest, or project ledger exists. **Why this matters:** the plan starts with scaffolding and treats architecture choices as proposed until reviewed.
 - Initially, `git status` reported no usable repository. The user subsequently confirmed they initialized Git. **Why this matters:** initialization is no longer outstanding; commits remain the user's responsibility.
 - The requested workflow explicitly requires small increments, review gates, and manual commits. **Why this matters:** author the plan first; implementation must follow the approved gates rather than build the entire API immediately.
 - The database reference recommends safe schema evolution, while `setup.md` explicitly chooses pushes instead of migration files. **Why this matters:** retain backup, review, constraint, and restore practices while using Drizzle Kit push as requested.
@@ -20,7 +20,7 @@
 
 ## Gate 2
 
-- Configuration has two explicit sources. File mode reads just the selected `.env.local` or `.env.production` using Node's environment-file parser. Environment mode reads values supplied to the container. Neither mode merges in another source. **Why this matters:** missing production credentials cannot be silently filled from local settings.
+- The original Gate 2 implementation supported file and container environment sources. This was superseded by the approved simplification below. **Why this matters:** that earlier design is historical, not the current configuration contract.
 - Development now requires `.env.local` with database credentials, even though database connections start in Gate 4. **Why this matters:** startup validates the complete shared settings early; tests and builds still need no real secrets.
 - The earlier plan mentioned host connection switching. The confirmed Docker-only workflow instead fixes container connections at `db:5432`; `POSTGRES_PORT` is only for optional host access. **Why this matters:** changing the published database port must not redirect container traffic.
 - Gate 2 introduces Zod. Docker socket access remains blocked for the assistant. **Why this matters:** the user must refresh the lockfile and run Docker checks before this gate is marked verified.
@@ -34,3 +34,8 @@
 - The host helper clears inherited project settings before Compose reads the selected file. **Why this matters:** Compose otherwise lets shell values override file values, which could mix credentials between environments.
 - Docker socket access is still blocked for the assistant. **Why this matters:** static Compose and shell checks passed here, but image builds, service health, and persistence need the user-run verification script before accepting Gate 3.
 - The user completed `scripts/verify-docker.sh` successfully. All 26 tests, type checking, linting, and compilation passed. Both local services became healthy, the API responded before and after restart, and the probe row survived. The runtime image built and passed its non-root, TypeScript exclusion, and environment-file exclusion checks. **Why this matters:** Gate 3 is verified and ready for review. These are user-run results; the full production stack was not started. Local services remain running.
+
+## Configuration simplification and documentation consolidation
+
+- The user approved one configuration path before Gate 4. Compose reads the chosen environment file; the application validates `process.env` only. Removed the application file loader, source-selection argument, and redundant startup scripts. **Why this matters:** local and production follow the same settings flow. The expected mode still must match `APP_ENV`. The user subsequently confirmed verification succeeded and shared healthy API and PostgreSQL status. These checks were user-run because this session cannot access Docker's socket.
+- The user moved the earlier Docker notes into `docs/archive/` and requested a single active guide. `docs/docker-guide.md` preserves the complete instruction walkthrough and integrates the startup, configuration, and operational details from the other note. **Why this matters:** use one maintained guide; keep archived originals unchanged. README and Gate 4 references now point to the active guide.

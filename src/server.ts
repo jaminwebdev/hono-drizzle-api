@@ -1,18 +1,15 @@
-import { serve } from '@hono/node-server';
-import { createApp } from './app.js';
-import { loadConfig } from './lib/config.js';
+import { serve } from "@hono/node-server";
+import { createApp } from "./app.js";
+import { loadConfig } from "./lib/config.js";
 
 try {
-  const config = loadConfig({
-    environment: process.argv[2],
-    source: process.argv[3],
-  });
+  const config = loadConfig(process.argv[2]);
   const app = createApp();
 
   serve(
     {
       fetch: app.fetch,
-      hostname: '0.0.0.0',
+      hostname: "0.0.0.0",
       port: config.apiPort,
     },
     () => {
@@ -21,6 +18,8 @@ try {
   );
 } catch (error) {
   // Configuration errors name fields without printing their values.
-  console.error(error instanceof Error ? error.message : 'Unable to start the API.');
+  console.error(
+    error instanceof Error ? error.message : "Unable to start the API.",
+  );
   process.exitCode = 1;
 }

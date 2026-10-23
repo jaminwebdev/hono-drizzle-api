@@ -1,7 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../src/lib/config.js';
 
 const credentials = {
@@ -12,24 +9,11 @@ const credentials = {
 };
 
 function fromEnvironment(values: NodeJS.ProcessEnv) {
-  return loadConfig({ environment: 'local', source: 'environment', values });
-}
-
-const directories: string[] = [];
-
-function fixture(files: Record<string, string>) {
-  const directory = mkdtempSync(join(tmpdir(), 'finance-config-'));
-  directories.push(directory);
-  for (const [filename, contents] of Object.entries(files)) {
-    writeFileSync(join(directory, filename), contents);
-  }
-  return directory;
+  return loadConfig('local', values);
 }
 
 afterEach(() => {
-  for (const directory of directories.splice(0)) {
-    rmSync(directory, { recursive: true, force: true });
-  }
+  vi.unstubAllEnvs();
 });
 
 describe('configuration validation', () => {
@@ -85,69 +69,55 @@ describe('configuration validation', () => {
   });
 
   it('rejects an environment that differs from the requested mode', () => {
-    expect(() => loadConfig({
-      environment: 'production', source: 'environment', values: credentials,
-    })).toThrow('APP_ENV must match');
+    expect(() => loadConfig('production', credentials)).toThrow('APP_ENV must match');
   });
 
-  it('requires explicit, known environment and source selections', () => {
-    for (const environment of [undefined, 'staging', '../local']) {
-      expect(() => loadConfig({ environment, source: 'file' })).toThrow('Select local or production');
-    }
-    expect(() => loadConfig({ environment: 'local', source: undefined }))
-      .toThrow('Select local or production');
-  });
-});
+  it.each([undefined, 'staging', '../local'])(
+    'requires a known startup mode: %s',
+    (environment) => {
+      expect(() => loadConfig(environment, credentials)).toThrow('Select local or production');
+    },
+  );
 
-describe('environment file isolation', () => {
-  it('uses injected production settings without reading an existing local file', () => {
-    const directory = fixture({ '.env.local': 'APP_ENV=local\nPOSTGRES_PASSWORD=local-secret\n' });
-    const config = loadConfig({
-      environment: 'production',
-      source: 'environment',
-      directory,
-      values: { ...credentials, APP_ENV: 'production', POSTGRES_PASSWORD: 'production-secret' },
+  it.each([undefined, '', 'staging'])(
+    'rejects a missing or unknown APP_ENV: %s',
+    (environment) => {
+      expect(() => fromEnvironment({ ...credentials, APP_ENV: environment }))
+        .toThrow('Invalid configuration fields: APP_ENV.');
+    },
+  );
+
+  it('accepts production values supplied by the container', () => {
+    const config = loadConfig('production', {
+      ...credentials,
+      APP_ENV: 'production',
+      POSTGRES_USER: 'production-user',
+      POSTGRES_PASSWORD: 'production-password',
     });
 
     expect(config.environment).toBe('production');
-    expect(config.database.password).toBe('production-secret');
+    expect(config.database.user).toBe('production-user');
+    expect(config.database.password).toBe('production-password');
   });
 
-  it('reads only the selected file and ignores inherited credentials', () => {
-    const directory = fixture({
-      '.env.local': "APP_ENV=local\nPOSTGRES_USER=local\nPOSTGRES_DB=local\nPOSTGRES_PASSWORD='local@#/$ password'\n",
-      '.env.production': 'APP_ENV=production\nPOSTGRES_USER=production\nPOSTGRES_DB=production\nPOSTGRES_PASSWORD=production-only\n',
-    });
+  it('reads process.env when no test values are supplied', () => {
+    for (const [key, value] of Object.entries(credentials)) {
+      vi.stubEnv(key, value);
+    }
+    vi.stubEnv('API_PORT', '4000');
+    vi.stubEnv('POSTGRES_PORT', '15433');
 
-    const local = loadConfig({ environment: 'local', source: 'file', directory, values: {} });
-    const production = loadConfig({
-      environment: 'production', source: 'file', directory, values: credentials,
-    });
-
-    expect(local.database.password).toBe('local@#/$ password');
-    expect(production.database.user).toBe('production');
-    expect(production.database.password).toBe('production-only');
+    const config = loadConfig('local');
+    expect(config.apiPort).toBe(4000);
+    expect(config.database.password).toBe('test-password');
   });
 
-  it('does not fall back to a local or generic file when production is missing', () => {
-    const directory = fixture({
-      '.env.local': 'APP_ENV=local\nPOSTGRES_PASSWORD=local-secret\n',
-      '.env': 'POSTGRES_PASSWORD=generic-secret\n',
-    });
+  it('does not fill missing production credentials from inherited local values', () => {
+    vi.stubEnv('POSTGRES_PASSWORD', 'local-secret');
+    const values: NodeJS.ProcessEnv = { ...credentials, APP_ENV: 'production' };
+    delete values.POSTGRES_PASSWORD;
 
-    expect(() => loadConfig({
-      environment: 'production', source: 'file', directory, values: credentials,
-    })).toThrow('Unable to read .env.production.');
-  });
-
-  it('does not fill missing production fields from local files or inherited values', () => {
-    const directory = fixture({
-      '.env.production': 'APP_ENV=production\nPOSTGRES_USER=production\nPOSTGRES_DB=production\n',
-      '.env.local': 'POSTGRES_PASSWORD=local-secret\n',
-    });
-
-    expect(() => loadConfig({
-      environment: 'production', source: 'file', directory, values: credentials,
-    })).toThrow('Invalid configuration fields: POSTGRES_PASSWORD.');
+    expect(() => loadConfig('production', values))
+      .toThrow('Invalid configuration fields: POSTGRES_PASSWORD.');
   });
 });

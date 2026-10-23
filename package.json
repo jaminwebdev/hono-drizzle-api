@@ -7,12 +7,9 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "tsx watch src/server.ts local file",
-    "dev:container": "tsx watch src/server.ts local environment",
+    "dev": "tsx watch src/server.ts local",
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/server.js production environment",
-    "start:local": "node dist/server.js local file",
-    "start:production:file": "node dist/server.js production file",
+    "start": "node dist/server.js production",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",

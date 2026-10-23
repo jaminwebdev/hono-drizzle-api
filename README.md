@@ -4,7 +4,7 @@ A personal finance API built in small, reviewable steps. Hono and PostgreSQL now
 
 See the [approved plan](docs/01-architect-todos.md) and [project map](docs/PROJECT_MAP.md).
 
-New to Docker? Read [how this project's Docker setup works](docs/docker-guide.md) for file-by-file explanations, diagrams, and command walkthroughs.
+Read the [Docker setup guide and instruction walkthrough](docs/docker-guide.md) for the complete local startup flow, configuration explanation, Dockerfile instructions, and Compose settings.
 
 ## Start locally
 
@@ -31,7 +31,7 @@ curl http://localhost:3000/health/live
 Expected response:
 
 ```json
-{"data":{"status":"ok"}}
+{ "data": { "status": "ok" } }
 ```
 
 The API starts after PostgreSQL is ready, but it does not query the database yet. Gate 4 adds that connection and database readiness checks. No schema push or seed runs at startup.
@@ -90,12 +90,12 @@ The equivalent `docker:up`, `docker:down`, `docker:logs`, and `docker:check` npm
 
 Keep `.env.local` and `.env.production` private. Git ignores them, and `.dockerignore` excludes them from image builds. Only `.env.example` belongs in Git.
 
-| Setting | Purpose |
-| --- | --- |
-| `APP_ENV` | `local` for development or `production` for the production setup. Startup rejects a mismatch. |
-| `API_PORT` | API port inside Docker and on your computer. Local default is `3000`. |
-| `POSTGRES_PORT` | Optional database access from your computer. Local default is `5433`. Container clients always use `db:5432`. |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Required credentials supplied to both PostgreSQL and the API. |
+| Setting                                             | Purpose                                                                                                       |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `APP_ENV`                                           | `local` for development or `production` for the production setup. Startup rejects a mismatch.                 |
+| `API_PORT`                                          | API port inside Docker and on your computer. Local default is `3000`.                                         |
+| `POSTGRES_PORT`                                     | Optional database access from your computer. Local default is `5433`. Container clients always use `db:5432`. |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Required credentials supplied to both PostgreSQL and the API.                                                 |
 
 Keep passwords containing `#`, `$`, or spaces in single quotes, as shown in `.env.example`. Credentials remain separate connection fields, so URL characters do not need encoding.
 
@@ -127,9 +127,9 @@ docker compose --env-file .env.production -f compose.production.yaml up --build 
 
 The production image contains compiled JavaScript and production dependencies. It runs as the `node` user rather than root and has no shared source folder. This demonstrates a production build; the example still has no authentication or public hosting setup.
 
-| Setup | Compose project | Database volume |
-| --- | --- | --- |
-| Local | `hono-drizzle-local` | `hono-drizzle-local_postgres_data` |
+| Setup      | Compose project           | Database volume                         |
+| ---------- | ------------------------- | --------------------------------------- |
+| Local      | `hono-drizzle-local`      | `hono-drizzle-local_postgres_data`      |
 | Production | `hono-drizzle-production` | `hono-drizzle-production_postgres_data` |
 
 The different projects also have separate networks. The suggested ports let both run at once. Normal down commands preserve both volumes. Adding `--volumes` to a down command deletes that project's database data.
@@ -166,13 +166,11 @@ Commit both package files after reviewing dependency changes. The bootstrap cont
 
 These run inside the development image. They do not require real environment files for checks or builds.
 
-| Script | Purpose |
-| --- | --- |
-| `dev:container` | Watch source edits using local settings supplied by Compose. |
-| `dev` | Watch source edits using a mounted `.env.local` file. |
-| `build` | Compile TypeScript into `dist/`. |
-| `start` | Run compiled code with production settings supplied to the container. |
-| `start:local`, `start:production:file` | Run compiled code with an explicitly mounted settings file. |
-| `typecheck`, `lint`, `test` | Check types, coding mistakes, or behavior. |
-| `test:watch` | Rerun tests after edits. |
-| `check` | Run all code checks and compile the app. |
+| Script                      | Purpose                                                               |
+| --------------------------- | --------------------------------------------------------------------- |
+| `dev`                       | Watch source edits using local settings supplied by Compose.          |
+| `build`                     | Compile TypeScript into `dist/`.                                      |
+| `start`                     | Run compiled code with production settings supplied to the container. |
+| `typecheck`, `lint`, `test` | Check types, coding mistakes, or behavior.                            |
+| `test:watch`                | Rerun tests after edits.                                              |
+| `check`                     | Run all code checks and compile the app.                              |

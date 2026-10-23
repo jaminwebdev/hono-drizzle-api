@@ -16,7 +16,7 @@ Build a personal finance API to learn Hono, PostgreSQL, and Drizzle. Work follow
 
 - `src/app.ts` creates the Hono app without opening a port.
 - `src/server.ts` validates settings before starting the server on `API_PORT`, which defaults to 3000.
-- `src/lib/config.ts` reads one explicitly selected settings source. File mode reads only `.env.local` or `.env.production`; environment mode uses container-supplied values. Both require the matching `APP_ENV` value. Errors never print credential values.
+- `src/lib/config.ts` validates `process.env` only; it never reads files. Compose selects `.env.local` or `.env.production` and supplies values to containers. The single startup argument selects the expected mode, which must match `APP_ENV`. Errors never print credential values.
 - `tests/` contains request tests that call the app directly.
 - Future feature code belongs in `src/modules/`; shared helpers in `src/lib/`; database code in `src/db/`.
 - Documentation lives in `docs/`, with the entry-point README and project instructions at the repository root.
@@ -24,7 +24,7 @@ Build a personal finance API to learn Hono, PostgreSQL, and Drizzle. Work follow
 ## Rules for later gates
 
 - Run the API and PostgreSQL in separate containers. Container clients connect to `db:5432`.
-- Select `.env.local` or `.env.production` explicitly. Never commit real secrets or copy them into images.
+- Select `.env.local` or `.env.production` explicitly through Compose. Keep one application configuration path and two startup scripts: `dev` for local watching, `start` for compiled production code. Never commit real secrets or copy them into images.
 - Database connection options always use `db:5432` with separate user/password/database fields. `POSTGRES_PORT` controls only optional access from the host computer.
 - Keep database data in named volumes. Separate local, production, and test data. Normal shutdown preserves data.
 - Use Drizzle schema pushes, with explicit review for destructive changes. Do not generate migration files or push/seed during server startup.

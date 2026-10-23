@@ -7,7 +7,7 @@ FROM base AS development
 COPY --chown=node:node package.json package-lock.json ./
 RUN npm ci
 COPY --chown=node:node . .
-CMD ["npm", "run", "dev:container"]
+CMD ["npm", "run", "dev"]
 
 FROM development AS build
 RUN npm run build
@@ -23,4 +23,4 @@ COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_m
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node package.json ./
 EXPOSE 3000
-CMD ["node", "dist/server.js", "production", "environment"]
+CMD ["node", "dist/server.js", "production"]

@@ -1,6 +1,6 @@
 # Hono + Drizzle example API: specification and implementation plan
 
-Status: Gates 1 and 2 approved. Gate 3 verified and ready for review. Later gates have not started.
+Status: Gate 3 and the approved configuration simplification are verified based on user-run checks. Gate 4 has not started.
 
 ## Spec summary
 
@@ -12,8 +12,8 @@ The requirements come from `setup.md`, including manual commits, review gates, V
 
 Local design references:
 
-- `API_design.md`: HTTP Methods (39–65), Status Codes (67–110), Naming/Hierarchy/Filtering (112–201), JSON/Side Effects/Versioning (262–314), Validation/Error Handling (407–454), Logging/Security (456–493), and Connection Pooling/N+1 (516–536).
-- `database_design.md`: Relationships and Keys (90–103), Constraints (105–117), Normalization/Values (119–187), Time/Transactions/Tenancy/Schema Change (189–209), Schema Review Checklist (211–220), and Personal Finance Tracker (449–502).
+- `./docs/archive/API_design.md`: HTTP Methods (39–65), Status Codes (67–110), Naming/Hierarchy/Filtering (112–201), JSON/Side Effects/Versioning (262–314), Validation/Error Handling (407–454), Logging/Security (456–493), and Connection Pooling/N+1 (516–536).
+- `./docs/archive/database_design.md`: Relationships and Keys (90–103), Constraints (105–117), Normalization/Values (119–187), Time/Transactions/Tenancy/Schema Change (189–209), Schema Review Checklist (211–220), and Personal Finance Tracker (449–502).
 - Design rationale follows `~/.opencode/docs/design_questions.md`, sections 1–9 (Data & Query Modeling through Operational & Maintainability Concerns).
 
 The approved project rules are recorded in `docs/PROJECT_MAP.md`. Every gate below must follow its stack, security, and persistence rules.
@@ -46,15 +46,15 @@ The approved project rules are recorded in `docs/PROJECT_MAP.md`. Every gate bel
 
 Start with one seeded demo user and server-selected owner context. Clients cannot choose their owner using headers, body fields, or query parameters. This is a local demo convenience, not authentication. All owner-scoped service functions take an explicit owner ID, making later session integration a contained change.
 
-| Table | Purpose and important rules |
-| --- | --- |
-| `users` | UUID primary key, unique normalized email, timestamps; one demo identity initially; no public user CRUD. |
-| `accounts` | Owner FK, name, checking/savings/cash type, USD currency, optional `archived_at`; names unique per owner ignoring case. |
-| `categories` | Owner FK, name, archive timestamp; names unique per owner ignoring case; all categories private rather than nullable global defaults. |
-| `transactions` | Owner, account, optional category, nonzero signed `numeric(14,2)` amount, bounded description, `occurred_at`, `created_at`, optional unique `reversal_of_id`; immutable after creation. |
-| `tags` | Owner FK, case-insensitive unique name per owner. |
-| `transaction_tags` | Owner, transaction, tag; composite primary key prevents duplicate associations. |
-| `budgets` | Owner, category, month as first-of-month `date`, positive `numeric(14,2)` limit; unique owner/category/month. |
+| Table              | Purpose and important rules                                                                                                                                                             |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`            | UUID primary key, unique normalized email, timestamps; one demo identity initially; no public user CRUD.                                                                                |
+| `accounts`         | Owner FK, name, checking/savings/cash type, USD currency, optional `archived_at`; names unique per owner ignoring case.                                                                 |
+| `categories`       | Owner FK, name, archive timestamp; names unique per owner ignoring case; all categories private rather than nullable global defaults.                                                   |
+| `transactions`     | Owner, account, optional category, nonzero signed `numeric(14,2)` amount, bounded description, `occurred_at`, `created_at`, optional unique `reversal_of_id`; immutable after creation. |
+| `tags`             | Owner FK, case-insensitive unique name per owner.                                                                                                                                       |
+| `transaction_tags` | Owner, transaction, tag; composite primary key prevents duplicate associations.                                                                                                         |
+| `budgets`          | Owner, category, month as first-of-month `date`, positive `numeric(14,2)` limit; unique owner/category/month.                                                                           |
 
 Use UUIDs for standalone resources, snake_case SQL identifiers, camelCase JSON, and `timestamptz` for instants. Represent money as two-decimal strings in JSON; never calculate money using JavaScript floating point. This first version accepts USD only, with a database constraint, so reports cannot accidentally sum currencies.
 
@@ -82,14 +82,14 @@ This preserves original financial entries but is not a complete audit system. Ca
 
 Planned commands (implement with their owning gate):
 
-| Script | Behavior |
-| --- | --- |
-| `dev`, `build`, `start` | Container-internal commands: watch mounted source, compile, run compiled API. |
-| `docker:up`, `docker:down`, `docker:logs` | Explicit local env selection; build/start both services; preserve data on down. |
-| `docker:up:production`, `docker:down:production` | Explicit production env and separate project/volume; compiled runtime. |
-| `db:push`, `db:studio`, `db:seed` | One-off development tooling container against the Compose DB using `.env.local`; Studio bound to host loopback. |
-| `db:push:production` | Explicit production target; interactive review; no unconditional destructive flags. |
-| `test`, `test:watch`, `test:integration`, `typecheck`, `lint` | Fast Vitest suite, watch, PostgreSQL-backed suite, strict type checking, linting. |
+| Script                                                        | Behavior                                                                                                        |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `dev`, `build`, `start`                                       | Container-internal commands: watch mounted source, compile, run compiled API.                                   |
+| `docker:up`, `docker:down`, `docker:logs`                     | Explicit local env selection; build/start both services; preserve data on down.                                 |
+| `docker:up:production`, `docker:down:production`              | Explicit production env and separate project/volume; compiled runtime.                                          |
+| `db:push`, `db:studio`, `db:seed`                             | One-off development tooling container against the Compose DB using `.env.local`; Studio bound to host loopback. |
+| `db:push:production`                                          | Explicit production target; interactive review; no unconditional destructive flags.                             |
+| `test`, `test:watch`, `test:integration`, `typecheck`, `lint` | Fast Vitest suite, watch, PostgreSQL-backed suite, strict type checking, linting.                               |
 
 The README must provide direct `docker compose` commands for all workflows, including startup, pushes, Studio, seeds, builds, and checks. Keep the requested package.json scripts as conveniences, but never make host npm a prerequisite: invoke application/tooling scripts inside containers. Bootstrap the development image with Docker before any package-script invocation; Docker lifecycle scripts are host conveniences and must not recursively launch Docker from inside a container.
 
@@ -145,7 +145,7 @@ Acceptance: build/typecheck/lint/test pass; app imports without listening. S2/S5
 - [x] Implement validated configuration and explicit local/production environment selection with context-aware database fields.
 - [x] Add meaningful tests for missing credentials, environment isolation, invalid ports, and passwords containing URL-reserved characters.
 
-Gate 2 verification: the user refreshed the lockfile and ran Docker checks. Type checking, linting, all 25 tests, and the build passed. The lockfile matches the manifest and resolves Zod 4.6.7. Compose configuration, Git ignore rules, and whitespace checks also passed. File-based startup reads only the selected file and ignores inherited values. Production container startup accepts explicitly supplied values with a matching `APP_ENV`. Container database connections always use `db:5432`; there is no host connection mode in this Docker-only project.
+Gate 2 verification: the user refreshed the lockfile and ran Docker checks. Type checking, linting, all 25 tests, and the build passed. The lockfile matches the manifest and resolves Zod 4.6.7. Compose configuration, Git ignore rules, and whitespace checks also passed. After the approved simplification, Compose alone reads the selected file. The application validates container-supplied values with a matching `APP_ENV`; it has no file-reading path. Container database connections always use `db:5432`; there is no host connection mode in this Docker-only project.
 
 Acceptance: no secrets in source/build context; production never falls back to local. S3; API Security. Commit: `feat: validate environment-specific API and database configuration`.
 
@@ -312,8 +312,8 @@ Official references consulted while planning; recheck compatible versions at imp
 
 ## RELAY
 
-- **Status:** Gate 3 verified; waiting for review and manual commit.
-- **Handoff:** Gate 4 is next, after approval. Local services remain running. No commits have been made by the assistant.
-- **User action:** Review Gate 3, commit when satisfied, and approve Gate 4 when ready.
-- **Suggested next specialist/prompt:** Backend implementation: “Implement Gate 4 in `docs/01-architect-todos.md`, run its checks, and stop for review. Do not commit.”
-- **Drift risks:** Turning the local demo into a public unauthenticated service; adding startup pushes/seeds; sharing test/local/production volumes; introducing float money or mutable balances; dropping owner scope; replacing pushes with migration files.
+- **Status:** Configuration simplification verified. The user confirmed verification succeeded and shared healthy API and database status. Gate 4 has not started.
+- **Handoff:** Pause for review and manual commit before Gate 4. No commits have been made by the assistant.
+- **User action:** Review the simplification and consolidated guide; approve Gate 4 when ready.
+- **Suggested next specialist/prompt:** Backend implementation: "Implement Gate 4 in docs/01-architect-todos.md, run its checks, and stop for review. Do not commit."
+- **Drift risks:** Reintroducing an application file loader; adding startup pushes/seeds; sharing test/local/production volumes; introducing float money or mutable balances; dropping owner scope.
