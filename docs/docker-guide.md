@@ -4,7 +4,7 @@ This guide brings the local startup explanation and the full instruction walkthr
 
 It describes the project through Gate 4. The API connects to PostgreSQL through Drizzle and a shared connection pool. Its readiness route runs a real database query; finance tables begin in Gate 5.
 
-Use Node.js 24 and npm in your WSL project for editor support. Run the API, PostgreSQL, and verification checks in Docker. Install locked dependencies both locally and in the development image; they remain separate and use the same lockfile. Docker uses Node.js 24.22.1.
+Use Bun 1.3.14 in your WSL project for editor support. Run the API, PostgreSQL, and verification checks in Docker. Install locked dependencies both locally and in the development image; they remain separate and use the same lockfile. Docker uses Bun 1.3.14.
 
 ## How to read this guide
 
@@ -19,11 +19,11 @@ The application has two startup commands: `dev` watches local source edits, and 
 
 ## Prepare the editor
 
-Run `npm ci` in your WSL project folder to install dependencies for type hints, imports, and code navigation. The editor needs these local packages even though the application runs in Docker.
+Run `bun install --frozen-lockfile` in your WSL project folder to install dependencies for type hints, imports, and code navigation. The editor needs these local packages even though the application runs in Docker.
 
 Open the project through your editor's WSL connection. For VS Code, `.vscode/settings.json` points to `node_modules/typescript/lib`. Choose **TypeScript: Select TypeScript Version → Use Workspace Version** if prompted.
 
-For a first setup or after dependency changes, use `npm run docker:rebuild` after preparing `.env.local`. It runs local `npm ci`, builds the API, check tools, and database tools images, and starts or updates services. It does not update the lockfile or run tests. Use `npm run docker:check` separately for verification.
+For a first setup or after dependency changes, use `bun run docker:rebuild` after preparing `.env.local`. It runs local `bun install --frozen-lockfile`, builds the API, check tools, and database tools images, and starts or updates services. It does not update the lockfile or run tests. Use `bun run docker:check` separately for verification.
 
 ## Prepare your local settings
 
@@ -65,10 +65,10 @@ The database receives its username, password, and database name from the same fi
 From the project directory:
 
 ```bash
-npm run docker:up
+bun run docker:up
 ```
 
-Your computer's npm runs this command directly from `package.json`:
+Your computer's bun runs this command directly from `package.json`:
 
 ```json
 {
@@ -78,7 +78,7 @@ Your computer's npm runs this command directly from `package.json`:
 }
 ```
 
-There is no shell dispatcher between npm and Compose. The options in that command select the local settings and define startup behavior:
+There is no shell dispatcher between Bun and Compose. The options in that command select the local settings and define startup behavior:
 
 | Option | Purpose |
 | --- | --- |
@@ -90,7 +90,7 @@ There is no shell dispatcher between npm and Compose. The options in that comman
 
 Compose uses its standard environment precedence: terminal variables override matching values in the selected environment file. For example, an exported `POSTGRES_PASSWORD` takes precedence over the file's password. Unset an exported project variable when you want its file value instead. A missing required file or setting produces a Compose error.
 
-The separate `docker:rebuild` command runs `npm ci`, then `npm run docker:build`, then a direct Compose startup command. Each step must succeed before the next runs. Neither shortcut runs the API locally.
+The separate `docker:rebuild` command runs `bun install --frozen-lockfile`, then `bun run docker:build`, then a direct Compose startup command. Each step must succeed before the next runs. Neither shortcut runs the API locally.
 
 ## Before reading either file
 
@@ -114,20 +114,19 @@ Preparing an image and starting a container are separate actions. This explains 
 ### The base stage
 
 ```dockerfile
-FROM node:24.22.1-bookworm-slim AS base
+FROM oven/bun:1.3.14-debian AS base
 ```
 
-Start with a published image containing Node.js and npm. The image name has several parts:
+Start with Bun's published Debian image. The image name has several parts:
 
 | Part | Meaning |
 | --- | --- |
-| `node` | The official Node.js image. |
-| `24.22.1` | The Node.js version we selected. |
-| `bookworm` | The Debian Linux release used inside the image. |
-| `slim` | A smaller collection of Linux system packages. It still includes Node.js and npm. |
+| `oven/bun` | The official Bun image. |
+| `1.3.14` | The pinned Bun version, also used locally. |
+| `debian` | The Linux image variant. |
 | `AS base` | Name this stage `base` so other stages can build on it. |
 
-This does not install Node.js on your computer. Docker downloads the image and uses it to prepare our own image.
+This does not install Bun on your computer. Docker downloads the image and uses it to prepare our own image.
 
 ```dockerfile
 WORKDIR /app
@@ -138,20 +137,20 @@ Make `/app` the working directory inside the image. Docker creates it if necessa
 `/app` is an internal Linux path. It does not refer to a folder named `app` in your project.
 
 ```dockerfile
-RUN chown node:node /app
+RUN chown bun:bun /app
 ```
 
-Run `chown` while building the image. It gives the existing `node` user and `node` group ownership of `/app`, allowing that user to write there.
+Run `chown` while building the image. It gives the existing `bun` user and `bun` group ownership of `/app`, allowing that user to write there.
 
-The first `node` is the username; the second is the group name. This command still runs as the image's initial administrator user, `root`.
+The first `bun` is the username; the second is the group name. This command still runs as the image's initial administrator user, `root`.
 
 ```dockerfile
-USER node
+USER bun
 ```
 
-Switch to the regular `node` user for later build commands and for containers created from this stage. This avoids running our application as an administrator.
+Switch to the regular `bun` user for later build commands and for containers created from this stage. This avoids running our application as an administrator.
 
-The shared `base` stage now has Node.js, a working folder, and a regular user. It does not yet contain our source code or project dependencies.
+The shared `base` stage now has Bun, a working folder, and a regular user. It does not yet contain our source code or project dependencies.
 
 ### The development stage
 
@@ -159,56 +158,57 @@ The shared `base` stage now has Node.js, a working folder, and a regular user. I
 FROM base AS development
 ```
 
-Start a stage named `development` using the contents and settings of `base`. This includes `/app` as the working folder and `node` as the user.
+Start a stage named `development` using the contents and settings of `base`. This includes `/app` as the working folder and `bun` as the user.
 
 Each `FROM` starts from the stage or image it names. It does not automatically inherit every section written above it.
 
 ```dockerfile
-COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=bun:bun package.json bun.lock bunfig.toml ./
 ```
 
-Copy the two package files from the build's project directory into `/app`.
+Copy the package manifest, lockfile, and Bun configuration from the build's project directory into `/app`.
 
-- `package.json` declares dependencies and npm scripts.
-- `package-lock.json` records the exact dependency versions to install.
+- `package.json` declares dependencies and package scripts.
+- `bun.lock` records the exact dependency versions to install.
+- `bunfig.toml` disables automatic environment-file loading and points the test runner at `tests/`. This keeps Compose in charge of selecting environment files.
 - `./` is the destination, relative to `WORKDIR`, so it means `/app/` here.
-- `--chown=node:node` assigns ownership as Docker copies the files. It does not run a separate `chown` command afterward.
+- `--chown=bun:bun` assigns ownership as Docker copies the files. It does not run a separate `chown` command afterward.
 
 Why copy these files before the source? Docker remembers completed build steps. When the package files stay unchanged, it can reuse the dependency installation even when application code changes.
 
 ```dockerfile
-RUN npm ci
+RUN bun install --frozen-lockfile
 ```
 
-Install the locked dependency versions during the image build. This includes development tools such as TypeScript, ESLint, and Vitest.
+Install the locked dependency versions during the image build. This includes development tools such as TypeScript, ESLint, and Drizzle Kit. Bun itself supplies the test runner.
 
-The packages go into `/app/node_modules` inside the image. This build step does not install them into your computer's project folder. Your separate local `npm ci` supplies the editor installation.
+The packages go into `/app/node_modules` inside the image. This build step does not install them into your computer's project folder. Your separate local `bun install --frozen-lockfile` supplies the editor installation.
 
 ```dockerfile
-COPY --chown=node:node . .
+COPY --chown=bun:bun . .
 ```
 
-Copy the remaining project files into `/app`, with ownership assigned to `node`.
+Copy the remaining project files into `/app`, with ownership assigned to `bun`.
 
 The first `.` is the source, the build context selected by Compose. The second `.` is the destination, our current working folder inside the image.
 
 `.dockerignore` excludes files before Docker copies them. In this project, that includes real environment files, host `node_modules`, and host `dist` output. Copying the project therefore does not overwrite installed dependencies with a local `node_modules` folder.
 
 ```dockerfile
-CMD ["npm", "run", "dev"]
+CMD ["bun", "--no-env-file", "--watch", "src/server.ts", "local"]
 ```
 
-Record the default startup command for a container created from the development image. The array lists the executable followed by its arguments.
+Record the default startup command for a container created from the development image. The array lists the executable followed by its arguments. Docker starts Bun directly so stop signals reach it without an extra package-script process.
 
 This command does not run while the image is being built. It runs when a container starts, unless Compose supplies a different command.
 
-Our `dev` script is:
+The same startup command is available as the `dev` script:
 
 ```text
-tsx watch src/server.ts local
+bun --no-env-file --watch src/server.ts local
 ```
 
-`tsx` runs the TypeScript entry point. `watch` restarts it when the entry point or its imported modules change. `local` tells our application which mode the command expects. Configuration always comes from the container environment; there is no application file-reading option.
+`bun` runs the TypeScript entry point directly. `--watch` restarts it when the entry point or its imported modules change. `--no-env-file` explicitly disables automatic environment-file loading. `local` tells our application which mode the command expects. Configuration always comes from the container environment; there is no application file-reading option.
 
 ### Why local development stops here
 
@@ -234,14 +234,14 @@ The stages themselves do not each become a running application container. They p
 
 ```dockerfile
 FROM development AS build
-RUN npm run build
+RUN bun run build
 ```
 
 The first line starts from `development`, which already contains source files and build tools. Its inherited `CMD` still does not execute during the image build.
 
-The second line runs TypeScript compilation. Our build script converts application code into JavaScript under `/app/dist`.
+The second line runs Bun's bundler. It builds `src/server.ts` and its local imports into `/app/dist/server.js`, with a source map. `--target=bun` selects Bun output, and `--packages=external` keeps installed packages in `node_modules` rather than embedding them. Type checking is a separate step in `check`; the bundler does not check types.
 
-This output is used for the production image. Local development can run TypeScript directly through `tsx`.
+This output is used for the production image. Local development can run TypeScript directly with Bun.
 
 ### The production dependency stage
 
@@ -255,16 +255,16 @@ Start from `base` again. This stage does not contain the packages installed in `
 ENV NODE_ENV=production
 ```
 
-Set an environment variable for commands in this stage and containers created from it. Libraries and tools commonly use `NODE_ENV` to select production behavior.
+Set an environment variable for commands in this stage and containers created from it. Libraries and tools commonly use `NODE_ENV` to select production behavior. Bun supports this convention too; the name does not mean the application runs on Node.js.
 
 This setting does not change your computer's environment, and it does not reach backward into `development`.
 
 ```dockerfile
-COPY --chown=node:node package.json package-lock.json ./
-RUN npm ci --omit=dev
+COPY --chown=bun:bun package.json bun.lock bunfig.toml ./
+RUN bun install --frozen-lockfile --production
 ```
 
-Copy the package files into this stage, then install runtime dependencies without the packages listed under `devDependencies`. Hono is included; Vitest and the TypeScript compiler are left out.
+Copy the package files into this stage, then install runtime dependencies without the packages listed under `devDependencies`. Hono, Drizzle, and the PostgreSQL driver are included; Drizzle Kit and the TypeScript compiler are left out. Bun includes its test runner in the runtime executable, but the production image does not copy the test files.
 
 ### The final runtime stage
 
@@ -281,22 +281,22 @@ ENV NODE_ENV=production
 Set production mode here too. It must be repeated because this stage starts from `base`, not from `production-dependencies`.
 
 ```dockerfile
-COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
+COPY --from=production-dependencies --chown=bun:bun /app/node_modules ./node_modules
 ```
 
 Copy the installed packages from another build stage. Here, `--from` changes the copy source from your project files to the named stage's files. The destination is `/app/node_modules` in the runtime image.
 
 ```dockerfile
-COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=bun:bun /app/dist ./dist
 ```
 
 Copy compiled JavaScript from the build stage into `/app/dist` in the runtime image. We do not copy that stage's source tree or development tools.
 
 ```dockerfile
-COPY --chown=node:node package.json ./
+COPY --chown=bun:bun package.json bunfig.toml ./
 ```
 
-Copy `package.json` from the project into the runtime image. Its `"type": "module"` setting tells Node how to interpret our `.js` files.
+Copy `package.json` and `bunfig.toml` into the runtime image. The package file identifies JavaScript modules, and the Bun configuration keeps automatic environment-file loading disabled.
 
 ```dockerfile
 EXPOSE 3000
@@ -305,10 +305,10 @@ EXPOSE 3000
 Document the usual API port. This does not open a port on your computer or force the application to listen on port 3000. Our application reads `API_PORT`; Compose publishes the selected port.
 
 ```dockerfile
-CMD ["node", "dist/server.js", "production"]
+CMD ["bun", "--no-env-file", "dist/server.js", "production"]
 ```
 
-When the production container starts, run compiled JavaScript directly with Node. The final argument selects production mode. Our configuration loader always checks values supplied to the container.
+When the production container starts, run the built JavaScript directly with Bun. `--no-env-file` keeps configuration in the container environment. The final argument selects production mode. Our configuration loader always checks values supplied to the container.
 
 ### Where NODE_ENV fits
 
@@ -358,7 +358,7 @@ Reusing this group does not select another settings file or create another sourc
 
 The three entries supply the database username, password, and database name. The `:?` syntax requires each value to be present and nonempty. Otherwise, Compose stops and prints the message after `:?`.
 
-The local npm commands explicitly select `.env.local`. Compose reads that file and applies its standard precedence: matching terminal variables override file values. The commands do not clear inherited settings.
+The local Bun commands explicitly select `.env.local`. Compose reads that file and applies its standard precedence: matching terminal variables override file values. The commands do not clear inherited settings.
 
 ### Declare the services
 
@@ -405,9 +405,9 @@ Selecting a file with Compose's `--env-file` and passing settings to a container
 
 #### Follow these settings into config.ts
 
-`dev` runs `tsx watch src/server.ts local`. The final `local` argument names the expected mode. [src/server.ts](../src/server.ts) passes that argument to `loadConfig` in [src/lib/config.ts](../src/lib/config.ts).
+`dev` runs `bun --no-env-file --watch src/server.ts local`. The final `local` argument names the expected mode. [src/server.ts](../src/server.ts) passes that argument to `loadConfig` in [src/lib/config.ts](../src/lib/config.ts).
 
-For this startup, `loadConfig` reads `process.env`, which is how Node exposes the container's environment variables. It does not search for files or merge local and production settings.
+For this startup, `loadConfig` reads `process.env`, which is how Bun exposes the container's environment variables. It does not search for files or merge local and production settings.
 
 It then:
 
@@ -492,15 +492,15 @@ This controls startup order. If PostgreSQL later becomes unavailable, Compose do
     restart: unless-stopped
 ```
 
-`init: true` adds a small process that helps forward stop signals and clean up finished child processes. Our development command starts npm, a watcher, and Node, so this is useful when stopping the container.
+`init: true` adds a small process that helps forward stop signals and clean up finished child processes. Our development command starts Bun and its watcher, so this is useful when stopping the container.
 
 `restart: unless-stopped` asks Docker to restart the container if it exits unexpectedly. A deliberately stopped container stays stopped until started again.
 
-`stop_grace_period: 15s` gives the API time to shut down before Docker forces a stop. On SIGTERM or SIGINT, the application stops accepting requests, lets active HTTP requests finish, and closes the database pool. Its own ten-second deadline leaves time within Docker's fifteen-second allowance. The development watcher forwards shutdown to the application; the verification script also tests compiled Node code without that watcher.
+`stop_grace_period: 15s` gives the API time to shut down before Docker forces a stop. On SIGTERM or SIGINT, the application stops accepting requests, lets active HTTP requests finish, and closes the database pool. Its own ten-second deadline leaves time within Docker's fifteen-second allowance. After cleanup finishes, the process exits explicitly so watch mode does not keep the container alive. Bun's `server.stop()` stops accepting connections and waits for active requests before the pool closes. The development watcher handles process restarts; the verification script also tests built Bun code without that watcher.
 
 ### Check API health
 
-The file's `healthcheck.test` runs Node with this JavaScript expression. It is shown across several lines here for readability:
+The file's `healthcheck.test` runs Bun with this JavaScript expression. It is shown across several lines here for readability:
 
 ```javascript
 fetch('http://127.0.0.1:' + process.env.API_PORT + '/health/ready', {
@@ -510,7 +510,7 @@ fetch('http://127.0.0.1:' + process.env.API_PORT + '/health/ready', {
   .catch(() => process.exit(1))
 ```
 
-The surrounding command starts with `["CMD", "node", "-e", ...]`. `node -e` executes the supplied JavaScript inside the API container. This `CMD` is health-check syntax, not a replacement for the Dockerfile's startup `CMD`.
+The surrounding command starts with `["CMD", "bun", "--no-env-file", "-e", ...]`. `bun -e` executes the supplied JavaScript inside the API container. This `CMD` is health-check syntax, not a replacement for the Dockerfile's startup `CMD`.
 
 The request calls the API inside its own container. A successful HTTP response exits with code `0`, meaning success. A failed response or request exits with code `1`, meaning failure. The HTTP request has a five-second time limit. The application bounds its database readiness operation to three seconds.
 
@@ -621,9 +621,9 @@ Give the database the same restart policy as the API.
     profiles: [tools]
 ```
 
-Define another service, also called `tools`. The profile makes it optional, so normal `npm run docker:up` does not start it.
+Define another service, also called `tools`. The profile makes it optional, so normal `bun run docker:up` does not start it.
 
-`npm run docker:check` selects it for a one-time run. A service name and profile name can be the same, as they are here, but they are separate settings.
+`bun run docker:check` selects it for a one-time run. A service name and profile name can be the same, as they are here, but they are separate settings.
 
 ```yaml
     build:
@@ -631,7 +631,7 @@ Define another service, also called `tools`. The profile makes it optional, so n
       target: development
 ```
 
-Build from the same development stage as the API. This supplies source files, dependencies, TypeScript, ESLint, and Vitest. Docker can reuse unchanged build steps for both services.
+Build from the same development stage as the API. This supplies source files, dependencies, TypeScript and ESLint, plus Bun's built-in test runner. Docker can reuse unchanged build steps for both services.
 
 ```yaml
     volumes:
@@ -639,10 +639,9 @@ Build from the same development stage as the API. This supplies source files, de
       - ./tests:/app/tests:ro
       - ./scripts:/app/scripts:ro
       - ./tsconfig.json:/app/tsconfig.json:ro
-      - ./tsconfig.build.json:/app/tsconfig.build.json:ro
       - ./eslint.config.js:/app/eslint.config.js:ro
-      - ./vitest.config.ts:/app/vitest.config.ts:ro
       - ./drizzle.config.ts:/app/drizzle.config.ts:ro
+      - ./bunfig.toml:/app/bunfig.toml:ro
 ```
 
 Share the latest local code, tests, scripts, and check configuration with the container. Every entry follows the same source/destination/read-only pattern used for the API source mount. Some entries share whole folders; others share one file.
@@ -650,7 +649,7 @@ Share the latest local code, tests, scripts, and check configuration with the co
 Dependencies still come from the image's `/app/node_modules`. These mounts do not cover that folder.
 
 ```yaml
-    command: ["npm", "run", "check"]
+    command: ["bun", "run", "check"]
 ```
 
 Override the development image's default `CMD`. This container runs checks instead of starting the development server.
@@ -675,6 +674,7 @@ This `tools` service belongs to `compose.yaml`. It is different from the service
     volumes:
       - ./src:/app/src:ro
       - ./drizzle.config.ts:/app/drizzle.config.ts:ro
+      - ./bunfig.toml:/app/bunfig.toml:ro
     depends_on:
       db:
         condition: service_healthy
@@ -691,12 +691,12 @@ Studio is a separate optional service that shares these settings through the `&d
   studio:
     <<: *db-tools
     profiles: [studio]
-    command: ["npm", "exec", "--", "drizzle-kit", "studio", "--config=drizzle.config.ts", "--host=0.0.0.0", "--port=4983"]
+    command: ["bun", "--bun", "run", "drizzle-kit", "studio", "--config=drizzle.config.ts", "--host=0.0.0.0", "--port=4983"]
     ports:
       - "127.0.0.1:4983:4983"
 ```
 
-`<<: *db-tools` copies the database tool settings. The profile, command, and ports then define how Studio runs. `npm run db:studio` uses Compose `up` to start this one background service. Repeating the command reuses or updates it, instead of creating another container. Normal `docker:up` does not start Studio. `docker:down` selects all profiles and uses `--remove-orphans` to remove Studio and leftover containers from earlier commands in this Compose project. It preserves database data.
+`<<: *db-tools` copies the database tool settings. The profile, command, and ports then define how Studio runs. `bun run db:studio` uses Compose `up` to start this one background service. Repeating the command reuses or updates it, instead of creating another container. Normal `docker:up` does not start Studio. `docker:down` selects all profiles and uses `--remove-orphans` to remove Studio and leftover containers from earlier commands in this Compose project. It preserves database data.
 
 ### Declare the named volume
 
@@ -715,7 +715,7 @@ flowchart LR
     Volume --> Replacement["Replacement PostgreSQL container after down/up"]
 ```
 
-Normal `npm run docker:down` removes the service containers and project network but keeps this volume. A later `npm run docker:up` reattaches it. Deleting the volume would delete the stored database data.
+Normal `bun run docker:down` removes the service containers and project network but keeps this volume. A later `bun run docker:up` reattaches it. Deleting the volume would delete the stored database data.
 
 ## Part 3. Put the files together
 
@@ -725,7 +725,7 @@ sequenceDiagram
     participant Compose as Docker Compose
     participant DB as PostgreSQL container
     participant API as API container
-    You->>Compose: npm runs Compose with .env.local and compose.yaml
+    You->>Compose: bun runs Compose with .env.local and compose.yaml
     Compose->>Compose: Build development image and prepare network
     Compose->>DB: Start with database settings and persistent volume
     DB-->>Compose: Health check passes
@@ -734,7 +734,7 @@ sequenceDiagram
     Compose-->>You: Both services are healthy, command finishes
 ```
 
-Both containers keep running after the command returns because the npm command includes `--detach`. It also includes `--wait`, so a successful startup command means both health checks passed.
+Both containers keep running after the command returns because the Bun command includes `--detach`. It also includes `--wait`, so a successful startup command means both health checks passed.
 
 No `networks` section is required here. Compose creates a project network automatically and makes service names such as `db` available on it.
 
@@ -773,18 +773,18 @@ Use these commands from your computer:
 
 | Task | Command | What happens |
 | --- | --- | --- |
-| Start services | `npm run docker:up` | Reuse unchanged build steps and apply current settings. |
-| Synchronize editor dependencies and rebuild | `npm run docker:rebuild` | Run local `npm ci`, rebuild API, check tools, and database tools images, and update services. |
-| View status | `npm run docker:ps` | Show current service status. |
-| Validate Compose settings | `npm run docker:check-config` | Check the configuration without starting services or printing resolved credentials. |
-| Build images only | `npm run docker:build` | Prepare API and tools images without updating running containers. |
-| Follow logs | `npm run docker:logs` | Show API and database logs until you press Ctrl+C. |
-| Run code checks | `npm run docker:check` | Build a development tools image if needed, then run a one-time check container. |
-| Stop local services | `npm run docker:down` | Remove service containers and their network while keeping database data. |
+| Start services | `bun run docker:up` | Reuse unchanged build steps and apply current settings. |
+| Synchronize editor dependencies and rebuild | `bun run docker:rebuild` | Run local `bun install --frozen-lockfile`, rebuild API, check tools, and database tools images, and update services. |
+| View status | `bun run docker:ps` | Show current service status. |
+| Validate Compose settings | `bun run docker:check-config` | Check the configuration without starting services or printing resolved credentials. |
+| Build images only | `bun run docker:build` | Prepare API and tools images without updating running containers. |
+| Follow logs | `bun run docker:logs` | Show API and database logs until you press Ctrl+C. |
+| Run code checks | `bun run docker:check` | Build a development tools image if needed, then run a one-time check container. |
+| Stop local services | `bun run docker:down` | Remove service containers and their network while keeping database data. |
 
-The check container uses the same development stage as the API but overrides its startup command with `npm run check`. It reads shared source, tests, and check configuration. Its dependencies remain inside the image. It does not start the source watcher or need real database credentials for the tests themselves. The Compose command still needs `.env.local` to read the service definitions.
+The check container uses the same development stage as the API but overrides its startup command with `bun run check`. It reads shared source, tests, and check configuration. Its dependencies remain inside the image. It does not start the source watcher or need real database credentials for the tests themselves. The Compose command still needs `.env.local` to read the service definitions.
 
-If you change `.env.local`, run `npm run docker:up` to apply the new settings. Editing the file alone does not change the environment of an existing container.
+If you change `.env.local`, run `bun run docker:up` to apply the new settings. Editing the file alone does not change the environment of an existing container.
 
 Changing a database password in the file also does not update an existing database's stored password. PostgreSQL uses those initialization values only when the data volume is empty.
 
@@ -797,31 +797,31 @@ Normal shutdown preserves the volume, so restarting restores the same database d
 From your WSL terminal:
 
 ```bash
-npm install package-name
-npm run docker:rebuild
-npm run docker:check
+bun add package-name
+bun run docker:rebuild
+bun run docker:check
 ```
 
-`npm install` updates package declarations and the lockfile. `docker:rebuild` first runs local `npm ci`, then builds the development images and starts or updates the local services. Tests remain a separate Docker command, `docker:check`.
+`bun add` updates package declarations and the lockfile. `docker:rebuild` first runs local `bun install --frozen-lockfile`, then builds the development images and starts or updates the local services. Tests remain a separate Docker command, `docker:check`.
 
-After manually changing dependency declarations, update the lockfile with `npm install --package-lock-only` before rebuilding. `npm ci` checks that the package declarations and lockfile agree; it does not resolve changes into a new lockfile.
+After manually changing dependency declarations, update the lockfile with `bun install --lockfile-only` before rebuilding. `bun install --frozen-lockfile` checks that the package declarations and lockfile agree; it does not resolve changes into a new lockfile.
 
 The local and container installations are independent. Host `node_modules` is ignored by Git, excluded from image builds, and never mounted over container dependencies. Database data stays in its named volume through the rebuild.
 
-`compose.tools.yaml` remains an optional way to update dependencies in Docker. It shares the project so npm can write package files back, while its installed dependencies use temporary storage. For example:
+`compose.tools.yaml` remains an optional way to update dependencies in Docker. It shares the project so Bun can write package files back, while its installed dependencies use temporary storage. For example:
 
 ```bash
-docker compose -f compose.tools.yaml run --rm tools npm install package-name
-npm run docker:rebuild
+docker compose -f compose.tools.yaml run --rm tools bun add package-name
+bun run docker:rebuild
 ```
 
-You normally do not need this extra helper in the hybrid workflow. Local `npm ci` is allowed specifically to give the editor the project's packages and types. The application and verification checks still run in Docker.
+You normally do not need this extra helper in the hybrid workflow. Local `bun install --frozen-lockfile` is allowed specifically to give the editor the project's packages and types. The application and verification checks still run in Docker.
 
 ### Try production
 
-`npm run docker:up:production` directly selects `.env.production` and `compose.production.yaml`. Its command is visible in `package.json`, just like the local command.
+`bun run docker:up:production` directly selects `.env.production` and `compose.production.yaml`. Its command is visible in `package.json`, just like the local command.
 
-That flow still reads the selected file, passes values into containers, and validates them in `config.ts`. Production database pushes use an optional development tooling container in that project; Drizzle Kit is not installed in the production API image. The production image starts compiled code with `node dist/server.js production` and runs as the regular `node` user. It does not share local source files. What changes is:
+That flow still reads the selected file, passes values into containers, and validates them in `config.ts`. Production database pushes use an optional development tooling container in that project; Drizzle Kit is not installed in the production API image. The production image starts compiled code with `bun --no-env-file dist/server.js production` and runs as the regular `bun` user. It does not share local source files. What changes is:
 
 | Local startup | Production startup |
 | --- | --- |
@@ -834,9 +834,9 @@ That flow still reads the selected file, passes values into containers, and vali
 Use API port `3001` and database host port `5434` in `.env.production` if you want both setups running at once. Supply separate credentials. The volume names are `hono-drizzle-local_postgres_data` and `hono-drizzle-production_postgres_data`. The projects have separate networks as well. These are independent Compose files; we do not combine them.
 
 ```bash
-npm run docker:up:production
+bun run docker:up:production
 curl http://localhost:3001/health/ready
-npm run docker:down:production
+bun run docker:down:production
 ```
 
 This is a production build example, not a public deployment with authentication and hosting configured. See the [README production steps](../README.md#production-setup) for setup details.
@@ -845,15 +845,15 @@ This is a production build example, not a public deployment with authentication 
 
 `drizzle.config.ts` sets `ssl: false` explicitly for the bundled PostgreSQL containers, which do not configure SSL encryption. Leaving this option out can make Drizzle Kit request SSL even though API connections work. An externally hosted database may require SSL and a different configuration.
 
-These host npm commands run Drizzle Kit inside the optional database-tool container:
+These host Bun commands run Drizzle Kit inside the optional database-tool container:
 
 | Command | What it does |
 | --- | --- |
-| `npm run db:push` | Review and apply schema differences against local PostgreSQL. |
-| `npm run db:studio` | Start or update the background Studio service; open `https://local.drizzle.studio/?host=127.0.0.1`. |
-| `npm run db:studio:stop` | Stop Studio and free its port while keeping the API and database running. |
-| `npm run db:studio:logs` | Follow Studio logs; Ctrl+C stops following without stopping Studio. |
-| `npm run db:push:production` | Review and apply differences using `.env.production` and the production Compose project. |
+| `bun run db:push` | Review and apply schema differences against local PostgreSQL. |
+| `bun run db:studio` | Start or update the background Studio service; open `https://local.drizzle.studio/?host=127.0.0.1`. |
+| `bun run db:studio:stop` | Stop Studio and free its port while keeping the API and database running. |
+| `bun run db:studio:logs` | Follow Studio logs; Ctrl+C stops following without stopping Studio. |
+| `bun run db:push:production` | Review and apply differences using `.env.production` and the production Compose project. |
 
 [drizzle.config.ts](../drizzle.config.ts) selects PostgreSQL, points to [src/db/schema.ts](../src/db/schema.ts), and uses the same validated connection fields as the API. It does not read a second environment file. Pushes use strict review without force flags, and do not create migration files. They never run during API startup. The schema is empty until Gate 5, so a fresh empty database should have nothing to change.
 
@@ -871,8 +871,8 @@ The API's connection pool allows at most 10 connections. Connection waits are bo
 If startup fails, first check service status and logs:
 
 ```bash
-npm run docker:ps
-npm run docker:logs
+bun run docker:ps
+bun run docker:logs
 ```
 
 A configuration error names missing or invalid settings. A port conflict means another program is using the selected host port. The API and database health-check sections in Part 2 explain the timing and restart settings.
@@ -883,16 +883,16 @@ To repeat the startup and persistence checks after Docker changes:
 sh scripts/verify-docker.sh
 ```
 
-That script runs `docker:check`, then verifies live Docker behavior. It saves a probe row across down/up, checks the runtime image, temporarily stops PostgreSQL to verify readiness failure and recovery, checks the loopback Studio port, and sends SIGTERM to a separate compiled API process. It removes its probe table and temporary containers, restores the database after a failed check when possible, and leaves the main local services running.
+That script runs `docker:check`, then verifies live Docker behavior. It saves a probe row across down/up, checks the runtime image, temporarily stops PostgreSQL to verify readiness failure and recovery, checks the loopback Studio port, and verifies clean SIGTERM shutdown for both the watched development server and a separate built API process. It removes its probe table and temporary containers, restores the database after a failed check when possible, and leaves the main local services running.
 
-The temporary Studio server uses an available host port on `127.0.0.1`. This avoids port conflicts with other processes on port 4983. The script calls `docker:down` during its persistence check, which removes the regular Studio service if it was running. Start it again afterward with `npm run db:studio`. The script does not push schemas or seed data.
+The temporary Studio server uses an available host port on `127.0.0.1`. This avoids port conflicts with other processes on port 4983. The script calls `docker:down` during its persistence check, which removes the regular Studio service if it was running. Start it again afterward with `bun run db:studio`. The script does not push schemas or seed data.
 
-Use `npm run docker:check` during normal coding. Use the smoke script after Docker, database connection, health-check, or shutdown changes. The code checks run in a temporary development container; the smoke script checks actual running services and their lifecycle. Neither requires starting the full production Compose stack.
+Use `bun run docker:check` during normal coding. Use the smoke script after Docker, database connection, health-check, or shutdown changes. The code checks run in a temporary development container; the smoke script checks actual running services and their lifecycle. Neither requires starting the full production Compose stack.
 
-To run without npm, copy the corresponding `docker compose` command from `package.json` into your terminal. The rebuild sequence also uses local npm for editor dependencies.
+To run without Bun, copy the corresponding `docker compose` command from `package.json` into your terminal. The rebuild sequence also uses local Bun for editor dependencies.
 
 ## References and future updates
 
-The examples above describe this repository's files. Docker documents [build stages](https://docs.docker.com/build/building/multi-stage/), [Compose environment values](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/), [startup dependencies](https://docs.docker.com/compose/how-tos/startup-order/), and [service settings](https://docs.docker.com/reference/compose-file/services/) in more detail.
+The examples above describe this repository's files. Bun documents [Docker images](https://bun.com/guides/ecosystem/docker), [lockfiles](https://bun.com/docs/pm/lockfile), and [HTTP server shutdown](https://bun.com/docs/runtime/http/server). Docker documents [build stages](https://docs.docker.com/build/building/multi-stage/), [Compose environment values](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/), [startup dependencies](https://docs.docker.com/compose/how-tos/startup-order/), and [service settings](https://docs.docker.com/reference/compose-file/services/) in more detail.
 
 Update this walkthrough when Docker, database tools, configuration, or lifecycle behavior changes. Keep this document as the single active Docker explanation. The two source notes remain unchanged in `docs/archive/` for reference; the [README](../README.md) provides a shorter command reference.

@@ -4,19 +4,19 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24 <25"
+    "bun": "1.3.14"
   },
   "scripts": {
-    "dev": "tsx watch src/server.ts local",
-    "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/server.js production",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint . --max-warnings 0",
-    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "dev": "bun --no-env-file --watch src/server.ts local",
+    "build": "bun build src/server.ts --target=bun --packages=external --outdir=dist --sourcemap=external",
+    "start": "bun --no-env-file dist/server.js production",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "typecheck": "bun --bun tsc --noEmit",
+    "lint": "bun --bun eslint . --max-warnings 0",
+    "check": "bun run typecheck && bun run lint && bun run test && bun run build",
     "docker:up": "docker compose --env-file .env.local -f compose.yaml up --build --detach --wait --wait-timeout 120",
-    "docker:rebuild": "npm ci && npm run docker:build && docker compose --env-file .env.local -f compose.yaml up --detach --wait --wait-timeout 120",
+    "docker:rebuild": "bun install --frozen-lockfile && bun run docker:build && docker compose --env-file .env.local -f compose.yaml up --detach --wait --wait-timeout 120",
     "docker:down": "docker compose --env-file .env.local -f compose.yaml --profile \"*\" down --remove-orphans",
     "docker:logs": "docker compose --env-file .env.local -f compose.yaml logs --follow api db",
     "docker:check": "docker compose --env-file .env.local -f compose.yaml --profile tools run --build --rm tools",
@@ -26,14 +26,13 @@
     "docker:build": "docker compose --env-file .env.local -f compose.yaml --profile tools --profile studio build api tools db-tools studio",
     "docker:ps": "docker compose --env-file .env.local -f compose.yaml ps",
     "docker:check-config": "docker compose --env-file .env.local -f compose.yaml config --quiet",
-    "db:push": "docker compose --env-file .env.local -f compose.yaml --profile tools run --build --rm db-tools npm exec -- drizzle-kit push --config=drizzle.config.ts",
+    "db:push": "docker compose --env-file .env.local -f compose.yaml --profile tools run --build --rm db-tools bun --bun run drizzle-kit push --config=drizzle.config.ts",
     "db:studio": "docker compose --env-file .env.local -f compose.yaml up --build --detach studio",
-    "db:push:production": "docker compose --env-file .env.production -f compose.production.yaml --profile tools run --build --rm db-tools npm exec -- drizzle-kit push --config=drizzle.config.ts",
+    "db:push:production": "docker compose --env-file .env.production -f compose.production.yaml --profile tools run --build --rm db-tools bun --bun run drizzle-kit push --config=drizzle.config.ts",
     "db:studio:stop": "docker compose --env-file .env.local -f compose.yaml stop studio",
     "db:studio:logs": "docker compose --env-file .env.local -f compose.yaml logs --follow studio"
   },
   "dependencies": {
-    "@hono/node-server": "^2.0.12",
     "hono": "^4.12.9",
     "zod": "^4.0.0",
     "drizzle-orm": "^0.45.0",
@@ -43,11 +42,11 @@
     "@eslint/js": "^10.0.0",
     "@types/node": "^24.0.0",
     "eslint": "^10.0.0",
-    "tsx": "^4.20.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.72.0",
-    "vitest": "^4.0.0",
     "drizzle-kit": "^0.31.0",
-    "@types/pg": "^8.15.0"
-  }
+    "@types/pg": "^8.15.0",
+    "@types/bun": "1.3.14"
+  },
+  "packageManager": "bun@1.3.14"
 }

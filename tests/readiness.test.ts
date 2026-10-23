@@ -1,23 +1,23 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, jest, mock } from 'bun:test';
 import { createApp, READINESS_TIMEOUT_MS } from '../src/app.js';
 
 afterEach(() => {
-  vi.useRealTimers();
+  jest.useRealTimers();
 });
 
 describe('database readiness', () => {
   it('checks the database before reporting ready and prevents cached responses', async () => {
-    const checkDatabase = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    const checkDatabase = mock((): Promise<void> => Promise.resolve()).mockResolvedValue(undefined);
     const response = await createApp({ checkDatabase }).request('/health/ready');
 
-    expect(checkDatabase).toHaveBeenCalledOnce();
+    expect(checkDatabase).toHaveBeenCalledTimes(1);
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(await response.json()).toEqual({ data: { status: 'ready' } });
   });
 
   it('returns a safe 503 error when the database fails', async () => {
-    const checkDatabase = vi.fn<() => Promise<void>>()
+    const checkDatabase = mock((): Promise<void> => Promise.resolve())
       .mockRejectedValue(new Error('password=private database failure'));
     const response = await createApp({ checkDatabase }).request('/health/ready');
 
@@ -33,7 +33,7 @@ describe('database readiness', () => {
   });
 
   it('recovers on the next request after a database failure', async () => {
-    const checkDatabase = vi.fn<() => Promise<void>>()
+    const checkDatabase = mock((): Promise<void> => Promise.resolve())
       .mockRejectedValueOnce(new Error('Disconnected.'))
       .mockResolvedValue(undefined);
     const app = createApp({ checkDatabase });
@@ -50,17 +50,22 @@ describe('database readiness', () => {
   });
 
   it('stops waiting when a readiness operation exceeds its deadline', async () => {
-    vi.useFakeTimers();
+    jest.useFakeTimers();
     const checkDatabase = () => new Promise<void>(() => {});
     const pending = createApp({ checkDatabase }).request('/health/ready');
 
-    await vi.advanceTimersByTimeAsync(READINESS_TIMEOUT_MS);
+    // Let Hono's middleware reach the database check before moving the clock.
+    for (let turn = 0; turn < 10 && jest.getTimerCount() === 0; turn++) {
+      await Promise.resolve();
+    }
+    expect(jest.getTimerCount()).toBeGreaterThan(0);
+    jest.advanceTimersByTime(READINESS_TIMEOUT_MS);
     expect((await pending).status).toBe(503);
-    expect(vi.getTimerCount()).toBe(0);
+    expect(jest.getTimerCount()).toBe(0);
   });
 
   it('does not check the database once shutdown has begun', async () => {
-    const checkDatabase = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    const checkDatabase = mock((): Promise<void> => Promise.resolve()).mockResolvedValue(undefined);
     const app = createApp({ checkDatabase, isShuttingDown: () => true });
 
     expect((await app.request('/health/ready')).status).toBe(503);

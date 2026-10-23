@@ -1,0 +1,5 @@
+# Compose supplies environment settings. Do not load .env files automatically.
+env = false
+
+[test]
+root = "./tests"

@@ -1,6 +1,6 @@
 # Hono and Drizzle finance API
 
-A personal finance API built in small, reviewable steps. Hono and PostgreSQL now run in separate Docker containers. Drizzle now connects the API to PostgreSQL. Finance tables and routes come in later gates.
+A personal finance API using Bun, Hono, PostgreSQL, and Drizzle, built in small, reviewable steps. Hono and PostgreSQL now run in separate Docker containers. Drizzle now connects the API to PostgreSQL. Finance tables and routes come in later gates.
 
 See the [approved plan](docs/01-architect-todos.md) and [project map](docs/PROJECT_MAP.md).
 
@@ -8,7 +8,9 @@ Read the [Docker setup guide and instruction walkthrough](docs/docker-guide.md) 
 
 ## Start locally
 
-Use Node.js 24 and npm in your WSL project for editor support, and Docker with Docker Compose to run the API, database, and checks. Docker uses Node.js 24.22.1. In WSL, enable your distro in Docker Desktop's WSL Integration settings.
+Use Bun 1.3.14 in your WSL project for editor support, and Docker with Docker Compose to run the API, database, and checks. Docker uses Bun 1.3.14. No host Node.js or npm installation is required. In WSL, enable your distro in Docker Desktop's WSL Integration settings.
+
+`bunfig.toml` disables Bun's automatic environment-file loading. Compose alone selects the environment file and supplies container settings.
 
 Copy the example settings, then replace its example password:
 
@@ -19,12 +21,12 @@ cp .env.example .env.local
 Install local editor dependencies, build the development images, and start both containers:
 
 ```bash
-npm run docker:rebuild
+bun run docker:rebuild
 ```
 
 In VS Code, open this project through WSL and choose **TypeScript: Select TypeScript Version → Use Workspace Version** if prompted. `.vscode/settings.json` points the editor to the project's TypeScript installation.
 
-For later startups with unchanged dependencies, use `npm run docker:up`.
+For later startups with unchanged dependencies, use `bun run docker:up`.
 
 The first run downloads images and installs dependencies. Later builds reuse unchanged steps. The command waits for PostgreSQL and the API to become healthy.
 
@@ -61,19 +63,19 @@ PostgreSQL stores data in a named volume, which is storage managed by Docker. Re
 
 Run these commands from your WSL project terminal. Each uses `.env.local`, except the commands ending in `:production`, which use `.env.production`.
 
-| Command | Purpose | Effect on containers |
-| --- | --- | --- |
-| `npm run docker:up` | Normal startup. Build the local API image if needed, then wait for API and database health checks. | Start services or update changed containers. |
-| `npm run docker:rebuild` | After dependency changes: run local `npm ci`, build API, check tools, and database tools images, then wait for service health checks. Does not run code checks. | Start services or update changed containers; preserve database data. |
-| `npm run docker:check` | Run TypeScript checking, ESLint, Vitest tests, and compilation using the development image and current shared code. | Build if needed, run a temporary tools container, then remove it. Does not inspect the running API or production image. |
-| `npm run docker:check-config` | Validate Compose settings and required environment values without printing resolved credentials. Does not check application code. | Do not build images or start containers. |
-| `npm run docker:build` | Build local API and tools development images only. Also used by `docker:rebuild`. | Do not start or replace running containers. |
-| `npm run docker:ps` | Show local service status, including health information when available. | Observe existing containers. |
-| `npm run docker:logs` | Follow API and database logs. Ctrl+C stops following the logs. | Leave services running. |
-| `npm run docker:down` | Stop and remove local service containers and their network. | Preserve the named database volume and its data. |
-| `npm run docker:up:production` | Build the production runtime image if needed and start the separate production setup. | Start or update production services and wait for health checks. |
-| `npm run docker:down:production` | Stop and remove production service containers and their network. | Preserve the production database volume. |
-| `npm run docker:logs:production` | Follow production API and database logs. | Leave production services running. |
+| Command                          | Purpose                                                                                                                                                                                | Effect on containers                                                                                                    |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `bun run docker:up`              | Normal startup. Build the local API image if needed, then wait for API and database health checks.                                                                                     | Start services or update changed containers.                                                                            |
+| `bun run docker:rebuild`         | After dependency changes: run local `bun install --frozen-lockfile`, build API, check tools, and database tools images, then wait for service health checks. Does not run code checks. | Start services or update changed containers; preserve database data.                                                    |
+| `bun run docker:check`           | Run TypeScript checking, ESLint, Bun tests, and the application build using the development image and current shared code.                                                             | Build if needed, run a temporary tools container, then remove it. Does not inspect the running API or production image. |
+| `bun run docker:check-config`    | Validate Compose settings and required environment values without printing resolved credentials. Does not check application code.                                                      | Do not build images or start containers.                                                                                |
+| `bun run docker:build`           | Build local API and tools development images only. Also used by `docker:rebuild`.                                                                                                      | Do not start or replace running containers.                                                                             |
+| `bun run docker:ps`              | Show local service status, including health information when available.                                                                                                                | Observe existing containers.                                                                                            |
+| `bun run docker:logs`            | Follow API and database logs. Ctrl+C stops following the logs.                                                                                                                         | Leave services running.                                                                                                 |
+| `bun run docker:down`            | Stop and remove local service containers and their network.                                                                                                                            | Preserve the named database volume and its data.                                                                        |
+| `bun run docker:up:production`   | Build the production runtime image if needed and start the separate production setup.                                                                                                  | Start or update production services and wait for health checks.                                                         |
+| `bun run docker:down:production` | Stop and remove production service containers and their network.                                                                                                                       | Preserve the production database volume.                                                                                |
+| `bun run docker:logs:production` | Follow production API and database logs.                                                                                                                                               | Leave production services running.                                                                                      |
 
 For everyday work, use `docker:up`, `docker:logs`, and `docker:check`. Use `docker:rebuild` after dependency changes. `docker:check-config` answers whether Docker settings are valid; `docker:check` answers whether the code checks pass inside the development environment.
 
@@ -88,7 +90,7 @@ docker compose --env-file .env.local -f compose.yaml logs --follow api db
 docker compose --env-file .env.local -f compose.yaml --profile tools run --build --rm tools
 ```
 
-Both npm shortcuts and direct Compose commands use standard precedence: matching terminal variables override values in the selected environment file. Unset exported project variables when you want the file values. There is no command dispatcher or automatic environment clearing.
+Both Bun shortcuts and direct Compose commands use standard precedence: matching terminal variables override values in the selected environment file. Unset exported project variables when you want the file values. There is no command dispatcher or automatic environment clearing.
 
 `docker:check` builds the development tools image if needed and runs type checking, linting, tests, and compilation in a new temporary container. It reads your current shared source and tests; it does not inspect the running API container or verify the production image.
 
@@ -122,9 +124,9 @@ POSTGRES_PORT=5434
 Then run:
 
 ```bash
-npm run docker:up:production
+bun run docker:up:production
 curl http://localhost:3001/health/ready
-npm run docker:down:production
+bun run docker:down:production
 ```
 
 The direct startup command is:
@@ -133,7 +135,7 @@ The direct startup command is:
 docker compose --env-file .env.production -f compose.production.yaml up --build --detach --wait
 ```
 
-The production image contains compiled JavaScript and production dependencies. It runs as the `node` user rather than root and has no shared source folder. This demonstrates a production build; the example still has no authentication or public hosting setup.
+The production image contains compiled JavaScript and production dependencies. It runs as the `bun` user rather than root and has no shared source folder. This demonstrates a production build; the example still has no authentication or public hosting setup.
 
 | Setup      | Compose project           | Database volume                         |
 | ---------- | ------------------------- | --------------------------------------- |
@@ -146,13 +148,13 @@ The different projects also have separate networks. The suggested ports let both
 
 Run these from your host terminal. They build and start optional database-tool containers; the PostgreSQL service starts first if needed.
 
-| Command | Purpose |
-| --- | --- |
-| `npm run db:push` | Compare the TypeScript schema with the local database and review/apply changes directly. No migration files are generated. |
-| `npm run db:studio` | Start or update one background Studio service on `127.0.0.1:4983`. Open `https://local.drizzle.studio/?host=127.0.0.1`. Repeated runs reuse the service. |
-| `npm run db:studio:stop` | Stop Studio and free port 4983 while leaving the API and database running. |
-| `npm run db:studio:logs` | Follow Studio logs. Ctrl+C stops following logs; Studio keeps running. |
-| `npm run db:push:production` | Use the production Compose project and `.env.production` for an explicitly reviewed push. |
+| Command                      | Purpose                                                                                                                                                  |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run db:push`            | Compare the TypeScript schema with the local database and review/apply changes directly. No migration files are generated.                               |
+| `bun run db:studio`          | Start or update one background Studio service on `127.0.0.1:4983`. Open `https://local.drizzle.studio/?host=127.0.0.1`. Repeated runs reuse the service. |
+| `bun run db:studio:stop`     | Stop Studio and free port 4983 while leaving the API and database running.                                                                               |
+| `bun run db:studio:logs`     | Follow Studio logs. Ctrl+C stops following logs; Studio keeps running.                                                                                   |
+| `bun run db:push:production` | Use the production Compose project and `.env.production` for an explicitly reviewed push.                                                                |
 
 [drizzle.config.ts](drizzle.config.ts) reads the container's supplied settings through the same validation function as the API. API and tooling both connect to `db:5432` with separate credential fields, without building a password-containing URL. Drizzle explicitly uses `ssl: false` because the bundled PostgreSQL containers do not configure SSL encryption. A future externally hosted database may require different SSL settings.
 
@@ -164,13 +166,13 @@ Studio listens on `0.0.0.0` inside its container so Docker can forward connectio
 
 If Studio keeps connecting, open `https://local.drizzle.studio/?host=127.0.0.1`. In Chrome, open the site information icon beside the address bar and allow **Apps on device** or the local/loopback network permission for this site, then reload. The label depends on the browser version. [Chrome local network permissions](https://developer.chrome.com/blog/local-network-access)
 
-If port 4983 is occupied by an older one-off container, find it with `docker ps --filter publish=4983`. Stop the old project's `db-tools-run` container using `docker stop <container-ID>`, then run `npm run db:studio`. This is a one-time cleanup for sessions created by the earlier command. New sessions use the reusable `studio` service.
+If port 4983 is occupied by an older one-off container, find it with `docker ps --filter publish=4983`. Stop the old project's `db-tools-run` container using `docker stop <container-ID>`, then run `bun run db:studio`. This is a one-time cleanup for sessions created by the earlier command. New sessions use the reusable `studio` service.
 
 ## Health checks and shutdown
 
-| Route | Meaning |
-| --- | --- |
-| `/health/live` | The API process responds, regardless of database availability. |
+| Route           | Meaning                                                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `/health/live`  | The API process responds, regardless of database availability.                                                                        |
 | `/health/ready` | A real database query succeeds. Returns `503` if the database is unavailable, the check exceeds three seconds, or shutdown has begun. |
 
 Docker checks readiness for the API. A running process can therefore be marked unhealthy during a database outage and recover when the database returns. This does not automatically restart an otherwise running container.
@@ -185,7 +187,7 @@ On SIGTERM or Ctrl+C, the server stops accepting new requests, waits for current
 sh scripts/verify-docker.sh
 ```
 
-This runs code checks, verifies database persistence, builds the runtime image, and checks readiness failure/recovery by briefly stopping PostgreSQL. It also starts a temporary Studio server to check its loopback port and a separate compiled API process to verify shutdown on SIGTERM.
+This runs code checks, verifies database persistence, builds the runtime image, and checks readiness failure/recovery by briefly stopping PostgreSQL. It also starts a temporary Studio server to check its loopback port and verifies clean shutdown on SIGTERM for both the watched development server and a separate built API process.
 
 The script removes its probe table and temporary containers. Local services remain running. Its temporary Studio server uses an available port on `127.0.0.1`, so it does not need port 4983 to be free. Its earlier `docker:down` step removes the regular Studio service if it was running; restart Studio afterward if needed. It does not push a schema or seed data. The Studio check verifies connectivity, not the external browser UI.
 
@@ -194,22 +196,22 @@ The script removes its probe table and temporary containers. Local services rema
 Add a package from your WSL terminal, then synchronize the local editor installation and Docker images:
 
 ```bash
-npm install package-name
-npm run docker:rebuild
-npm run docker:check
+bun add package-name
+bun run docker:rebuild
+bun run docker:check
 ```
 
-After manually editing dependency declarations in `package.json`, run `npm install --package-lock-only` before the rebuild command. `npm ci` requires an up-to-date lockfile; it does not update one.
+After manually editing dependency declarations in `package.json`, run `bun install --lockfile-only` before the rebuild command. `bun install --frozen-lockfile` requires an up-to-date lockfile; it does not update one.
 
 `docker:rebuild` runs these steps in order:
 
-1. `npm ci` installs exact locked dependencies locally for your editor.
+1. `bun install --frozen-lockfile` installs exact locked dependencies locally for your editor.
 2. Docker builds the local API, check tools, and database tools images, reusing unchanged build steps.
 3. Compose starts or updates local services and waits for health checks. Database storage is preserved.
 
-A failed step stops the command. Code checks remain a separate `npm run docker:check` command. Rebuilding starts services too, so `.env.local` must already exist.
+A failed step stops the command. Code checks remain a separate `bun run docker:check` command. Rebuilding starts services too, so `.env.local` must already exist.
 
-Commit `package.json` and `package-lock.json` after dependency changes. Do not commit `node_modules`. `compose.tools.yaml` remains available as an optional Docker-based dependency-update helper.
+Commit `package.json` and `bun.lock` after dependency changes. Do not commit `node_modules`. `compose.tools.yaml` remains available as an optional Docker-based dependency-update helper.
 
 ## Application scripts
 
@@ -218,8 +220,8 @@ These run inside the development image. They do not require real environment fil
 | Script                      | Purpose                                                               |
 | --------------------------- | --------------------------------------------------------------------- |
 | `dev`                       | Watch source edits using local settings supplied by Compose.          |
-| `build`                     | Compile TypeScript into `dist/`.                                      |
+| `build`                     | Bundle application TypeScript into JavaScript under `dist/`.          |
 | `start`                     | Run compiled code with production settings supplied to the container. |
 | `typecheck`, `lint`, `test` | Check types, coding mistakes, or behavior.                            |
 | `test:watch`                | Rerun tests after edits.                                              |
-| `check`                     | Run all code checks and compile the app.                              |
+| `check`                     | Run all code checks and build the app.                                |

@@ -1,6 +1,6 @@
 # Hono + Drizzle example API: specification and implementation plan
 
-Status: Gate 4 implementation and Docker verification passed. Awaiting review before Gate 5. The schema push command still needs a user-run check.
+Status: Bun migration implemented after Gate 4. User-run Docker verification passed, including all 41 Bun tests and clean watched/built server shutdown. Pause for migration review before Gate 5. Studio browser access and local schema pushes are also user-confirmed.
 
 ## Spec summary
 
@@ -8,7 +8,7 @@ Status: Gate 4 implementation and Docker verification passed. Awaiting review be
 
 Build a **personal finance tracker API**: accounts, categories, immutable income/expense transactions, tags, monthly budgets, and balance/spending reports. This demonstrates foreign keys, many-to-many relationships, constraints, atomic writes, filtering, and aggregation. There is no frontend, bank integration, payment processing, investment accounting, or foreign exchange. Savings goals and transfers are future extensions.
 
-The requirements come from `setup.md`, including manual commits, review gates, Vitest, separate API/PostgreSQL containers, environment files, persistent storage, Drizzle Studio, seeding, and schema pushes rather than migration files. Authentication is optional follow-up work.
+The requirements come from `setup.md`, including manual commits, review gates, tests, separate API/PostgreSQL containers, environment files, persistent storage, Drizzle Studio, seeding, and schema pushes rather than migration files. Authentication is optional follow-up work.
 
 Local design references:
 
@@ -20,16 +20,16 @@ The approved project rules are recorded in `docs/PROJECT_MAP.md`. Every gate bel
 
 ### S2. Stack and organization
 
-- TypeScript in strict mode, Node.js on an actively supported LTS release, Hono with its Node adapter, npm with a committed lockfile, and Vitest.
+- TypeScript in strict mode, Bun 1.3.14, Hono using Bun's native HTTP server, a committed `bun.lock`, and Bun's built-in test runner.
 - PostgreSQL, Drizzle ORM with `pg` and a bounded connection pool, Drizzle Kit, `drizzle-seed`, and Zod for configuration/request validation.
-- Resolve compatible stable versions in Gate 1 and record the chosen Node/PostgreSQL majors. Pin container versions; avoid floating `latest` tags.
-- Export an application factory separately from the server listener so Vitest can use Hono's request interface without opening a port.
+- Resolve compatible stable versions in Gate 1 and record the chosen runtime/PostgreSQL versions. Pin container versions; avoid floating `latest` tags.
+- Export an application factory separately from the server listener so Bun tests can use Hono's request interface without opening a port.
 - Organize by feature: `src/modules/{accounts,categories,transactions,tags,budgets,reports}`; shared HTTP/configuration code in `src/lib`; database client/schema/seed in `src/db`; process startup in `src/server.ts`.
 - Keep handlers thin. Put multi-query business operations in services; query code stays close to the feature. Avoid a generic repository framework.
 
 ### S3. Runtime, secrets, and persistence
 
-- Confirmed hybrid workflow: run the API, PostgreSQL, and verification checks in Docker. Install locked dependencies locally with Node.js 24 for editor support. Keep local and container installations separate. Two long-running Compose services: `api` and `db`; one-off development containers run database tooling and checks.
+- Confirmed hybrid workflow: run the API, PostgreSQL, and verification checks in Docker. Install locked dependencies locally with Bun 1.3.14 for editor support. Keep local and container installations separate. The normal long-running services are `api` and `db`; optional `studio` runs separately. One-off development containers run schema pushes and code checks.
 - Default host bindings: API `127.0.0.1:3000`, PostgreSQL `127.0.0.1:5433` mapped to container port `5432`; ports configurable. API listens on `0.0.0.0` inside its container.
 - Local commands explicitly select `.env.local`; production variants explicitly select `.env.production`. Never load both or silently fall back to local credentials for a production command.
 - Commit `.env.example` with placeholders and descriptions. Ignore actual environment files and exclude them from image build contexts. Never put credentials in Docker build arguments or image layers.
@@ -86,17 +86,17 @@ Planned commands (implement with their owning gate):
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `dev`, `build`, `start`                                       | Container-internal commands: watch mounted source, compile, run compiled API.                                   |
 | `docker:up`, `docker:down`, `docker:logs`                     | Explicit local env selection; build/start both services; preserve data on down.                                 |
-| `docker:rebuild` | Run local `npm ci`, build local API and tools images, then update services while preserving database volumes. |
+| `docker:rebuild` | Run local `bun install --frozen-lockfile`, build local API and tools images, then update services while preserving database volumes. |
 | `docker:up:production`, `docker:down:production`              | Explicit production env and separate project/volume; compiled runtime.                                          |
 | `db:push`, `db:studio`, `db:seed`                             | One-off development tooling container against the Compose DB using `.env.local`; Studio bound to host loopback. |
 | `db:push:production`                                          | Explicit production target; interactive review; no unconditional destructive flags.                             |
-| `test`, `test:watch`, `test:integration`, `typecheck`, `lint` | Fast Vitest suite, watch, PostgreSQL-backed suite, strict type checking, linting.                               |
+| `test`, `test:watch`, `test:integration`, `typecheck`, `lint` | Fast Bun test suite, watch, PostgreSQL-backed suite, strict type checking, linting.                               |
 
-The README leads with host npm shortcuts containing direct Compose commands, with no shell dispatcher. Standard Compose environment precedence applies; terminal values can override the selected file. The approved hybrid setup uses local `npm ci` for editor support and `docker:rebuild` to synchronize dependencies and rebuild the local images. Application and database-tool execution and verification remain in Docker. Docker lifecycle shortcuts run on the host and must not recursively launch Docker inside a container.
+The README leads with host Bun shortcuts containing direct Compose commands, with no shell dispatcher. Standard Compose environment precedence applies; terminal values can override the selected file. The approved hybrid setup uses local `bun install --frozen-lockfile` for editor support and `docker:rebuild` to synchronize dependencies and rebuild the local images. Application and database-tool execution and verification remain in Docker. Docker lifecycle shortcuts run on the host and must not recursively launch Docker inside a container.
 
 Use Drizzle Kit pushes only: no migration generator, migration directory, or automatic destructive push. Seeding uses `drizzle-seed` with fixed IDs/seed and fixed business dates; generated relationships must satisfy ownership constraints. Re-running `db:seed` against an existing demo fixture must not duplicate or overwrite user edits: detect the fixture identity and no-op, with a clear message; fail on partial/conflicting fixtures. No automatic reset. Block seeds against production.
 
-Use Vitest throughout. Unit/request tests cover validation/error behavior without a listening server. Database integration tests use actual PostgreSQL in an isolated test database/Compose project and volume, never the local demo or production database. Guard cleanup by explicit test-target checks. Cover constraints, rollback, exact decimal reporting, owner isolation, and concurrent reversal behavior with independent connections. Mocking query builders is not a substitute for these checks.
+Use Bun's built-in test runner throughout. Unit/request tests cover validation/error behavior without a listening server. Database integration tests use actual PostgreSQL in an isolated test database/Compose project and volume, never the local demo or production database. Guard cleanup by explicit test-target checks. Cover constraints, rollback, exact decimal reporting, owner isolation, and concurrent reversal behavior with independent connections. Mocking query builders is not a substitute for these checks.
 
 ## Design rationale
 
@@ -177,10 +177,28 @@ Acceptance: no migration files/startup push; tools and API share selected creden
 
 **PAUSE — user must approve before continuing to next batch.**
 
+### Approved correction after Gate 4: Bun migration
+
+The user approved replacing Node/npm with Bun and explicitly selected Bun's built-in test runner. Earlier gate verification entries remain historical records.
+
+- [x] Replace the Hono Node adapter with `Bun.serve`; preserve database readiness and bounded pool shutdown.
+- [x] Use Bun 1.3.14 in development, production, and tooling images. Replace the npm lockfile with `bun.lock`; keep editor dependencies separate.
+- [x] Migrate all 41 tests to `bun:test`, with fake timers, mocks, and isolated environment changes.
+- [x] Use Bun's bundler for production output; keep TypeScript checking separate. Remove the old build and Vitest configuration files.
+- [x] Disable automatic environment-file loading so Compose remains responsible for settings. Preserve schema-push review and Studio settings.
+- [x] Update commands, project instructions, and the detailed Docker walkthrough.
+- [x] Verify watched-server shutdown after removing the startup wrapper and explicitly exiting after cleanup.
+
+Verification: the final user-run Docker smoke check passed type checking, lint, 41 Bun tests, bundling, persistence, outage recovery, production image contents, and Studio port access. Both the watched development server and built server exited cleanly on SIGTERM. The watched server stopped in about 0.3 seconds after removing the startup wrapper and explicitly exiting after cleanup. Local, production, and helper Compose files validate; lockfile declarations, documentation links, shell syntax, and whitespace checks pass. The user also confirmed that Studio opens the database and the local schema push command runs successfully. The full production stack has not been started.
+
+Suggested commit: `refactor: migrate runtime and tooling to Bun`.
+
+Pause for review before Gate 5.
+
 ### Gate 5 — owners and reference schema
 
 - [ ] Define users, accounts, categories, and tags with owner-aware uniqueness, archive fields, checks, and FK targets.
-- [ ] Add isolated test-database lifecycle and guarded cleanup for Vitest integration tests.
+- [ ] Add isolated test-database lifecycle and guarded cleanup for Bun integration tests.
 - [ ] Push schema and verify case-insensitive uniqueness, invalid values, and owner relationships with PostgreSQL tests.
 
 Acceptance: database rejects invalid direct inserts, not only HTTP payloads. S4/S6; database Relationships/Constraints/Tenancy. Commit: `feat: define owner-scoped finance reference schema`.
@@ -308,15 +326,15 @@ Acceptance: protected requests derive owner only from a valid database session; 
 
 Official references consulted while planning; recheck compatible versions at implementation time:
 
-- [Hono Node.js adapter](https://hono.dev/docs/getting-started/nodejs): chosen runtime integration.
+- [Hono on Bun](https://hono.dev/docs/getting-started/bun): current runtime integration. Earlier Node/Vitest gate results below describe the original implementation before the approved Bun correction.
 - [Drizzle seed overview](https://orm.drizzle.team/docs/seed-overview): deterministic synthetic generation; safe rerun policy is application code, not an assumed generator guarantee.
 - [Drizzle Kit push](https://orm.drizzle.team/docs/drizzle-kit-push): direct schema comparison/application without committed migration files.
 - [Docker Compose environment interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/): explicitly select environment files and distinguish interpolation from container environment injection.
 
 ## RELAY
 
-- **Status:** Gate 4 implementation and user-run Docker verification passed. The schema is intentionally empty until Gate 5. Local and production push commands are configured, but push execution has not been confirmed.
-- **Handoff:** Ready for Gate 4 review and manual commit. No commits have been made by the assistant.
-- **User action:** Review Gate 4 and confirm `npm run db:push` output before approving Gate 5. Decline any unexpected schema changes.
-- **Suggested next specialist/prompt:** Backend implementation: "Implement Gate 5 in docs/01-architect-todos.md after approval, run its checks, and stop for review. Do not commit."
-- **Drift risks:** Running the API locally unintentionally; sharing host node_modules with containers; reintroducing an application file loader; adding startup pushes/seeds; sharing database volumes across environments.
+- **Status:** Bun migration implemented and final user-run Docker smoke checks passed, including 41 tests and both watched/built server shutdown.
+- **Handoff:** Ready for migration review. No assistant commits.
+- **User action:** Review the migration and commit when ready. Gate 5 requires approval.
+- **Next gate:** Gate 5 only after approval.
+- **Drift risks:** Reintroducing Node/npm execution or automatic environment-file loading; mounting host dependencies over container packages; running schema pushes at startup; sharing database volumes across environments.

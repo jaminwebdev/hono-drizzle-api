@@ -1,13 +1,13 @@
-# Bootstrap helper for updating dependencies without host Node.js.
+# Bootstrap helper for updating dependencies without host Bun.
 name: hono-drizzle-tools
 
 services:
   tools:
-    image: node:24.22.1-bookworm-slim
+    image: oven/bun:1.3.14-debian
     working_dir: /app
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     environment:
-      npm_config_cache: /tmp/npm-cache
+      BUN_INSTALL_CACHE_DIR: /tmp/bun-cache
     volumes:
       - .:/app
     tmpfs:
@@ -15,4 +15,4 @@ services:
       - /app/node_modules:exec,mode=1777
     ports:
       - "127.0.0.1:${API_PORT:-3000}:${API_PORT:-3000}"
-    command: ["sh", "-c", "npm ci && npm run check"]
+    command: ["sh", "-c", "bun install --frozen-lockfile && bun run check"]

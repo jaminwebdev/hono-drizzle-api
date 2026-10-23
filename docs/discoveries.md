@@ -78,3 +78,15 @@
 - Studio reached PostgreSQL but failed because the server does not support SSL. The installed Drizzle Kit passes an SSL options object when `dbCredentials.ssl` is omitted, while the API's `pg` pool defaults differ. Set `ssl: false` explicitly in `drizzle.config.ts` for the bundled Compose database in both environments. Externally hosted databases may require a different SSL policy.
 - Added `--remove-orphans` to local `docker:down` so it also cleans up leftover containers from earlier tooling commands within this Compose project. Named database volumes remain preserved.
 - The previous smoke check verified Studio's listening port, not a Studio database query. Its successful result did not verify the browser's database connection. The SSL fix still needs user-run Studio verification.
+
+
+## Bun migration after Gate 4
+
+- The user corrected the intended stack to Bun + Hono and approved migration. They also chose Bun's built-in test runner over retaining Vitest. Bun 1.3.14 is pinned locally and in `oven/bun:1.3.14-debian` images.
+- Replaced the Hono Node adapter with `Bun.serve`, npm dependency management with `bun.lock`, and TypeScript emission with Bun bundling. TypeScript still checks types separately. Removed `tsx`, Vitest, and their obsolete configuration. PostgreSQL, Drizzle, the `pg` pool, data volumes, and the Studio service retain their roles.
+- `bunfig.toml` disables automatic environment-file loading and points tests at `tests/`. Runtime commands also use `--no-env-file`; Compose continues selecting settings. Runtime and package-script behavior were checked with a harmless environment probe outside the project.
+- The first watched server used Docker's full fifteen-second shutdown allowance. Docker now starts the Bun watcher directly, and the server explicitly exits after HTTP/pool cleanup. The smoke script checks its exit status and cleanup log, in addition to the separate built-server check.
+- The final user-run smoke script passed all 41 Bun tests, type checking, lint, bundling, persistence, database outage recovery, runtime image checks, Studio port access, and watched/built SIGTERM shutdown. The watched server stopped in about 0.3 seconds. No application checks ran on the host; Docker results came from the user's terminal because this session cannot access its socket.
+- Static local/production/helper Compose validation, lockfile consistency, documentation links/script names, shell syntax, and whitespace checks pass. Studio browser database access, schema push execution, and the full production stack remain unconfirmed. No commits were created.
+
+- The user subsequently confirmed that both the Studio browser database connection and local `bun run db:push` ran successfully. Bun migration verification is complete for the local workflow; the full production stack remains untested. Pause for review before Gate 5.

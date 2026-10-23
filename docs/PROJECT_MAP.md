@@ -6,16 +6,17 @@ Build a personal finance API to learn Hono, PostgreSQL, and Drizzle. Work follow
 
 ## Stack
 
-- Node.js 24, TypeScript 5.9, Hono, and the Hono Node adapter.
-- npm manages dependencies. `package-lock.json` must accompany the first code commit and all dependency changes.
-- Vitest tests behavior. TypeScript and ESLint check for coding mistakes.
+- Bun 1.3.14, TypeScript 5.9, and Hono using Bun's native HTTP server.
+- Bun manages dependencies. `bun.lock` must accompany all dependency changes.
+- Bun's built-in test runner tests behavior. TypeScript and ESLint check for coding mistakes.
 - Zod validates startup settings. PostgreSQL uses `postgres:18.6-bookworm`. Drizzle ORM and `pg` provide database access. Drizzle Kit provides explicit schema pushes and Studio. `drizzle-seed` joins in a later gate.
-- Use the hybrid workflow: Node.js 24 and local `npm ci` provide editor types; the API, PostgreSQL, and verification checks run in Docker with `node:24.22.1-bookworm-slim`. Both dependency installations use the same lockfile and stay separate. `.vscode/settings.json` selects the local TypeScript SDK.
+- Use the hybrid workflow: Bun 1.3.14 and local `bun install --frozen-lockfile` provide editor types; the API, PostgreSQL, and verification checks run in Docker with `oven/bun:1.3.14-debian`. Both dependency installations use the same lockfile and stay separate. `.vscode/settings.json` selects the local TypeScript SDK.
 
 ## Code boundaries
 
 - `src/app.ts` creates the Hono app without opening a port.
-- `src/server.ts` validates settings before starting the server on `API_PORT`, which defaults to 3000.
+- `src/server.ts` validates settings before starting `Bun.serve` on `API_PORT`, which defaults to 3000.
+- `bunfig.toml` disables automatic environment-file loading. Compose remains the sole file-selection step. The runtime also uses `--no-env-file` explicitly.
 - `src/lib/config.ts` validates `process.env` only; it never reads files. Compose selects `.env.local` or `.env.production` and supplies values to containers. The single startup argument selects the expected mode, which must match `APP_ENV`. Errors never print credential values.
 - `src/db/client.ts` creates a shared PostgreSQL connection pool and Drizzle client. `src/db/schema.ts` remains empty until Gate 5.
 - `/health/live` checks the process; `/health/ready` runs a database query with a three-second deadline and returns `503` during an outage or shutdown.
@@ -41,11 +42,11 @@ Build a personal finance API to learn Hono, PostgreSQL, and Drizzle. Work follow
 ## Docker setup
 
 - `compose.yaml` runs local API and database services. `compose.production.yaml` runs compiled API code and a separate database. API startup waits for the PostgreSQL health check. The API health check uses database readiness.
-- `Dockerfile` has development, build, production-dependencies, and runtime stages. Development dependencies stay in the development image. Runtime runs as the non-root `node` user and contains compiled code and production dependencies only.
+- `Dockerfile` has development, build, production-dependencies, and runtime stages. Development dependencies stay in the development image. Runtime runs as the non-root `bun` user and contains compiled code and production dependencies only.
 - Local source changes reach the API through a read-only shared `src/` folder. Tools share source, tests, and configuration while using dependencies from the development image.
 - Projects `hono-drizzle-local` and `hono-drizzle-production` have separate networks and named `postgres_data` volumes. PostgreSQL 18 stores data under the volume mounted at `/var/lib/postgresql`.
 - Everyday Docker commands live directly in `package.json`, with explicit Compose and environment-file options. Standard Compose precedence applies: terminal values override file values. No dispatcher clears inherited settings. Down commands preserve volumes. Published ports bind to `127.0.0.1`.
-- `npm run docker:rebuild` runs local `npm ci`, builds local API and tooling images, and updates local services without deleting database volumes. It stops on failure; checks remain a separate `docker:check` command. `compose.tools.yaml` remains an optional dependency-update helper; normal checks reuse the development image.
+- `bun run docker:rebuild` runs local `bun install --frozen-lockfile`, builds local API and tooling images, and updates local services without deleting database volumes. It stops on failure; checks remain a separate `docker:check` command. `compose.tools.yaml` remains an optional dependency-update helper; normal checks reuse the development image.
 
 - The optional `db-tools` service runs Drizzle Kit with the selected environment credentials. The separate optional `studio` service shares database-tool settings and publishes only on loopback port 4983. `db:studio` starts or updates this background service; `db:studio:stop` stops it. `docker:down` selects all profiles and removes orphan containers from this project to clean up Studio and older tooling sessions. Drizzle explicitly disables SSL for the bundled PostgreSQL containers, which do not configure it. Production has an explicit push command and no published Studio port.
 - `scripts/verify-docker.sh` checks real container behavior beyond `docker:check`. Its temporary Studio server uses an available loopback port and is removed on exit.

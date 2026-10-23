@@ -26,7 +26,7 @@ services:
     stop_grace_period: 15s
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + process.env.API_PORT + '/health/ready', { signal: AbortSignal.timeout(5000) }).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      test: ["CMD", "bun", "--no-env-file", "-e", "fetch('http://127.0.0.1:' + process.env.API_PORT + '/health/ready', { signal: AbortSignal.timeout(5000) }).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 5s
       timeout: 6s
       retries: 10
@@ -57,11 +57,10 @@ services:
       - ./tests:/app/tests:ro
       - ./scripts:/app/scripts:ro
       - ./tsconfig.json:/app/tsconfig.json:ro
-      - ./tsconfig.build.json:/app/tsconfig.build.json:ro
       - ./eslint.config.js:/app/eslint.config.js:ro
-      - ./vitest.config.ts:/app/vitest.config.ts:ro
       - ./drizzle.config.ts:/app/drizzle.config.ts:ro
-    command: ["npm", "run", "check"]
+      - ./bunfig.toml:/app/bunfig.toml:ro
+    command: ["bun", "run", "check"]
 
   db-tools: &db-tools
     profiles: [tools]
@@ -74,6 +73,7 @@ services:
     volumes:
       - ./src:/app/src:ro
       - ./drizzle.config.ts:/app/drizzle.config.ts:ro
+      - ./bunfig.toml:/app/bunfig.toml:ro
     depends_on:
       db:
         condition: service_healthy
@@ -82,7 +82,7 @@ services:
   studio:
     <<: *db-tools
     profiles: [studio]
-    command: ["npm", "exec", "--", "drizzle-kit", "studio", "--config=drizzle.config.ts", "--host=0.0.0.0", "--port=4983"]
+    command: ["bun", "--bun", "run", "drizzle-kit", "studio", "--config=drizzle.config.ts", "--host=0.0.0.0", "--port=4983"]
     ports:
       - "127.0.0.1:4983:4983"
 

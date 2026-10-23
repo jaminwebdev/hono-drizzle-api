@@ -12,6 +12,8 @@
 
 ## Development workflow
 
+- Use Bun 1.3.14 for the runtime, package commands, and built-in tests. Commit `bun.lock` with dependency changes. Do not reintroduce npm or the Hono Node adapter.
+
 - Use the hybrid workflow: install locked dependencies locally for editor type checking, while running the application, database, and verification checks in Docker. Local dependencies must stay separate from container dependencies.
 - Keep everyday Docker commands directly in package.json. Use standard Compose environment precedence; do not add a command dispatcher or an application environment-file loader.
 - Follow the approved gates in `docs/01-architect-todos.md`. Pause for review between gates.

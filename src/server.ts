@@ -1,4 +1,3 @@
-import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
 import { loadConfig } from "./lib/config.js";
 import { createDatabase } from "./db/client.js";
@@ -13,31 +12,24 @@ try {
     isShuttingDown: () => closing,
   });
 
-  const server = serve(
-    {
-      fetch: app.fetch,
-      hostname: "0.0.0.0",
-      port: config.apiPort,
-    },
-    () => {
-      console.info(`API listening on port ${config.apiPort}`);
-    },
-  );
+  const server = Bun.serve({
+    fetch: app.fetch,
+    hostname: "0.0.0.0",
+    port: config.apiPort,
+  });
+  console.info(`API listening on port ${server.port}`);
 
   const shutdown = createShutdown({
     markClosing: () => { closing = true; },
-    stopHttp: () => new Promise<void>((resolve, reject) => {
-      server.close((error?: Error) => {
-        if (error) reject(error);
-        else resolve();
-      });
-    }),
+    stopHttp: async () => { await server.stop(); },
     closeDatabase: database.close,
   });
 
   const handleShutdown = () => {
     void shutdown().then(() => {
       console.info('HTTP server and database pool closed.');
+      // Watch mode keeps the process alive after the HTTP server closes.
+      process.exit(0);
     }).catch(() => {
       console.error('Unable to close the HTTP server and database pool.');
       process.exit(1);
@@ -46,11 +38,6 @@ try {
 
   process.once('SIGTERM', handleShutdown);
   process.once('SIGINT', handleShutdown);
-  server.on('error', () => {
-    console.error('HTTP server failed.');
-    process.exitCode = 1;
-    handleShutdown();
-  });
 } catch (error) {
   // Configuration errors name fields without printing their values.
   console.error(

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'bun:test';
 import { loadConfig } from '../src/lib/config.js';
 
 const credentials = {
@@ -12,8 +12,19 @@ function fromEnvironment(values: NodeJS.ProcessEnv) {
   return loadConfig('local', values);
 }
 
+const changedEnvironment = new Map<string, string | undefined>();
+
+function setEnvironment(key: string, value: string) {
+  if (!changedEnvironment.has(key)) changedEnvironment.set(key, process.env[key]);
+  process.env[key] = value;
+}
+
 afterEach(() => {
-  vi.unstubAllEnvs();
+  for (const [key, value] of changedEnvironment) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  changedEnvironment.clear();
 });
 
 describe('configuration validation', () => {
@@ -102,10 +113,10 @@ describe('configuration validation', () => {
 
   it('reads process.env when no test values are supplied', () => {
     for (const [key, value] of Object.entries(credentials)) {
-      vi.stubEnv(key, value);
+      setEnvironment(key, value);
     }
-    vi.stubEnv('API_PORT', '4000');
-    vi.stubEnv('POSTGRES_PORT', '15433');
+    setEnvironment('API_PORT', '4000');
+    setEnvironment('POSTGRES_PORT', '15433');
 
     const config = loadConfig('local');
     expect(config.apiPort).toBe(4000);
@@ -113,7 +124,7 @@ describe('configuration validation', () => {
   });
 
   it('does not fill missing production credentials from inherited local values', () => {
-    vi.stubEnv('POSTGRES_PASSWORD', 'local-secret');
+    setEnvironment('POSTGRES_PASSWORD', 'local-secret');
     const values: NodeJS.ProcessEnv = { ...credentials, APP_ENV: 'production' };
     delete values.POSTGRES_PASSWORD;
 

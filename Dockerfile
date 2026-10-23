@@ -1,26 +1,26 @@
-FROM node:24.22.1-bookworm-slim AS base
+FROM oven/bun:1.3.14-debian AS base
 WORKDIR /app
-RUN chown node:node /app
-USER node
+RUN chown bun:bun /app
+USER bun
 
 FROM base AS development
-COPY --chown=node:node package.json package-lock.json ./
-RUN npm ci
-COPY --chown=node:node . .
-CMD ["npm", "run", "dev"]
+COPY --chown=bun:bun package.json bun.lock bunfig.toml ./
+RUN bun install --frozen-lockfile
+COPY --chown=bun:bun . .
+CMD ["bun", "--no-env-file", "--watch", "src/server.ts", "local"]
 
 FROM development AS build
-RUN npm run build
+RUN bun run build
 
 FROM base AS production-dependencies
 ENV NODE_ENV=production
-COPY --chown=node:node package.json package-lock.json ./
-RUN npm ci --omit=dev
+COPY --chown=bun:bun package.json bun.lock bunfig.toml ./
+RUN bun install --frozen-lockfile --production
 
 FROM base AS runtime
 ENV NODE_ENV=production
-COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/dist ./dist
-COPY --chown=node:node package.json ./
+COPY --from=production-dependencies --chown=bun:bun /app/node_modules ./node_modules
+COPY --from=build --chown=bun:bun /app/dist ./dist
+COPY --chown=bun:bun package.json bunfig.toml ./
 EXPOSE 3000
-CMD ["node", "dist/server.js", "production"]
+CMD ["bun", "--no-env-file", "dist/server.js", "production"]
