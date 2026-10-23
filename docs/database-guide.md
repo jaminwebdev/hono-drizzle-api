@@ -1,6 +1,6 @@
 # Database schema and tests
 
-The schema through Gate 6 is defined in [src/db/schema.ts](../src/db/schema.ts). Four reference tables identify owners and organize transactions, tags, and monthly budgets. Demo rows come in Gate 7; business API routes and login are later work.
+The schema through Gate 6 is defined in [src/db/schema.ts](../src/db/schema.ts). Four reference tables identify owners and organize transactions, tags, and monthly budgets. Gate 7 adds an explicit local demo seed. Business API routes and login are later work.
 
 ## How the tables connect
 
@@ -153,20 +153,56 @@ bun run db:push
 bun run db:studio
 ```
 
-Review the push before accepting changes. Studio opens at [local.drizzle.studio](https://local.drizzle.studio/?host=127.0.0.1). After the push, expect `users`, `accounts`, `categories`, `tags`, `transactions`, `transaction_tags`, and `budgets`. The tables can be empty; no demo rows are created yet.
+Review the push before accepting changes. Studio opens at [local.drizzle.studio](https://local.drizzle.studio/?host=127.0.0.1). After the push, expect `users`, `accounts`, `categories`, `tags`, `transactions`, `transaction_tags`, and `budgets`. The tables remain empty until you run the optional seed command.
 
 The API still does not push or seed during startup. Its readiness query works without business rows. Local and production pushes retain strict review, and no migration files are generated.
+
+## Add demo data
+
+After `bun run db:up` and `bun run db:push`, run:
+
+```bash
+bun run db:seed
+```
+
+The command explicitly loads `.env.local` and requires `APP_ENV=local` before connecting. It never runs during API startup. Production mode is rejected; this is demo data, not a production setup command. Environment labels are a guard, not proof of database identity, so keep local connection settings pointed at your development database.
+
+[demo-data.ts](../src/db/demo-data.ts) defines one owner, `demo@example.test`, two accounts, three categories, two tags, ten transactions, five tag associations, and six monthly budgets. `DEMO_OWNER_ID` is the fixed identity that later API gates will use. All IDs and timestamps are fixed. The data covers January and February 2026, rather than changing with today's date.
+
+| Example | Expected result after a fresh seed |
+| --- | --- |
+| Checking balance across both months | `6282.90` USD |
+| Savings balance | `5000.00` USD |
+| January grocery spending after the refund | `80.00` USD |
+| Monthly grocery budget | `400.00` USD |
+
+Reference fixtures use [drizzle-seed refinements](https://orm.drizzle.team/docs/seed-overview#refinements) with a fixed seed number and generator version. Financial rows specify exact decimal strings and relationships directly, so their amounts and dates are easy to review. Opening balances are transactions; no separate balance field is maintained.
+
+```mermaid
+flowchart TD
+    Start["bun run db:seed"] --> Guard["Require local settings"]
+    Guard --> Lock["Start one transaction and serialize seed commands"]
+    Lock --> Inspect["Look for the fixed fixture IDs and tag associations"]
+    Inspect -->|"None present"| Create["Insert related demo rows"]
+    Inspect -->|"All present with the expected owner"| Preserve["Keep existing rows and edits"]
+    Inspect -->|"Some missing or conflicting"| Stop["Stop without changing data"]
+    Create --> Commit["Commit all seed rows together"]
+```
+
+The transaction makes insertion all-or-nothing. A database lock makes simultaneous seed commands run in order. An existing email or unique-name conflict rolls back the attempt. Unrelated rows are preserved.
+
+A completed seed is detected by its reserved IDs, owner, and original tag associations. Rerunning does not restore names, amounts, dates, or budget values to their original defaults. If you delete a fixture or an original tag association, the next seed reports incomplete fixtures. It does not repair or reset them. Inspect the records in Studio before deciding how to proceed; no reset or automatic deletion command is provided.
 
 ## Run the checks
 
 | Command | Purpose |
 | --- | --- |
 | `bun run check` | Run local type checking, lint, fast tests, and the application build. Database integration tests are discovered but skipped here. |
-| `bun run test:integration` | Start temporary PostgreSQL, push the schema into a fresh test database, run reference/financial constraint tests in local Bun, and clean up. |
+| `bun run test:integration` | Start temporary PostgreSQL, push the schema into a fresh test database, run schema safeguards and seed behavior tests in local Bun, and clean up. |
 
 The database suites cover a small set of rules declared in our schema: owner isolation, reserved names, money limits, unique reversals and monthly budgets, and protected financial history. They use real tables, including competing reversal inserts. They do not check UUID generation, timestamp conversion, SQL arithmetic, or every field-validation example.
 
-These tests cover database safeguards only. Tests for creating transactions, copying reversal tags, refusing writes to archived accounts, and calculating reports belong at the service or HTTP boundary when those features exist.
+The schema suites cover database safeguards only. Seed tests call our seed operation to check its results, safe repeats, conflicts, concurrent runs, and production rejection. Tests for creating transactions, copying reversal tags, refusing writes to archived accounts, and calculating reports belong at the service or HTTP boundary when those features exist.
 
 Integration tests deliberately attempt invalid inserts and deletions. A passing test confirms PostgreSQL rejected them with the expected error. The local runner prints test output; database container logs can contain expected `ERROR` entries because those invalid writes are intentional.
 

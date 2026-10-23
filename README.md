@@ -1,6 +1,6 @@
 # Bun, Hono, and Drizzle finance API
 
-A personal finance API built in reviewable gates. Users, accounts, categories, tags, transactions, tag links, and monthly budgets are defined. Demo data and business routes come next. See the [implementation plan](docs/01-architect-todos.md), [database guide](docs/database-guide.md), and [Docker walkthrough](docs/docker-guide.md).
+A personal finance API built in reviewable gates. Users, accounts, categories, tags, transactions, tag links, and monthly budgets are defined. An explicit seed command adds demo data; business routes come next. See the [implementation plan](docs/01-architect-todos.md), [database guide](docs/database-guide.md), and [Docker walkthrough](docs/docker-guide.md).
 
 Develop locally with Bun 1.3.14. PostgreSQL runs in Docker. The API, Drizzle, type checking, lint, and tests run directly on your machine. In WSL, install Bun in the distro and enable Docker Desktop's WSL Integration for it.
 
@@ -16,6 +16,7 @@ Replace the example password, then:
 ```bash
 bun run db:up
 bun run db:push
+bun run db:seed
 bun run dev
 ```
 
@@ -31,7 +32,7 @@ Expected response:
 {"data":{"status":"ready"}}
 ```
 
-Schema pushes remain explicit and reviewed. Startup never pushes or seeds. The current tables can be empty. VS Code uses the local TypeScript installation through `.vscode/settings.json`.
+Schema pushes remain explicit and reviewed. Startup never pushes or seeds. Seeding is optional for health checks. VS Code uses the local TypeScript installation through `.vscode/settings.json`.
 
 ```mermaid
 flowchart LR
@@ -58,6 +59,7 @@ Bun expands `$VARIABLE` in environment-file values, including quoted values. Esc
 | `bun run db:down` | Stop/remove local database containers and old project orphans; preserve database data. It does not stop local Bun processes. |
 | `bun run db:logs` | Follow PostgreSQL logs. Ctrl+C stops following. |
 | `bun run db:push` | Review and apply schema differences to the local database. No migration files. |
+| `bun run db:seed` | Add fixed January/February 2026 demo data locally. Repeat runs preserve edits; incomplete/conflicting fixtures stop with an error. |
 | `bun run db:studio` | Run Studio locally. Open [Drizzle Studio](https://local.drizzle.studio); Ctrl+C stops its connection server. |
 | `bun run check` | Run type checking, lint, fast tests, and the build locally. No database is required. |
 | `bun run test:integration` | Run real PostgreSQL tests using an isolated temporary database/container, then clean up. |

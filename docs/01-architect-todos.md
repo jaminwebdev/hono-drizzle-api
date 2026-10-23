@@ -1,6 +1,6 @@
 # Hono + Drizzle example API: specification and implementation plan
 
-Status: Local development and Gate 6 schema/push are verified. The user requested narrower database tests; the 19 trimmed tests await integration verification. Pause for review before Gate 7 seeds.
+Status: Gate 7 demo seeding is verified. Local checks, all 25 PostgreSQL integration tests, and both local seed runs passed. Pause for review before Gate 8.
 
 ## Spec summary
 
@@ -84,7 +84,7 @@ This preserves original financial entries but is not a complete audit system. Ca
 
 ### S6. Tooling and verification
 
-Current commands are documented in README. Use `dev`, `check`, `db:up`, `db:down`, `db:logs`, `db:push`, `db:studio`, and `test:integration` for daily work. `docker:build` prepares the deployment image. Seed commands arrive in Gate 7. No Docker dispatcher, development-tooling containers, or duplicate editor/runtime installs are needed.
+Current commands are documented in README. Use `dev`, `check`, `db:up`, `db:down`, `db:logs`, `db:push`, `db:studio`, and `test:integration` for daily work. `docker:build` prepares the deployment image. Use `db:seed` for optional local demo data. No Docker dispatcher, development-tooling containers, or duplicate editor/runtime installs are needed.
 
 Use Bun's test runner throughout. Fast request tests do not open a port or need a database. Integration tests run locally against real PostgreSQL in a uniquely named temporary Docker project on an available loopback port. The runner creates its own database, verifies connection identity before cleanup, and removes its Docker resources. Never use demo/production storage. Cover constraints, rollback, exact decimal reporting, owner isolation, and concurrent reversals with independent connections.
 
@@ -234,9 +234,11 @@ Acceptance: schema satisfies S4's database rules, using Drizzle pushes only. The
 
 ### Gate 7 — reproducible demo seeds
 
-- [ ] Add `drizzle-seed` fixture generation with fixed identity/date inputs and realistic related income, expenses, tags, and budgets.
-- [ ] Add `db:seed`, production guards, repeat-run detection, and clear rejection of partial/conflicting fixtures.
-- [ ] Verify fresh seed relationships, repeat no-op without losing edits, and production rejection.
+- [x] Add `drizzle-seed` fixture generation with fixed identity/date inputs and realistic related income, expenses, tags, and budgets.
+- [x] Add `db:seed`, production guards, repeat-run detection, and clear rejection of partial/conflicting fixtures.
+- [x] Verify fresh seed relationships, repeat no-op without losing edits, and production rejection.
+
+Implementation: fixed January/February 2026 fixtures, local-only execution, one transaction, a lock for competing seed commands, ID/owner/link checks for repeat detection, and no reset behavior. Existing edits survive complete reruns; missing fixtures and unique conflicts stop the attempt. Type checking, lint, 68 fast tests, and bundling pass. The user confirmed all 25 PostgreSQL integration tests and both local seed runs passed. Coverage includes known fixture balances, repeat runs preserving edits, partial/conflicting fixtures, competing seeds, and production rejection.
 
 Acceptance: fresh push + seed gives useful report data; repeat seed preserves data. S4/S6. Commit: `feat: seed reproducible finance demo data`.
 
@@ -350,8 +352,8 @@ Official references consulted while planning; recheck compatible versions at imp
 
 ## RELAY
 
-- **Status:** Gate 6 implemented and the local schema push passed. The original 109 integration tests passed; the 19 trimmed tests await a fresh integration run.
-- **Handoff:** Ready for review and manual commit. No assistant commits. Stop before Gate 7.
-- **User action:** Review the financial schema and updated database guide, commit when ready, and approve Gate 7 separately.
-- **Next gate:** Reproducible demo seeds with production guards and safe rerun behavior.
-- **Drift risks:** Money rounding or JavaScript floating-point calculations; cross-owner links; treating schema uniqueness as the complete reversal operation; tests touching real data. Stable Drizzle repeat-push churn is deferred by explicit user instruction; no tooling patch/upgrade or repeat-push guard is planned.
+- **Status:** Gate 7 verified. Local checks, 25 PostgreSQL integration tests, and both local seed runs passed.
+- **Handoff:** The user approved Gate 6 and test trimming. Do not create commits or start Gate 8 before review.
+- **User action:** Review Gate 7 and commit when ready. Approve Gate 8 separately.
+- **Next gate:** Shared HTTP behavior and server-selected demo owner context.
+- **Drift risks:** Seed reruns must preserve edits. Never reset demo data automatically or allow production seeds. Stable Drizzle repeat-push churn remains deferred.

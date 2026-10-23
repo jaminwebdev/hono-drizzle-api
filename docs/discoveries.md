@@ -127,3 +127,10 @@
 - These suites verify database safeguards. Future service and HTTP tests must verify transaction creation, reversal behavior, archived-parent rules, and reports. The earlier 109-test result describes the original suites; the 19 trimmed tests need a fresh integration run.
 
 - After trimming, type checking, lint, 66 fast tests, and bundling pass. Docker socket access is unavailable in this session, so the 19 database tests await user-run verification.
+
+
+## Gate 7: reproducible demo data
+
+- The user approved Gate 6 test trimming and requested the next phase. Added `drizzle-seed` 0.3.1 and `db:seed`, with local Bun execution and explicit `.env.local` selection. Fixed fixtures cover two months of income, expenses, a refund, account balances, tags, and category budgets. Reference rows use generator refinements; financial rows keep explicit decimal strings and relationships.
+- Seeding rejects production before database access. One transaction and an advisory lock make the operation atomic and serialize competing seed commands. Reserved IDs, owners, and original tag links distinguish fresh, complete, and partial fixtures. Complete reruns preserve edits and unrelated rows; partial/conflicting fixtures cause an error. No reset, automatic repair, schema change, or API route was added.
+- The user installed the dependency because this session cannot reach the package registry. Type checking, lint, 68 fast tests, and bundling pass. The first PostgreSQL run exposed Drizzle's error wrapper; the conflict handler now reads the underlying driver cause before returning a controlled message. The user confirmed all 25 integration tests and both local seed runs passed. Test storage cleaned up normally. Pause for review before Gate 8.
