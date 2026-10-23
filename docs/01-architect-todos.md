@@ -92,7 +92,7 @@ Planned commands (implement with their owning gate):
 | `db:push:production`                                          | Explicit production target; interactive review; no unconditional destructive flags.                             |
 | `test`, `test:watch`, `test:integration`, `typecheck`, `lint` | Fast Vitest suite, watch, PostgreSQL-backed suite, strict type checking, linting.                               |
 
-The README leads with host npm shortcuts and also provides direct Compose commands. The approved hybrid setup uses local `npm ci` for editor support and `docker:rebuild` to synchronize dependencies and rebuild the local images. Application and database-tool execution and verification remain in Docker. Docker lifecycle shortcuts run on the host and must not recursively launch Docker inside a container.
+The README leads with host npm shortcuts containing direct Compose commands, with no shell dispatcher. Standard Compose environment precedence applies; terminal values can override the selected file. The approved hybrid setup uses local `npm ci` for editor support and `docker:rebuild` to synchronize dependencies and rebuild the local images. Application and database-tool execution and verification remain in Docker. Docker lifecycle shortcuts run on the host and must not recursively launch Docker inside a container.
 
 Use Drizzle Kit pushes only: no migration generator, migration directory, or automatic destructive push. Seeding uses `drizzle-seed` with fixed IDs/seed and fixed business dates; generated relationships must satisfy ownership constraints. Re-running `db:seed` against an existing demo fixture must not duplicate or overwrite user edits: detect the fixture identity and no-op, with a clear message; fail on partial/conflicting fixtures. No automatic reset. Block seeds against production.
 
@@ -313,8 +313,8 @@ Official references consulted while planning; recheck compatible versions at imp
 
 ## RELAY
 
-- **Status:** Hybrid editor support and `docker:rebuild` verified based on the user's successful installation and checks. Local TypeScript server files are present.
+- **Status:** Hybrid editor support verified. Direct npm Docker commands replace the shell dispatcher; all ten direct commands and rebuild failure handling are verified with stubs, and both Compose configurations validate. Live Docker execution was not rerun because this session cannot access its socket. Gate 4 has not started.
 - **Handoff:** Ready for review and manual commit. Gate 4 is next, after approval. No commits have been made by the assistant.
-- **User action:** Review and commit the hybrid setup when satisfied; approve Gate 4 when ready.
+- **User action:** Review direct npm commands and updated Docker documentation; approve Gate 4 when ready.
 - **Suggested next specialist/prompt:** Backend implementation: "Implement Gate 4 in docs/01-architect-todos.md, run its checks, and stop for review. Do not commit."
 - **Drift risks:** Running the API locally unintentionally; sharing host node_modules with containers; reintroducing an application file loader; adding startup pushes/seeds; sharing database volumes across environments.

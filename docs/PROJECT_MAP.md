@@ -41,7 +41,7 @@ Build a personal finance API to learn Hono, PostgreSQL, and Drizzle. Work follow
 - `Dockerfile` has development, build, production-dependencies, and runtime stages. Development dependencies stay in the development image. Runtime runs as the non-root `node` user and contains compiled code and production dependencies only.
 - Local source changes reach the API through a read-only shared `src/` folder. Tools share source, tests, and configuration while using dependencies from the development image.
 - Projects `hono-drizzle-local` and `hono-drizzle-production` have separate networks and named `postgres_data` volumes. PostgreSQL 18 stores data under the volume mounted at `/var/lib/postgresql`.
-- `scripts/docker.sh` selects the matching file and clears inherited project settings. Down commands preserve volumes. Published ports bind to `127.0.0.1`.
+- Everyday Docker commands live directly in `package.json`, with explicit Compose and environment-file options. Standard Compose precedence applies: terminal values override file values. No dispatcher clears inherited settings. Down commands preserve volumes. Published ports bind to `127.0.0.1`.
 - `npm run docker:rebuild` runs local `npm ci`, builds local API and tools images, and updates local services without deleting database volumes. It stops on failure; checks remain a separate `docker:check` command. `compose.tools.yaml` remains an optional dependency-update helper; normal checks reuse the development image.
 
 ## Scope limits

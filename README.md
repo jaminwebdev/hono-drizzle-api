@@ -57,23 +57,27 @@ The local API shares your `src/` folder, so source edits restart it automaticall
 
 PostgreSQL stores data in a named volume, which is storage managed by Docker. Removing a container does not remove this volume. [Docker explains persistent volumes here](https://docs.docker.com/engine/storage/volumes/).
 
-## Everyday commands
+## Docker command reference
 
-```bash
-# Stop both services and preserve database data.
-npm run docker:down
+Run these commands from your WSL project terminal. Each uses `.env.local`, except the commands ending in `:production`, which use `.env.production`.
 
-# Follow API and database logs. Ctrl+C stops following the logs.
-npm run docker:logs
+| Command | Purpose | Effect on containers |
+| --- | --- | --- |
+| `npm run docker:up` | Normal startup. Build the local API image if needed, then wait for API and database health checks. | Start services or update changed containers. |
+| `npm run docker:rebuild` | After dependency changes: run local `npm ci`, build API and tools images, then wait for service health checks. Does not run code checks. | Start services or update changed containers; preserve database data. |
+| `npm run docker:check` | Run TypeScript checking, ESLint, Vitest tests, and compilation using the development image and current shared code. | Build if needed, run a temporary tools container, then remove it. Does not inspect the running API or production image. |
+| `npm run docker:check-config` | Validate Compose settings and required environment values without printing resolved credentials. Does not check application code. | Do not build images or start containers. |
+| `npm run docker:build` | Build local API and tools development images only. Also used by `docker:rebuild`. | Do not start or replace running containers. |
+| `npm run docker:ps` | Show local service status, including health information when available. | Observe existing containers. |
+| `npm run docker:logs` | Follow API and database logs. Ctrl+C stops following the logs. | Leave services running. |
+| `npm run docker:down` | Stop and remove local service containers and their network. | Preserve the named database volume and its data. |
+| `npm run docker:up:production` | Build the production runtime image if needed and start the separate production setup. | Start or update production services and wait for health checks. |
+| `npm run docker:down:production` | Stop and remove production service containers and their network. | Preserve the production database volume. |
+| `npm run docker:logs:production` | Follow production API and database logs. | Leave production services running. |
 
-# Show container status.
-sh scripts/docker.sh local ps
+For everyday work, use `docker:up`, `docker:logs`, and `docker:check`. Use `docker:rebuild` after dependency changes. `docker:check-config` answers whether Docker settings are valid; `docker:check` answers whether the code checks pass inside the development environment.
 
-# Build the development image and run all code checks.
-npm run docker:check
-```
-
-The helper always selects the matching environment file. It clears inherited project settings so another terminal's credentials cannot override that file.
+Each shortcut contains its Compose command directly in `package.json`.
 
 You can also call Compose directly:
 
@@ -84,7 +88,9 @@ docker compose --env-file .env.local -f compose.yaml logs --follow api db
 docker compose --env-file .env.local -f compose.yaml --profile tools run --build --rm tools
 ```
 
-Direct Compose commands allow shell variables to override file values. Use the helper when you want the selected file to be the only source of project settings.
+Both npm shortcuts and direct Compose commands use standard precedence: matching terminal variables override values in the selected environment file. Unset exported project variables when you want the file values. There is no command dispatcher or automatic environment clearing.
+
+`docker:check` builds the development tools image if needed and runs type checking, linting, tests, and compilation in a new temporary container. It reads your current shared source and tests; it does not inspect the running API container or verify the production image.
 
 `docker:up`, `docker:down`, `docker:logs`, `docker:check`, and `docker:rebuild` run from your computer. Do not run these shortcuts inside a container; the containers do not contain Docker.
 
@@ -116,9 +122,9 @@ POSTGRES_PORT=5434
 Then run:
 
 ```bash
-sh scripts/docker.sh production up
+npm run docker:up:production
 curl http://localhost:3001/health/live
-sh scripts/docker.sh production down
+npm run docker:down:production
 ```
 
 The direct startup command is:

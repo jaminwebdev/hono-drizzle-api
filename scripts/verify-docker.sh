@@ -4,8 +4,6 @@ cd "$(dirname "$0")/.."
 
 command -v curl >/dev/null || { echo 'This check needs curl.' >&2; exit 1; }
 [ -f .env.local ] || { echo 'Create .env.local from .env.example first.' >&2; exit 1; }
-unset APP_ENV API_PORT POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB POSTGRES_PORT
-unset COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PROFILES
 
 compose() {
   docker compose --env-file .env.local -f compose.yaml "$@"
@@ -25,8 +23,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-sh scripts/docker.sh local check
-sh scripts/docker.sh local up
+npm run docker:check
+npm run docker:up
 api_port=$(compose exec -T api printenv API_PORT)
 curl --fail --silent --show-error "http://127.0.0.1:$api_port/health/live"
 echo
@@ -34,8 +32,8 @@ echo
 # A regular table, rather than a SQL temporary table, can survive a restart.
 db_sql -c "CREATE TABLE $probe_name (value text NOT NULL); INSERT INTO $probe_name VALUES ('persisted');"
 probe_created=true
-sh scripts/docker.sh local down
-sh scripts/docker.sh local up
+npm run docker:down
+npm run docker:up
 
 result=$(db_sql -c "SELECT value FROM $probe_name")
 [ "$result" = persisted ] || { echo 'Database persistence check failed.' >&2; exit 1; }

@@ -68,34 +68,29 @@ From the project directory:
 npm run docker:up
 ```
 
-Your computer's npm looks up this entry in `package.json`:
+Your computer's npm runs this command directly from `package.json`:
 
 ```json
 {
   "scripts": {
-    "docker:up": "sh scripts/docker.sh local up"
+    "docker:up": "docker compose --env-file .env.local -f compose.yaml up --build --detach --wait --wait-timeout 120"
   }
 }
 ```
 
-That starts [scripts/docker.sh](../scripts/docker.sh) on your computer. The helper selects:
+There is no shell dispatcher between npm and Compose. The options in that command select the local settings and define startup behavior:
 
-| Argument | What the helper chooses |
+| Option | Purpose |
 | --- | --- |
-| `local` | `.env.local` and `compose.yaml` |
-| `up` | Build if needed, start services, and wait for health checks. |
+| `--env-file .env.local` | Read local settings. |
+| `-f compose.yaml` | Use the local service definitions. |
+| `up --build` | Build if needed and start or update services. |
+| `--detach` | Leave containers running in the background. |
+| `--wait --wait-timeout 120` | Wait up to 120 seconds for startup health checks. |
 
-It also clears inherited project settings before calling Compose. For example, an old `POSTGRES_PASSWORD` in your terminal will not override the password in `.env.local`.
+Compose uses its standard environment precedence: terminal variables override matching values in the selected environment file. For example, an exported `POSTGRES_PASSWORD` takes precedence over the file's password. Unset an exported project variable when you want its file value instead. A missing required file or setting produces a Compose error.
 
-The resulting Docker command is:
-
-```bash
-docker compose --env-file .env.local -f compose.yaml up --build --detach --wait --wait-timeout 120
-```
-
-`--detach` leaves the containers running in the background. `--wait` means this command reports success only after their health checks pass.
-
-For `docker:up`, host npm only launches this helper. The separate `docker:rebuild` command first runs `npm ci` locally for the editor, then builds the Docker images and updates services. Neither command runs the API locally.
+The separate `docker:rebuild` command runs `npm ci`, then `npm run docker:build`, then a direct Compose startup command. Each step must succeed before the next runs. Neither shortcut runs the API locally.
 
 ## Before reading either file
 
@@ -363,7 +358,7 @@ Reusing this group does not select another settings file or create another sourc
 
 The three entries supply the database username, password, and database name. The `:?` syntax requires each value to be present and nonempty. Otherwise, Compose stops and prints the message after `:?`.
 
-Our startup helper explicitly selects `.env.local`. When calling Compose directly, shell variables can override file values. The helper clears inherited project settings first so that file is the source of these values.
+The local npm commands explicitly select `.env.local`. Compose reads that file and applies its standard precedence: matching terminal variables override file values. The commands do not clear inherited settings.
 
 ### Declare the services
 
@@ -656,7 +651,9 @@ Dependencies still come from the image's `/app/node_modules`. These mounts do no
 
 Override the development image's default `CMD`. This container runs checks instead of starting the development server.
 
-The `check` script runs type checking, linting, tests, and compilation, in that order. It stops at the first failure. The helper removes this one-time container after it exits.
+The `check` script runs type checking, linting, tests, and compilation, in that order. It stops at the first failure. The `--rm` option in `docker:check` removes this one-time container after it exits.
+
+This checks the current shared project files inside the development environment. It does not inspect the already-running API container or test the production image. The current request tests call the Hono app directly without starting an HTTP server.
 
 This `tools` service belongs to `compose.yaml`. It is different from the service in `compose.tools.yaml`, which exists to update dependencies and write package-file changes back to your project.
 
@@ -684,12 +681,10 @@ Normal `npm run docker:down` removes the service containers and project network 
 ```mermaid
 sequenceDiagram
     participant You as Your terminal
-    participant Helper as npm and docker.sh
     participant Compose as Docker Compose
     participant DB as PostgreSQL container
     participant API as API container
-    You->>Helper: npm run docker:up
-    Helper->>Compose: Select .env.local and compose.yaml, then up
+    You->>Compose: npm runs Compose with .env.local and compose.yaml
     Compose->>Compose: Build development image and prepare network
     Compose->>DB: Start with database settings and persistent volume
     DB-->>Compose: Health check passes
@@ -698,7 +693,7 @@ sequenceDiagram
     Compose-->>You: Both services are healthy, command finishes
 ```
 
-Both containers keep running after the command returns because the helper uses `--detach`. It also uses `--wait`, so a successful startup command means both health checks passed.
+Both containers keep running after the command returns because the npm command includes `--detach`. It also includes `--wait`, so a successful startup command means both health checks passed.
 
 No `networks` section is required here. Compose creates a project network automatically and makes service names such as `db` available on it.
 
@@ -739,11 +734,14 @@ Use these commands from your computer:
 | --- | --- | --- |
 | Start services | `npm run docker:up` | Reuse unchanged build steps and apply current settings. |
 | Synchronize editor dependencies and rebuild | `npm run docker:rebuild` | Run local `npm ci`, rebuild API and tools images, and update services. |
+| View status | `npm run docker:ps` | Show current service status. |
+| Validate Compose settings | `npm run docker:check-config` | Check the configuration without starting services or printing resolved credentials. |
+| Build images only | `npm run docker:build` | Prepare API and tools images without updating running containers. |
 | Follow logs | `npm run docker:logs` | Show API and database logs until you press Ctrl+C. |
 | Run code checks | `npm run docker:check` | Build a development tools image if needed, then run a one-time check container. |
 | Stop local services | `npm run docker:down` | Remove service containers and their network while keeping database data. |
 
-The check container uses the same development stage as the API but overrides its startup command with `npm run check`. It reads shared source, tests, and check configuration. Its dependencies remain inside the image. It does not start the source watcher or need real database credentials for the tests themselves. The Compose helper still needs `.env.local` to read the service definitions.
+The check container uses the same development stage as the API but overrides its startup command with `npm run check`. It reads shared source, tests, and check configuration. Its dependencies remain inside the image. It does not start the source watcher or need real database credentials for the tests themselves. The Compose command still needs `.env.local` to read the service definitions.
 
 If you change `.env.local`, run `npm run docker:up` to apply the new settings. Editing the file alone does not change the environment of an existing container.
 
@@ -780,7 +778,7 @@ You normally do not need this extra helper in the hybrid workflow. Local `npm ci
 
 ### Try production
 
-Only when you run `npm run docker:up:production` does the helper select `.env.production` and `compose.production.yaml`.
+`npm run docker:up:production` directly selects `.env.production` and `compose.production.yaml`. Its command is visible in `package.json`, just like the local command.
 
 That flow still reads the selected file, passes values into containers, and validates them in `config.ts`. The production image starts compiled code with `node dist/server.js production` and runs as the regular `node` user. It does not share local source files. What changes is:
 
@@ -807,7 +805,7 @@ This is a production build example, not a public deployment with authentication 
 If startup fails, first check service status and logs:
 
 ```bash
-sh scripts/docker.sh local ps
+npm run docker:ps
 npm run docker:logs
 ```
 
@@ -821,7 +819,7 @@ sh scripts/verify-docker.sh
 
 That script briefly saves a probe row, removes and recreates the local containers, verifies the row survived, and removes its probe table. It also checks the production image. It is a verification tool, not part of every startup.
 
-If your computer has no npm, each Docker shortcut can be replaced by its shell command. For example, `npm run docker:up` and `sh scripts/docker.sh local up` run the same helper.
+To run without npm, copy the corresponding `docker compose` command from `package.json` into your terminal. The rebuild sequence also uses local npm for editor dependencies.
 
 ## References and future updates
 
