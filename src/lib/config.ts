@@ -13,8 +13,18 @@ const credentialSchema = z
   .min(1)
   .refine((value) => value.trim().length > 0 && !value.includes('\0'));
 
+const corsOriginsSchema = z.string().default('').transform((value) =>
+  value.trim() ? value.split(',').map((origin) => origin.trim()) : [],
+).pipe(z.array(z.string().refine((value) => {
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) && url.origin === value && !value.includes('*');
+  } catch { return false; }
+})));
+
 const settingsSchema = z.object({
   APP_ENV: environmentSchema,
+  CORS_ORIGINS: corsOriginsSchema,
   API_PORT: portSchema.default(3000),
   POSTGRES_HOST: z.string().regex(/^[a-zA-Z0-9._:-]+$/).default('127.0.0.1'),
   POSTGRES_PORT: portSchema.default(5433),
@@ -46,6 +56,7 @@ export function loadConfig(environment: unknown, values: NodeJS.ProcessEnv = pro
   return {
     environment: selectedEnvironment.data,
     apiPort: settings.API_PORT,
+    corsOrigins: settings.CORS_ORIGINS,
     database: {
       host: settings.POSTGRES_HOST,
       port: settings.POSTGRES_PORT,

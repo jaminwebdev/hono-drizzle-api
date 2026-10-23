@@ -146,3 +146,18 @@ describe('configuration validation', () => {
       .toThrow('Invalid configuration fields: POSTGRES_PASSWORD.');
   });
 });
+
+describe('browser origin configuration', () => {
+  it('defaults to disabled and parses explicit origins', () => {
+    expect(fromEnvironment(credentials).corsOrigins).toEqual([]);
+    expect(fromEnvironment({ ...credentials, CORS_ORIGINS: 'http://localhost:5173, https://example.test' }).corsOrigins)
+      .toEqual(['http://localhost:5173', 'https://example.test']);
+  });
+
+  it('rejects wildcards and URL paths without echoing the configured value', () => {
+    for (const origin of ['*', 'https://*.example.test', 'https://example.test/private-secret', 'null', 'https://example.test/']) {
+      expect(() => fromEnvironment({ ...credentials, CORS_ORIGINS: origin }))
+        .toThrow('Invalid configuration fields: CORS_ORIGINS.');
+    }
+  });
+});

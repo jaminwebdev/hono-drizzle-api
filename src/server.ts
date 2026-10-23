@@ -8,6 +8,8 @@ try {
   const database = createDatabase(config.database);
   let closing = false;
   const app = createApp({
+    corsOrigins: config.corsOrigins,
+    findOwner: (id) => database.findOwner(id),
     checkDatabase: () => database.checkConnection(),
     isShuttingDown: () => closing,
   });

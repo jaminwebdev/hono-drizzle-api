@@ -1,6 +1,6 @@
 # Hono + Drizzle example API: specification and implementation plan
 
-Status: Gate 7 demo seeding is verified. Local checks, all 25 PostgreSQL integration tests, and both local seed runs passed. Pause for review before Gate 8.
+Status: Gate 8 shared HTTP behavior is verified. Local checks, 81 fast tests, and 26 PostgreSQL integration tests passed. Pause for review before Gate 9.
 
 ## Spec summary
 
@@ -246,9 +246,13 @@ Acceptance: fresh push + seed gives useful report data; repeat seed preserves da
 
 ### Gate 8 — shared HTTP behavior
 
-- [ ] Add request IDs, sanitized errors/logs, secure headers, body limits, validation helpers, and explicit CORS allowlist configuration.
-- [ ] Add server-owned demo identity context, owner lookup failures, pagination parsing, and allowlisted sorting helpers.
-- [ ] Cover malformed/oversized requests, validation details, unexpected errors, and rejection of caller-supplied owner fields.
+- [x] Add request IDs, sanitized errors/logs, secure headers, body limits, validation helpers, and explicit CORS allowlist configuration.
+- [x] Add server-owned demo identity context, owner lookup failures, pagination parsing, and allowlisted sorting helpers.
+- [x] Cover malformed/oversized requests, validation details, unexpected errors, and rejection of caller-supplied owner fields.
+
+Implementation: server-generated IDs, safe JSON errors and field details, route-template request logs, Hono secure headers, a 64 KiB body limit, optional exact-origin CORS, strict mutation schemas, pagination/sort helpers, and a database-backed demo-owner context for future feature routes. Health routes do not depend on the seeded owner. No business routes, schema changes, or dependencies were added. See [http-guide.md](http-guide.md).
+
+Verification: type checking, lint, all 81 fast tests, and bundling passed. The user confirmed all 26 PostgreSQL integration tests passed, including a real owner lookup before and after seeding. HTTP tests exercise malformed/oversized input, streamed body limits, safe errors/logs, spoofed owner fields, missing/failed owner lookup, exact-origin CORS/preflight, and pagination/sort rejection.
 
 Acceptance: response/status/log contracts match S5 and PROJECT_MAP security rules; secret data does not reach logs/errors. API Validation/Error Handling/Logging/Security. Commit: `feat: standardize API validation errors and owner context`.
 
@@ -352,8 +356,8 @@ Official references consulted while planning; recheck compatible versions at imp
 
 ## RELAY
 
-- **Status:** Gate 7 verified. Local checks, 25 PostgreSQL integration tests, and both local seed runs passed.
-- **Handoff:** The user approved Gate 6 and test trimming. Do not create commits or start Gate 8 before review.
-- **User action:** Review Gate 7 and commit when ready. Approve Gate 8 separately.
-- **Next gate:** Shared HTTP behavior and server-selected demo owner context.
-- **Drift risks:** Seed reruns must preserve edits. Never reset demo data automatically or allow production seeds. Stable Drizzle repeat-push churn remains deferred.
+- **Status:** Gate 8 verified. Local checks, 81 fast tests, and 26 PostgreSQL integration tests passed.
+- **Handoff:** Ready for review and manual commit. No assistant commits or Gate 9 work.
+- **User action:** Review shared HTTP behavior and the HTTP guide. Approve Gate 9 separately.
+- **Next gate:** Owner-scoped account and category APIs.
+- **Drift risks:** Never use caller-supplied owner IDs or log raw URLs/inputs. Apply strict mutation schemas and map allowed sort keys to known columns. CORS and demo identity are not authentication. Stable Drizzle repeat-push churn remains deferred.

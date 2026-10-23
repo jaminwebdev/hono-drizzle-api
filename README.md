@@ -1,6 +1,6 @@
 # Bun, Hono, and Drizzle finance API
 
-A personal finance API built in reviewable gates. Users, accounts, categories, tags, transactions, tag links, and monthly budgets are defined. An explicit seed command adds demo data; business routes come next. See the [implementation plan](docs/01-architect-todos.md), [database guide](docs/database-guide.md), and [Docker walkthrough](docs/docker-guide.md).
+A personal finance API built in reviewable gates. Users, accounts, categories, tags, transactions, tag links, and monthly budgets are defined. An explicit seed command adds demo data; business routes come next. See the [implementation plan](docs/01-architect-todos.md), [database guide](docs/database-guide.md), [HTTP guide](docs/http-guide.md), and [Docker walkthrough](docs/docker-guide.md).
 
 Develop locally with Bun 1.3.14. PostgreSQL runs in Docker. The API, Drizzle, type checking, lint, and tests run directly on your machine. In WSL, install Bun in the distro and enable Docker Desktop's WSL Integration for it.
 
@@ -78,6 +78,7 @@ Commands select `.env.local` explicitly through Bun. `bunfig.toml` disables auto
 | --- | --- |
 | `APP_ENV` | `local` during development; `production` for built production code. Startup rejects a mismatched mode. |
 | `API_PORT` | API listening port, default `3000`. Local mode binds only to `127.0.0.1`. |
+| `CORS_ORIGINS` | Optional comma-separated browser origins. Empty disables CORS; use exact origins without paths or trailing slashes. |
 | `POSTGRES_HOST` | Database address, default `127.0.0.1`. The deployment Compose example explicitly supplies `db` to its API container. |
 | `POSTGRES_PORT` | Database connection port, default `5433`. Local Compose publishes this host port to PostgreSQL's internal `5432`. |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Required database credentials shared by local commands and PostgreSQL. |
@@ -97,6 +98,12 @@ Use `bun run check` during development. After schema changes, also run `bun run 
 The schema enforces matching owners, whole-cent money within the allowed range, unique monthly budgets/tag links/reversals, and protected references. See the [database guide](docs/database-guide.md#financial-tables) for the rules and later API work.
 
 The integration runner starts PostgreSQL in a uniquely named Docker project, uses an available loopback port, creates a generated test database, pushes the schema, and runs the tests in local Bun. It checks database identity before clearing fixtures or dropping that database, then removes its container/network. Local and production data volumes stay separate. See the [database guide](docs/database-guide.md#how-database-tests-stay-separate).
+
+## Shared request handling
+
+Every response gets a server-generated `X-Request-Id`, security headers, and `Cache-Control: no-store`. Request bodies are limited to 64 KiB. Errors use consistent JSON; logs contain route templates and status without submitted values. Optional browser access uses `CORS_ORIGINS` and is disabled by default.
+
+Validation, pagination, sorting, and a database-verified demo-owner context are ready for future feature routes. No business endpoints are registered yet. See the [HTTP guide](docs/http-guide.md) for the request flow, error format, and owner rules.
 
 ## Health and shutdown
 

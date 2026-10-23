@@ -1,6 +1,7 @@
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import { users } from './schema.js';
 import type { AppConfig } from '../lib/config.js';
 
 export function createDatabase(connection: AppConfig['database']) {
@@ -23,6 +24,10 @@ export function createDatabase(connection: AppConfig['database']) {
 
   return {
     db,
+    async findOwner(id: string) {
+      const rows = await db.select({ id: users.id }).from(users).where(eq(users.id, id)).limit(1);
+      return rows.length === 1;
+    },
     async checkConnection() {
       await db.execute(sql`select 1`);
     },

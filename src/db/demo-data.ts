@@ -1,7 +1,9 @@
 import type { accounts, budgets, categories, tags, transactions, users, transactionTags } from './schema.js';
 
+import { DEMO_OWNER_ID } from '../lib/demo-identity.js';
+export { DEMO_OWNER_ID } from '../lib/demo-identity.js';
+
 const id = (number: number) => `d0000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
-export const DEMO_OWNER_ID = id(1);
 const createdAt = new Date('2026-01-01T00:00:00Z');
 const timestamps = { createdAt, updatedAt: createdAt };
 const owned = { ownerId: DEMO_OWNER_ID, ...timestamps };
