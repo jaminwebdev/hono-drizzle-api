@@ -90,3 +90,12 @@
 - Static local/production/helper Compose validation, lockfile consistency, documentation links/script names, shell syntax, and whitespace checks pass. Studio browser database access, schema push execution, and the full production stack remain unconfirmed. No commits were created.
 
 - The user subsequently confirmed that both the Studio browser database connection and local `bun run db:push` ran successfully. Bun migration verification is complete for the local workflow; the full production stack remains untested. Pause for review before Gate 5.
+
+
+## Gate 5: owners and reference schema
+
+- Added users, accounts, categories, and tags with UUID defaults and timestamps. Owner-scoped names are unique ignoring case and remain reserved after archive. Names are trimmed, limited to 100 characters, and cannot contain control characters. Emails must be lowercase, trimmed, unique, and have a basic valid shape. Accounts accept checking/savings/cash and USD only. Updates must explicitly set `updated_at`.
+- Each reference has a unique `(owner_id, id)` target for future composite foreign keys. The existing owner-first name and owner/ID indexes also cover owner lookups, so no redundant standalone owner index was added.
+- Database tests use a separate `hono-drizzle-test` Compose project, network, fixed test-only credentials, no published database port, and temporary storage. The runner creates one generated database per run, pushes into that fresh target, and removes only that database. Cleanup verifies database/user identity and a strict generated-name pattern. Fast checks skip integration tests.
+- PostgreSQL 18 reports restricted owner deletions as SQLSTATE `23001`, distinct from missing foreign-key targets (`23503`). Later API conflict mapping must recognize both. A temporary table cannot reference regular tables; the composite-key tests instead create a regular probe table inside a transaction and always roll it back.
+- The user confirmed code checks and local schema push passed. All 57 PostgreSQL integration tests passed, including raw invalid inserts/updates, owner constraints, protected deletion, and cross-owner composite link rejection. Cleanup removed each test database, including after the earlier failed assertions. Docker execution was user-run because the assistant cannot access its socket. No production push, demo seed, migration file, or business route was added. Stop for Gate 5 review before Gate 6.

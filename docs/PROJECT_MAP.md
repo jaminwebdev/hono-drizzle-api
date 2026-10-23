@@ -18,10 +18,12 @@ Build a personal finance API to learn Hono, PostgreSQL, and Drizzle. Work follow
 - `src/server.ts` validates settings before starting `Bun.serve` on `API_PORT`, which defaults to 3000.
 - `bunfig.toml` disables automatic environment-file loading. Compose remains the sole file-selection step. The runtime also uses `--no-env-file` explicitly.
 - `src/lib/config.ts` validates `process.env` only; it never reads files. Compose selects `.env.local` or `.env.production` and supplies values to containers. The single startup argument selects the expected mode, which must match `APP_ENV`. Errors never print credential values.
-- `src/db/client.ts` creates a shared PostgreSQL connection pool and Drizzle client. `src/db/schema.ts` remains empty until Gate 5.
+- `src/db/client.ts` creates a shared PostgreSQL connection pool and Drizzle client. `src/db/schema.ts` defines users, accounts, categories, and tags, including owner-aware unique names and owner-and-ID targets for future foreign keys. Names are 1–100 characters; email values must be normalized. Account types and USD currency are checked in PostgreSQL. `updated_at` requires an explicit value during future mutations.
 - `/health/live` checks the process; `/health/ready` runs a database query with a three-second deadline and returns `503` during an outage or shutdown.
 - SIGTERM and SIGINT stop HTTP requests and close the pool within a ten-second deadline. Compose allows fifteen seconds before forcing a stop.
-- `tests/` checks requests, configuration, readiness, and shutdown behavior.
+- `tests/` checks requests, configuration, readiness, shutdown, and test-target guards. `tests/integration/` checks actual PostgreSQL constraints separately; it is skipped by fast checks.
+- `scripts/test-integration.ts` creates one generated database per run, applies the schema with a test-only Drizzle configuration, runs integration tests, and drops only that database. Cleanup verifies names and connected identities.
+- `docs/database-guide.md` explains reference tables, name rules, indexes, and test isolation.
 - Future feature code belongs in `src/modules/`; shared helpers in `src/lib/`; database code in `src/db/`.
 - Documentation lives in `docs/`, with the entry-point README and project instructions at the repository root.
 
@@ -49,6 +51,7 @@ Build a personal finance API to learn Hono, PostgreSQL, and Drizzle. Work follow
 - `bun run docker:rebuild` runs local `bun install --frozen-lockfile`, builds local API and tooling images, and updates local services without deleting database volumes. It stops on failure; checks remain a separate `docker:check` command. `compose.tools.yaml` remains an optional dependency-update helper; normal checks reuse the development image.
 
 - The optional `db-tools` service runs Drizzle Kit with the selected environment credentials. The separate optional `studio` service shares database-tool settings and publishes only on loopback port 4983. `db:studio` starts or updates this background service; `db:studio:stop` stops it. `docker:down` selects all profiles and removes orphan containers from this project to clean up Studio and older tooling sessions. Drizzle explicitly disables SSL for the bundled PostgreSQL containers, which do not configure it. Production has an explicit push command and no published Studio port.
+- `compose.test.yaml` uses a separate `hono-drizzle-test` project with no published ports or persistent database volumes. `test:integration` runs the suite and stops its services; `test:integration:down` removes the stopped test project. Test credentials are fixed and separate from environment-file credentials.
 - `scripts/verify-docker.sh` checks real container behavior beyond `docker:check`. Its temporary Studio server uses an available loopback port and is removed on exit.
 
 ## Scope limits

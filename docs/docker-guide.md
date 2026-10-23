@@ -2,7 +2,7 @@
 
 This guide brings the local startup explanation and the full instruction walkthrough into one document. It follows our [Dockerfile](../Dockerfile) and local [compose.yaml](../compose.yaml) in order, explaining each instruction or small group of related lines.
 
-It describes the project through Gate 4. The API connects to PostgreSQL through Drizzle and a shared connection pool. Its readiness route runs a real database query; finance tables begin in Gate 5.
+It describes the project through Gate 5. The API connects to PostgreSQL through Drizzle and a shared connection pool. Its readiness route runs a real database query; users, accounts, categories, and tags are now defined; transactions come next.
 
 Use Bun 1.3.14 in your WSL project for editor support. Run the API, PostgreSQL, and verification checks in Docker. Install locked dependencies both locally and in the development image; they remain separate and use the same lockfile. Docker uses Bun 1.3.14.
 
@@ -855,7 +855,7 @@ These host Bun commands run Drizzle Kit inside the optional database-tool contai
 | `bun run db:studio:logs` | Follow Studio logs; Ctrl+C stops following without stopping Studio. |
 | `bun run db:push:production` | Review and apply differences using `.env.production` and the production Compose project. |
 
-[drizzle.config.ts](../drizzle.config.ts) selects PostgreSQL, points to [src/db/schema.ts](../src/db/schema.ts), and uses the same validated connection fields as the API. It does not read a second environment file. Pushes use strict review without force flags, and do not create migration files. They never run during API startup. The schema is empty until Gate 5, so a fresh empty database should have nothing to change.
+[drizzle.config.ts](../drizzle.config.ts) selects PostgreSQL, points to [src/db/schema.ts](../src/db/schema.ts), and uses the same validated connection fields as the API. It does not read a second environment file. Pushes use strict review without force flags, and do not create migration files. They never run during API startup. The schema now defines users, accounts, categories, and tags. The first explicit push creates these tables; no demo rows are inserted yet.
 
 Studio listens on `0.0.0.0:4983` inside its container so Docker can forward connections, but its published host address is only `127.0.0.1:4983`. Studio runs in the background until `db:studio:stop` or `docker:down`. Port 4983 is the connection server, while `https://local.drizzle.studio/?host=127.0.0.1` is the browser UI. The explicit host tells the browser to connect to your computer. Ignore the `host=0.0.0.0` URL printed by Drizzle; that is the listening address inside Docker. No production Studio command is provided. [Drizzle Studio documentation](https://orm.drizzle.team/docs/drizzle-kit-studio)
 
@@ -865,6 +865,27 @@ An old one-off Studio container from the previous command can still occupy port 
 
 
 The API's connection pool allows at most 10 connections. Connection waits are bounded to two seconds, SQL statements to two seconds on PostgreSQL, and query waits to 2.5 seconds in the client. Readiness has its own three-second overall deadline and returns a safe `503` response on failure. Each new readiness request can recover after a database restart.
+
+### Run isolated database tests
+
+```bash
+bun run test:integration
+```
+
+This command uses a fourth Compose file, `compose.test.yaml`. Its purpose differs from the other files:
+
+| File | Purpose |
+| --- | --- |
+| `compose.yaml` | Your normal local API, persistent database, and optional tools/Studio. |
+| `compose.production.yaml` | The production build example with separate persistent storage. |
+| `compose.tools.yaml` | An optional helper for dependency installation without host Bun. |
+| `compose.test.yaml` | A separate test project with a disposable PostgreSQL service and a test runner. |
+
+The test project does not read `.env.local` or `.env.production`, publish a database port, or mount your persistent database volumes. PostgreSQL uses temporary in-memory storage. The runner creates its own database, applies the schema with Drizzle Kit, checks database rules, and removes that database on completion or assertion failure. Compose stops the test services when the runner exits and returns the runner's result.
+
+Use `bun run test:integration:down` to remove stopped test containers and their network. The usual `docker:down` targets the local project, so it does not remove this separate project.
+
+`docker:check` still runs fast checks without a database; the integration tests are skipped there. Both commands are useful after schema changes. The [database guide](database-guide.md) explains the schema and cleanup guards in detail.
 
 ### Inspect a problem or repeat verification
 

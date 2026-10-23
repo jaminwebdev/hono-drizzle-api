@@ -30,7 +30,9 @@
     "db:studio": "docker compose --env-file .env.local -f compose.yaml up --build --detach studio",
     "db:push:production": "docker compose --env-file .env.production -f compose.production.yaml --profile tools run --build --rm db-tools bun --bun run drizzle-kit push --config=drizzle.config.ts",
     "db:studio:stop": "docker compose --env-file .env.local -f compose.yaml stop studio",
-    "db:studio:logs": "docker compose --env-file .env.local -f compose.yaml logs --follow studio"
+    "db:studio:logs": "docker compose --env-file .env.local -f compose.yaml logs --follow studio",
+    "test:integration": "docker compose -f compose.test.yaml up --build --attach integration --abort-on-container-exit --exit-code-from integration",
+    "test:integration:down": "docker compose -f compose.test.yaml down --remove-orphans"
   },
   "dependencies": {
     "hono": "^4.12.9",

@@ -1,0 +1,38 @@
+# Separate project, credentials, network, and temporary database storage.
+name: hono-drizzle-test
+
+services:
+  db:
+    image: postgres:18.6-bookworm
+    environment:
+      POSTGRES_USER: finance_test
+      POSTGRES_PASSWORD: finance_test
+      POSTGRES_DB: finance_test
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U finance_test -d finance_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  integration:
+    build:
+      context: .
+      target: development
+    environment:
+      RUN_DATABASE_TESTS: "1"
+      TEST_DATABASE_HOST: db
+      TEST_DATABASE_USER: finance_test
+      TEST_DATABASE_PASSWORD: finance_test
+    volumes:
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+      - ./scripts:/app/scripts:ro
+      - ./bunfig.toml:/app/bunfig.toml:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    init: true
+    command: ["bun", "--no-env-file", "scripts/test-integration.ts"]

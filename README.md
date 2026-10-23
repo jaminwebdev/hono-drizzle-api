@@ -1,10 +1,10 @@
 # Hono and Drizzle finance API
 
-A personal finance API using Bun, Hono, PostgreSQL, and Drizzle, built in small, reviewable steps. Hono and PostgreSQL now run in separate Docker containers. Drizzle now connects the API to PostgreSQL. Finance tables and routes come in later gates.
+A personal finance API using Bun, Hono, PostgreSQL, and Drizzle, built in small, reviewable steps. Hono and PostgreSQL now run in separate Docker containers. Drizzle now connects the API to PostgreSQL. Users, accounts, categories, and tags are defined. Transactions and business routes come in later gates.
 
 See the [approved plan](docs/01-architect-todos.md) and [project map](docs/PROJECT_MAP.md).
 
-Read the [Docker setup guide and instruction walkthrough](docs/docker-guide.md) for the complete local startup flow, configuration explanation, Dockerfile instructions, and Compose settings.
+Read the [Docker setup guide and instruction walkthrough](docs/docker-guide.md) for the complete local startup flow, configuration explanation, Dockerfile instructions, and Compose settings. The [database guide](docs/database-guide.md) explains the tables, ownership rules, and isolated tests.
 
 ## Start locally
 
@@ -158,7 +158,7 @@ Run these from your host terminal. They build and start optional database-tool c
 
 [drizzle.config.ts](drizzle.config.ts) reads the container's supplied settings through the same validation function as the API. API and tooling both connect to `db:5432` with separate credential fields, without building a password-containing URL. Drizzle explicitly uses `ssl: false` because the bundled PostgreSQL containers do not configure SSL encryption. A future externally hosted database may require different SSL settings.
 
-The [schema file](src/db/schema.ts) is intentionally empty until Gate 5. A fresh empty database should have no schema changes to apply. Pushes use strict review and do not include automatic destructive-confirmation flags. Review any proposed changes before confirming, especially against an existing database. Database commands do not run at API startup.
+The [schema file](src/db/schema.ts) defines `users`, `accounts`, `categories`, and `tags`. Run `bun run db:push` explicitly to create them; no demo rows are added yet. Pushes use strict review and do not include automatic destructive-confirmation flags. Review any proposed changes before confirming, especially against an existing database. Database commands do not run at API startup.
 
 Studio listens on `0.0.0.0` inside its container so Docker can forward connections, but Docker publishes it only on `127.0.0.1` on your computer. The root address on port 4983 is the connection server, not the browser UI. `docker:down` includes all optional services and removes orphan containers from this Compose project, so it also cleans up Studio and leftovers from older tooling commands. Use the browser URL above even if Drizzle logs a URL containing `host=0.0.0.0`; that address is only for listening inside Docker. The production API image does not include Drizzle Kit; an optional development tooling image handles production pushes. [Drizzle Studio documentation](https://orm.drizzle.team/docs/drizzle-kit-studio)
 
@@ -190,6 +190,16 @@ sh scripts/verify-docker.sh
 This runs code checks, verifies database persistence, builds the runtime image, and checks readiness failure/recovery by briefly stopping PostgreSQL. It also starts a temporary Studio server to check its loopback port and verifies clean shutdown on SIGTERM for both the watched development server and a separate built API process.
 
 The script removes its probe table and temporary containers. Local services remain running. Its temporary Studio server uses an available port on `127.0.0.1`, so it does not need port 4983 to be free. Its earlier `docker:down` step removes the regular Studio service if it was running; restart Studio afterward if needed. It does not push a schema or seed data. The Studio check verifies connectivity, not the external browser UI.
+
+## Database integration tests
+
+```bash
+bun run test:integration
+```
+
+This uses `compose.test.yaml`, a separate PostgreSQL service with no published port and temporary storage. Each run creates a fresh database, pushes the schema, tests real database rules, and removes that database. Compose stops the test services afterward. Your local and production databases are separate.
+
+`docker:check` runs the fast tests and skips database integration tests. Use both commands after schema changes. Remove stopped test containers with `bun run test:integration:down`. See the [database guide](docs/database-guide.md#how-database-tests-stay-separate) for the setup and cleanup guards.
 
 ## Change dependencies
 

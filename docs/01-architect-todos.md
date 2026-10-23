@@ -1,6 +1,6 @@
 # Hono + Drizzle example API: specification and implementation plan
 
-Status: Bun migration implemented after Gate 4. User-run Docker verification passed, including all 41 Bun tests and clean watched/built server shutdown. Pause for migration review before Gate 5. Studio browser access and local schema pushes are also user-confirmed.
+Status: Gate 5 implemented and user-verified. Code checks, 57 PostgreSQL integration tests, and the local schema push passed. Pause for review before Gate 6.
 
 ## Spec summary
 
@@ -88,7 +88,8 @@ Planned commands (implement with their owning gate):
 | `docker:up`, `docker:down`, `docker:logs`                     | Explicit local env selection; build/start both services; preserve data on down.                                 |
 | `docker:rebuild` | Run local `bun install --frozen-lockfile`, build local API and tools images, then update services while preserving database volumes. |
 | `docker:up:production`, `docker:down:production`              | Explicit production env and separate project/volume; compiled runtime.                                          |
-| `db:push`, `db:studio`, `db:seed`                             | One-off development tooling container against the Compose DB using `.env.local`; Studio bound to host loopback. |
+| `db:push`, `db:seed` | One-off tooling containers against the local Compose DB; seed arrives in Gate 7. |
+| `db:studio` | Optional reusable Studio service, bound to host loopback. |
 | `db:push:production`                                          | Explicit production target; interactive review; no unconditional destructive flags.                             |
 | `test`, `test:watch`, `test:integration`, `typecheck`, `lint` | Fast Bun test suite, watch, PostgreSQL-backed suite, strict type checking, linting.                               |
 
@@ -197,9 +198,13 @@ Pause for review before Gate 5.
 
 ### Gate 5 — owners and reference schema
 
-- [ ] Define users, accounts, categories, and tags with owner-aware uniqueness, archive fields, checks, and FK targets.
-- [ ] Add isolated test-database lifecycle and guarded cleanup for Bun integration tests.
-- [ ] Push schema and verify case-insensitive uniqueness, invalid values, and owner relationships with PostgreSQL tests.
+- [x] Define users, accounts, categories, and tags with owner-aware uniqueness, archive fields, checks, and FK targets.
+- [x] Add isolated test-database lifecycle and guarded cleanup for Bun integration tests.
+- [x] Push schema and verify case-insensitive uniqueness, invalid values, and owner relationships with PostgreSQL tests.
+
+Implementation: `src/db/schema.ts` defines users and the three owner-scoped reference tables. Names are 1–100 characters, trimmed, and unique per owner ignoring case. Emails are stored lowercase and trimmed. Accounts accept checking/savings/cash and USD only. Accounts/categories can be archived without releasing their names. Unique `(owner_id, id)` pairs support the future finance foreign keys; their indexes also cover owner lookups. `updated_at` must be set by future application updates.
+
+Verification: the user confirmed Docker type checking, lint, fast tests, bundling, and the local `db:push` passed. All 57 integration tests passed against PostgreSQL 18.6, including direct invalid inserts, duplicate updates, different owners sharing names, protected owner deletion, and valid/invalid composite owner links. Each run creates and removes a generated database in a separate test Compose project. Cleanup also ran after the initial assertion failures. Static Compose, documentation-link, lockfile-consistency, and whitespace checks pass. No new business routes, seeds, migration files, or production pushes were added. See [database-guide.md](database-guide.md) for schema and test isolation details.
 
 Acceptance: database rejects invalid direct inserts, not only HTTP payloads. S4/S6; database Relationships/Constraints/Tenancy. Commit: `feat: define owner-scoped finance reference schema`.
 
@@ -333,8 +338,8 @@ Official references consulted while planning; recheck compatible versions at imp
 
 ## RELAY
 
-- **Status:** Bun migration implemented and final user-run Docker smoke checks passed, including 41 tests and both watched/built server shutdown.
-- **Handoff:** Ready for migration review. No assistant commits.
-- **User action:** Review the migration and commit when ready. Gate 5 requires approval.
-- **Next gate:** Gate 5 only after approval.
-- **Drift risks:** Reintroducing Node/npm execution or automatic environment-file loading; mounting host dependencies over container packages; running schema pushes at startup; sharing database volumes across environments.
+- **Status:** Gate 5 schema, local push, code checks, and 57 PostgreSQL integration tests passed through the user's Docker terminal.
+- **Handoff:** Ready for review and manual commit. No assistant commits. Stop before Gate 6.
+- **User action:** Review the schema and database guide, commit when ready, and approve Gate 6 separately.
+- **Next gate:** Transactions, transaction tags, and budgets with composite owner relationships and financial checks.
+- **Drift risks:** Tests targeting local/production storage; caller-selected ownership; startup schema pushes/seeds; missing owner pairs on future foreign keys; failing to update `updated_at` during mutations. PostgreSQL 18 restricted deletions report `23001`, which later conflict handling must recognize alongside `23503`.
