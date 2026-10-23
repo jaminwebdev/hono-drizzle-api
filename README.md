@@ -1,6 +1,6 @@
 # Hono and Drizzle finance API
 
-A personal finance API built in small, reviewable steps. Hono and PostgreSQL now run in separate Docker containers. The API currently exposes a health route; Drizzle and finance routes come in later gates.
+A personal finance API built in small, reviewable steps. Hono and PostgreSQL now run in separate Docker containers. Drizzle now connects the API to PostgreSQL. Finance tables and routes come in later gates.
 
 See the [approved plan](docs/01-architect-todos.md) and [project map](docs/PROJECT_MAP.md).
 
@@ -29,16 +29,16 @@ For later startups with unchanged dependencies, use `npm run docker:up`.
 The first run downloads images and installs dependencies. Later builds reuse unchanged steps. The command waits for PostgreSQL and the API to become healthy.
 
 ```bash
-curl http://localhost:3000/health/live
+curl http://localhost:3000/health/ready
 ```
 
 Expected response:
 
 ```json
-{ "data": { "status": "ok" } }
+{ "data": { "status": "ready" } }
 ```
 
-The API starts after PostgreSQL is ready, but it does not query the database yet. Gate 4 adds that connection and database readiness checks. No schema push or seed runs at startup.
+The API starts after PostgreSQL is ready. Its readiness route uses Drizzle to execute `SELECT 1`; it does not require finance tables or seed data. No schema push or seed runs at startup.
 
 ## What Docker runs
 
@@ -48,7 +48,7 @@ An image is a prepared environment containing a program and its dependencies. A 
 flowchart LR
     Client["Your browser or curl"] -->|"localhost:3000"| API["API container"]
     Source["Your src folder"] -->|"Shared for automatic restarts"| API
-    API -.->|"db:5432 connection comes in Gate 4"| DB["PostgreSQL container"]
+    API -->|"Drizzle and a shared pool at db:5432"| DB["PostgreSQL container"]
     DB --> Data["Named database volume"]
     Tools["Temporary tools container"] --> Checks["Type checks, lint, tests, build"]
 ```
@@ -64,7 +64,7 @@ Run these commands from your WSL project terminal. Each uses `.env.local`, excep
 | Command | Purpose | Effect on containers |
 | --- | --- | --- |
 | `npm run docker:up` | Normal startup. Build the local API image if needed, then wait for API and database health checks. | Start services or update changed containers. |
-| `npm run docker:rebuild` | After dependency changes: run local `npm ci`, build API and tools images, then wait for service health checks. Does not run code checks. | Start services or update changed containers; preserve database data. |
+| `npm run docker:rebuild` | After dependency changes: run local `npm ci`, build API, check tools, and database tools images, then wait for service health checks. Does not run code checks. | Start services or update changed containers; preserve database data. |
 | `npm run docker:check` | Run TypeScript checking, ESLint, Vitest tests, and compilation using the development image and current shared code. | Build if needed, run a temporary tools container, then remove it. Does not inspect the running API or production image. |
 | `npm run docker:check-config` | Validate Compose settings and required environment values without printing resolved credentials. Does not check application code. | Do not build images or start containers. |
 | `npm run docker:build` | Build local API and tools development images only. Also used by `docker:rebuild`. | Do not start or replace running containers. |
@@ -123,7 +123,7 @@ Then run:
 
 ```bash
 npm run docker:up:production
-curl http://localhost:3001/health/live
+curl http://localhost:3001/health/ready
 npm run docker:down:production
 ```
 
@@ -142,13 +142,52 @@ The production image contains compiled JavaScript and production dependencies. I
 
 The different projects also have separate networks. The suggested ports let both run at once. Normal down commands preserve both volumes. Adding `--volumes` to a down command deletes that project's database data.
 
-## Verify Gate 3
+## Database commands
+
+Run these from your host terminal. They build and start optional database-tool containers; the PostgreSQL service starts first if needed.
+
+| Command | Purpose |
+| --- | --- |
+| `npm run db:push` | Compare the TypeScript schema with the local database and review/apply changes directly. No migration files are generated. |
+| `npm run db:studio` | Start or update one background Studio service on `127.0.0.1:4983`. Open `https://local.drizzle.studio/?host=127.0.0.1`. Repeated runs reuse the service. |
+| `npm run db:studio:stop` | Stop Studio and free port 4983 while leaving the API and database running. |
+| `npm run db:studio:logs` | Follow Studio logs. Ctrl+C stops following logs; Studio keeps running. |
+| `npm run db:push:production` | Use the production Compose project and `.env.production` for an explicitly reviewed push. |
+
+[drizzle.config.ts](drizzle.config.ts) reads the container's supplied settings through the same validation function as the API. API and tooling both connect to `db:5432` with separate credential fields, without building a password-containing URL. Drizzle explicitly uses `ssl: false` because the bundled PostgreSQL containers do not configure SSL encryption. A future externally hosted database may require different SSL settings.
+
+The [schema file](src/db/schema.ts) is intentionally empty until Gate 5. A fresh empty database should have no schema changes to apply. Pushes use strict review and do not include automatic destructive-confirmation flags. Review any proposed changes before confirming, especially against an existing database. Database commands do not run at API startup.
+
+Studio listens on `0.0.0.0` inside its container so Docker can forward connections, but Docker publishes it only on `127.0.0.1` on your computer. The root address on port 4983 is the connection server, not the browser UI. `docker:down` includes all optional services and removes orphan containers from this Compose project, so it also cleans up Studio and leftovers from older tooling commands. Use the browser URL above even if Drizzle logs a URL containing `host=0.0.0.0`; that address is only for listening inside Docker. The production API image does not include Drizzle Kit; an optional development tooling image handles production pushes. [Drizzle Studio documentation](https://orm.drizzle.team/docs/drizzle-kit-studio)
+
+### Studio connection troubleshooting
+
+If Studio keeps connecting, open `https://local.drizzle.studio/?host=127.0.0.1`. In Chrome, open the site information icon beside the address bar and allow **Apps on device** or the local/loopback network permission for this site, then reload. The label depends on the browser version. [Chrome local network permissions](https://developer.chrome.com/blog/local-network-access)
+
+If port 4983 is occupied by an older one-off container, find it with `docker ps --filter publish=4983`. Stop the old project's `db-tools-run` container using `docker stop <container-ID>`, then run `npm run db:studio`. This is a one-time cleanup for sessions created by the earlier command. New sessions use the reusable `studio` service.
+
+## Health checks and shutdown
+
+| Route | Meaning |
+| --- | --- |
+| `/health/live` | The API process responds, regardless of database availability. |
+| `/health/ready` | A real database query succeeds. Returns `503` if the database is unavailable, the check exceeds three seconds, or shutdown has begun. |
+
+Docker checks readiness for the API. A running process can therefore be marked unhealthy during a database outage and recover when the database returns. This does not automatically restart an otherwise running container.
+
+The API uses one pool with at most 10 database connections. Connection waits are limited to two seconds; SQL statements have a two-second database limit and a 2.5-second client wait limit. Readiness has its own three-second overall deadline. These limits prevent a failed database from leaving requests waiting indefinitely.
+
+On SIGTERM or Ctrl+C, the server stops accepting new requests, waits for current HTTP requests, and closes its database pool. Shutdown has a ten-second deadline; Compose allows fifteen seconds before forcing a stop.
+
+## Verify Docker and Gate 4
 
 ```bash
 sh scripts/verify-docker.sh
 ```
 
-This runs the code checks, checks the API through its published port, saves a probe row, stops and restarts local services, and reads the row back. It removes the probe table afterward. It also builds the production image and checks that it runs without root privileges, development tools, or environment files. Local services remain running for inspection.
+This runs code checks, verifies database persistence, builds the runtime image, and checks readiness failure/recovery by briefly stopping PostgreSQL. It also starts a temporary Studio server to check its loopback port and a separate compiled API process to verify shutdown on SIGTERM.
+
+The script removes its probe table and temporary containers. Local services remain running. Its temporary Studio server uses an available port on `127.0.0.1`, so it does not need port 4983 to be free. Its earlier `docker:down` step removes the regular Studio service if it was running; restart Studio afterward if needed. It does not push a schema or seed data. The Studio check verifies connectivity, not the external browser UI.
 
 ## Change dependencies
 
@@ -165,7 +204,7 @@ After manually editing dependency declarations in `package.json`, run `npm insta
 `docker:rebuild` runs these steps in order:
 
 1. `npm ci` installs exact locked dependencies locally for your editor.
-2. Docker builds the local API and tools images, reusing unchanged build steps.
+2. Docker builds the local API, check tools, and database tools images, reusing unchanged build steps.
 3. Compose starts or updates local services and waits for health checks. Database storage is preserved.
 
 A failed step stops the command. Code checks remain a separate `npm run docker:check` command. Rebuilding starts services too, so `.env.local` must already exist.

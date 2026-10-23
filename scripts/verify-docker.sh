@@ -16,7 +16,18 @@ db_sql() {
 
 probe_name=gate3_probe_$$
 probe_created=false
+database_stopped=false
+studio_container=''
+shutdown_container=''
 cleanup() {
+  if [ "$database_stopped" = true ]; then
+    compose up --detach --wait --wait-timeout 120 db >/dev/null 2>&1 || true
+  fi
+  for container in "$studio_container" "$shutdown_container"; do
+    if [ -n "$container" ]; then
+      docker rm --force "$container" >/dev/null 2>&1 || true
+    fi
+  done
   if [ "$probe_created" = true ]; then
     db_sql -c "DROP TABLE IF EXISTS $probe_name" >/dev/null 2>&1 || true
   fi
@@ -26,7 +37,8 @@ trap cleanup EXIT
 npm run docker:check
 npm run docker:up
 api_port=$(compose exec -T api printenv API_PORT)
-curl --fail --silent --show-error "http://127.0.0.1:$api_port/health/live"
+api_url=http://127.0.0.1:$api_port
+curl --fail --silent --show-error "$api_url/health/ready"
 echo
 
 # A regular table, rather than a SQL temporary table, can survive a restart.
@@ -37,7 +49,7 @@ npm run docker:up
 
 result=$(db_sql -c "SELECT value FROM $probe_name")
 [ "$result" = persisted ] || { echo 'Database persistence check failed.' >&2; exit 1; }
-curl --fail --silent --show-error "http://127.0.0.1:$api_port/health/live"
+curl --fail --silent --show-error "$api_url/health/ready"
 echo
 echo 'API responds and database data survived down/up.'
 
@@ -46,7 +58,64 @@ docker run --rm --network none --read-only hono-drizzle-runtime-check \
   node --input-type=module -e '
     import { existsSync, readdirSync } from "node:fs";
     if (process.getuid() === 0 || existsSync("/app/node_modules/typescript") ||
+        existsSync("/app/node_modules/drizzle-kit") ||
         readdirSync("/app").some(name => name.startsWith(".env"))) process.exit(1);
     console.log("Runtime image uses a non-root user and excludes development tools and environment files.");
   '
-echo 'Gate 3 checks passed. Local services remain running; the probe table is removed on exit.'
+
+# A stopped database must fail readiness without failing process liveness.
+database_stopped=true
+compose stop db
+ready_status=$(curl --silent --show-error --max-time 8 --output /dev/null \
+  --write-out '%{http_code}' "$api_url/health/ready")
+[ "$ready_status" = 503 ] || { echo 'Expected database readiness status 503.' >&2; exit 1; }
+curl --fail --silent --show-error "$api_url/health/live"
+echo
+compose up --detach --wait --wait-timeout 120 db
+database_stopped=false
+
+attempt=0
+until curl --fail --silent --max-time 6 "$api_url/health/ready"; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 15 ] || { echo 'Database readiness did not recover.' >&2; exit 1; }
+  sleep 1
+done
+echo
+echo 'Readiness returns 503 during a database outage and recovers afterward.'
+
+# Use a temporary host port so an existing Studio session can stay running.
+studio_container=$(compose --profile tools run --detach --no-deps --publish 127.0.0.1::4983 db-tools \
+  npm exec -- drizzle-kit studio --config=drizzle.config.ts --host=0.0.0.0 --port=4983)
+studio_binding=$(docker port "$studio_container" 4983/tcp)
+case "$studio_binding" in
+  127.0.0.1:*) studio_port=${studio_binding##*:} ;;
+  *) echo 'Studio verification must publish only on loopback.' >&2; exit 1 ;;
+esac
+attempt=0
+until node -e '
+  const socket = require("node:net").connect(Number(process.argv[1]), "127.0.0.1");
+  socket.setTimeout(2000);
+  socket.once("connect", () => { socket.destroy(); process.exit(0); });
+  socket.once("error", () => process.exit(1));
+  socket.once("timeout", () => process.exit(1));
+' "$studio_port"; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 20 ] || { docker logs "$studio_container" >&2; exit 1; }
+  sleep 1
+done
+echo 'Studio accepts connections through its loopback-only published port.'
+
+# Test signals against compiled Node code, without the development watcher.
+shutdown_container=$(compose run --detach --no-deps api \
+  sh -c 'npm run build && exec node dist/server.js local')
+attempt=0
+until [ "$(docker inspect --format '{{.State.Health.Status}}' "$shutdown_container")" = healthy ]; do
+  attempt=$((attempt + 1))
+  [ "$attempt" -lt 30 ] || { docker logs "$shutdown_container" >&2; exit 1; }
+  sleep 1
+done
+docker stop --timeout 12 "$shutdown_container" >/dev/null
+[ "$(docker inspect --format '{{.State.ExitCode}}' "$shutdown_container")" = 0 ] || exit 1
+docker logs "$shutdown_container" 2>&1 | grep -F 'HTTP server and database pool closed.'
+echo 'Compiled server closed HTTP and its pool on SIGTERM.'
+echo 'Docker and Gate 4 checks passed. Local services stay running; temporary checks are cleaned up on exit.'

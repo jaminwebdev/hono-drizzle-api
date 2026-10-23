@@ -55,3 +55,26 @@
 - Commands now use standard Compose precedence, without clearing inherited project variables. **Why this matters:** terminal settings can override the explicitly selected environment file; this behavior is documented in README and the Docker guide.
 - Verified all ten direct npm-to-Compose commands with a Docker stub, plus rebuild ordering and stopping after failed installation or build. Both real Compose configurations validate; shell syntax, documentation links, JSON snippets, and whitespace checks pass. **Why this matters:** command behavior is checked without claiming live containers were run from this restricted session.
 - Renamed the Compose validation shortcut to `docker:check-config` for clarity. `docker:check` continues to run code checks in a temporary development container, using current shared source files. **Why this matters:** configuration validation, application checks, and live container health are separate tasks.
+
+
+## Gate 4
+
+- Added a shared PostgreSQL pool, Drizzle client, explicit schema push commands, and local Studio. Finance tables remain for Gate 5. No schema changes run during API startup.
+- Readiness runs a database query with a three-second deadline. Liveness remains independent of PostgreSQL. Shutdown closes HTTP and the pool within ten seconds; Compose allows fifteen seconds.
+- The first Studio verification attempt collided with an occupied host port 4983. The script now requests an available loopback port. The usual Studio command retains port 4983, and existing sessions can remain running.
+- The user supplied a complete successful verification run. Type checking, linting, 41 tests, compilation, persistence, outage recovery, runtime image contents, Studio connectivity, and compiled server shutdown passed. These were user-run checks because the assistant cannot access the Docker socket. Push execution and the full production stack have not been confirmed.
+- Compose reported that the local network was still in use during down. Other containers attached to that network can keep it present after the main API and database are removed. The verification continued and passed; this message was not a port allocation error.
+
+
+## Studio lifecycle and browser connection
+
+- Replaced the one-off Studio command with an optional Compose `studio` service. Repeated `db:studio` commands reuse or update one service. Added stop/log commands, and local `docker:down` now includes all profiles. Older one-off sessions require one-time manual cleanup if they still hold port 4983.
+- The installed Drizzle Kit prints its listening host in the browser URL. Docker requires `--host=0.0.0.0`, but the browser should use `https://local.drizzle.studio/?host=127.0.0.1`. Chrome may also require the Studio site's Apps on device or local/loopback network permission.
+- Compose configuration validates with shared database credentials and loopback-only Studio publishing. Shell syntax and whitespace checks pass. The updated service lifecycle and browser connection still require user verification because this session cannot access Docker's socket.
+
+
+## Studio database SSL correction
+
+- Studio reached PostgreSQL but failed because the server does not support SSL. The installed Drizzle Kit passes an SSL options object when `dbCredentials.ssl` is omitted, while the API's `pg` pool defaults differ. Set `ssl: false` explicitly in `drizzle.config.ts` for the bundled Compose database in both environments. Externally hosted databases may require a different SSL policy.
+- Added `--remove-orphans` to local `docker:down` so it also cleans up leftover containers from earlier tooling commands within this Compose project. Named database volumes remain preserved.
+- The previous smoke check verified Studio's listening port, not a Studio database query. Its successful result did not verify the browser's database connection. The SSL fix still needs user-run Studio verification.

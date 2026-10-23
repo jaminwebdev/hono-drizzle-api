@@ -23,11 +23,12 @@ services:
       db:
         condition: service_healthy
     init: true
+    stop_grace_period: 15s
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + process.env.API_PORT + '/health/live', { signal: AbortSignal.timeout(2000) }).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + process.env.API_PORT + '/health/ready', { signal: AbortSignal.timeout(5000) }).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 5s
-      timeout: 3s
+      timeout: 6s
       retries: 10
       start_period: 10s
 
@@ -59,7 +60,31 @@ services:
       - ./tsconfig.build.json:/app/tsconfig.build.json:ro
       - ./eslint.config.js:/app/eslint.config.js:ro
       - ./vitest.config.ts:/app/vitest.config.ts:ro
+      - ./drizzle.config.ts:/app/drizzle.config.ts:ro
     command: ["npm", "run", "check"]
+
+  db-tools: &db-tools
+    profiles: [tools]
+    build:
+      context: .
+      target: development
+    environment:
+      <<: *database-settings
+      APP_ENV: ${APP_ENV:?Set APP_ENV=local in .env.local}
+    volumes:
+      - ./src:/app/src:ro
+      - ./drizzle.config.ts:/app/drizzle.config.ts:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    init: true
+
+  studio:
+    <<: *db-tools
+    profiles: [studio]
+    command: ["npm", "exec", "--", "drizzle-kit", "studio", "--config=drizzle.config.ts", "--host=0.0.0.0", "--port=4983"]
+    ports:
+      - "127.0.0.1:4983:4983"
 
 volumes:
   postgres_data:

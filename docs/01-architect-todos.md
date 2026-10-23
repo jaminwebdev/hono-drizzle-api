@@ -1,6 +1,6 @@
 # Hono + Drizzle example API: specification and implementation plan
 
-Status: Gate 3, configuration simplification, and hybrid editor support verified. The user confirmed installation and checks passed. Gate 4 has not started.
+Status: Gate 4 implementation and Docker verification passed. Awaiting review before Gate 5. The schema push command still needs a user-run check.
 
 ## Spec summary
 
@@ -166,10 +166,12 @@ Acceptance: Compose validates without exposing resolved credentials; both contai
 
 ### Gate 4 — database connection and Drizzle tools
 
-- [ ] Add pooled database client, Drizzle configuration, explicit push/Studio tooling commands, and production push variant.
-- [ ] Add bounded database readiness and graceful HTTP/pool shutdown.
-- [ ] Verify actual container connectivity, readiness failure/recovery, shutdown, and local-only Studio reachability.
-- [ ] Update `docs/docker-guide.md` to explain the new connection, readiness checks, and database-tool commands.
+- [x] Add pooled database client, Drizzle configuration, explicit push/Studio tooling commands, and production push variant.
+- [x] Add bounded database readiness and graceful HTTP/pool shutdown.
+- [x] Verify actual container connectivity, readiness failure/recovery, shutdown, and local-only Studio reachability.
+- [x] Update `docs/docker-guide.md` to explain the new connection, readiness checks, and database-tool commands.
+
+Verification: the user ran `scripts/verify-docker.sh` successfully. Type checking, linting, all 41 tests, and compilation passed. Database persistence, readiness failure and recovery, temporary loopback Studio access, runtime image contents, and compiled server shutdown passed. The Studio check now requests an available host port so an existing Studio session can stay running. Schema push execution and the full production stack remain unverified.
 
 Acceptance: no migration files/startup push; tools and API share selected credentials; unavailable DB yields `503`. S2/S3/S6; API Connection Pooling. Commit: `feat: connect Drizzle and add database tooling`.
 
@@ -313,8 +315,8 @@ Official references consulted while planning; recheck compatible versions at imp
 
 ## RELAY
 
-- **Status:** Hybrid editor support verified. Direct npm Docker commands replace the shell dispatcher; all ten direct commands and rebuild failure handling are verified with stubs, and both Compose configurations validate. Live Docker execution was not rerun because this session cannot access its socket. Gate 4 has not started.
-- **Handoff:** Ready for review and manual commit. Gate 4 is next, after approval. No commits have been made by the assistant.
-- **User action:** Review direct npm commands and updated Docker documentation; approve Gate 4 when ready.
-- **Suggested next specialist/prompt:** Backend implementation: "Implement Gate 4 in docs/01-architect-todos.md, run its checks, and stop for review. Do not commit."
+- **Status:** Gate 4 implementation and user-run Docker verification passed. The schema is intentionally empty until Gate 5. Local and production push commands are configured, but push execution has not been confirmed.
+- **Handoff:** Ready for Gate 4 review and manual commit. No commits have been made by the assistant.
+- **User action:** Review Gate 4 and confirm `npm run db:push` output before approving Gate 5. Decline any unexpected schema changes.
+- **Suggested next specialist/prompt:** Backend implementation: "Implement Gate 5 in docs/01-architect-todos.md after approval, run its checks, and stop for review. Do not commit."
 - **Drift risks:** Running the API locally unintentionally; sharing host node_modules with containers; reintroducing an application file loader; adding startup pushes/seeds; sharing database volumes across environments.

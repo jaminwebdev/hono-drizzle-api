@@ -17,20 +17,27 @@
     "check": "npm run typecheck && npm run lint && npm test && npm run build",
     "docker:up": "docker compose --env-file .env.local -f compose.yaml up --build --detach --wait --wait-timeout 120",
     "docker:rebuild": "npm ci && npm run docker:build && docker compose --env-file .env.local -f compose.yaml up --detach --wait --wait-timeout 120",
-    "docker:down": "docker compose --env-file .env.local -f compose.yaml down",
+    "docker:down": "docker compose --env-file .env.local -f compose.yaml --profile \"*\" down --remove-orphans",
     "docker:logs": "docker compose --env-file .env.local -f compose.yaml logs --follow api db",
     "docker:check": "docker compose --env-file .env.local -f compose.yaml --profile tools run --build --rm tools",
     "docker:up:production": "docker compose --env-file .env.production -f compose.production.yaml up --build --detach --wait --wait-timeout 120",
     "docker:down:production": "docker compose --env-file .env.production -f compose.production.yaml down",
     "docker:logs:production": "docker compose --env-file .env.production -f compose.production.yaml logs --follow api db",
-    "docker:build": "docker compose --env-file .env.local -f compose.yaml --profile tools build api tools",
+    "docker:build": "docker compose --env-file .env.local -f compose.yaml --profile tools --profile studio build api tools db-tools studio",
     "docker:ps": "docker compose --env-file .env.local -f compose.yaml ps",
-    "docker:check-config": "docker compose --env-file .env.local -f compose.yaml config --quiet"
+    "docker:check-config": "docker compose --env-file .env.local -f compose.yaml config --quiet",
+    "db:push": "docker compose --env-file .env.local -f compose.yaml --profile tools run --build --rm db-tools npm exec -- drizzle-kit push --config=drizzle.config.ts",
+    "db:studio": "docker compose --env-file .env.local -f compose.yaml up --build --detach studio",
+    "db:push:production": "docker compose --env-file .env.production -f compose.production.yaml --profile tools run --build --rm db-tools npm exec -- drizzle-kit push --config=drizzle.config.ts",
+    "db:studio:stop": "docker compose --env-file .env.local -f compose.yaml stop studio",
+    "db:studio:logs": "docker compose --env-file .env.local -f compose.yaml logs --follow studio"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.12",
     "hono": "^4.12.9",
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "drizzle-orm": "^0.45.0",
+    "pg": "^8.16.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",
@@ -39,6 +46,8 @@
     "tsx": "^4.20.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.72.0",
-    "vitest": "^4.0.0"
+    "vitest": "^4.0.0",
+    "drizzle-kit": "^0.31.0",
+    "@types/pg": "^8.15.0"
   }
 }
