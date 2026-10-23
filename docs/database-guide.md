@@ -86,29 +86,29 @@ The API still does not push or seed during startup. Its readiness query works wi
 
 | Command | Purpose |
 | --- | --- |
-| `bun run docker:check` | Run type checking, lint, fast tests, and the application build in Docker. Database integration tests are discovered but skipped here. |
-| `bun run test:integration` | Build a test runner, start isolated PostgreSQL, push the schema into a fresh test database, test actual constraints, then remove that database and stop both services. |
-| `bun run test:integration:down` | Remove the stopped test containers and their network when desired. It targets only the test Compose project. |
+| `bun run check` | Run local type checking, lint, fast tests, and the application build. Database integration tests are discovered but skipped here. |
+| `bun run test:integration` | Start temporary PostgreSQL, push the schema into a fresh test database, run real constraint tests in local Bun, and clean up. |
 
-Integration tests deliberately attempt invalid inserts and deletions. A passing test confirms PostgreSQL rejected them with the expected error. The command shows the test runner's output; PostgreSQL's own logs can contain expected `ERROR` lines. To inspect those logs, use `docker compose -f compose.test.yaml logs db`.
+Integration tests deliberately attempt invalid inserts and deletions. A passing test confirms PostgreSQL rejected them with the expected error. The local runner prints test output; database container logs can contain expected `ERROR` entries because those invalid writes are intentional.
 
 ## How database tests stay separate
 
-[compose.test.yaml](../compose.test.yaml) uses project name `hono-drizzle-test`. It has its own network, fixed test-only credentials, no published database port, and temporary in-memory storage instead of the local or production data volume. It does not read either environment file.
+[compose.test.yaml](../compose.test.yaml) defines PostgreSQL only, with fixed test-only credentials and temporary in-memory storage. The local runner assigns a unique project name and publishes its database on an available `127.0.0.1` port. It does not read either real environment file or use persistent database volumes.
 
 ```mermaid
 flowchart TD
-    Command["bun run test:integration"] --> Services["Start the separate test project"]
-    Services --> Create["Create a database with a generated test name"]
-    Create --> Push["Push the schema with Drizzle Kit"]
-    Push --> Tests["Run PostgreSQL constraint tests"]
-    Tests --> Cleanup["Drop only this run's database"]
-    Cleanup --> Stop["Stop test services"]
-    Local["Local and production databases"] -.->|"Separate projects and storage"| Services
+    Command["bun run test:integration"] --> Services["Start this run's PostgreSQL container"]
+    Services --> Port["Read its assigned loopback port"]
+    Port --> Create["Create a database with a generated test name"]
+    Create --> Push["Local Drizzle Kit pushes the schema"]
+    Push --> Tests["Local Bun runs constraint tests"]
+    Tests --> Cleanup["Drop this database and remove its Docker project"]
 ```
 
-The runner connects first to a dedicated admin database named `finance_test`. It creates a fresh database named `finance_test_` followed by a generated identifier. Tests check the actual database name and connected user before clearing fixture rows. Cleanup checks the admin connection again and drops only the database this run created, even if assertions fail. Unexpected target settings or names are rejected.
+The runner connects first to a dedicated admin database named `finance_test`. It creates a fresh database named `finance_test_` followed by a generated identifier. Tests check the actual database name and connected user before clearing fixture rows. Cleanup checks the admin connection again and drops only the database this run created, even if assertions fail. Unexpected credentials, target names, ports, and non-loopback hosts are rejected.
 
-The test-only Drizzle configuration applies changes without interactive review because the target is newly created and disposable. It does not use force flags. Your ordinary `db:push` configuration still requires review.
+The test-only Drizzle configuration applies changes without interactive review because its target is newly created and disposable. It uses no force flags for schema pushes. Ordinary `db:push` still requires review.
 
-If a run is interrupted, the test service has temporary storage rather than a persistent volume. Use `bun run test:integration:down` to remove remaining test containers. Normal local database data is separate from this cleanup.
+Docker chooses a different available port for each run; the runner passes that port to its local Drizzle/test processes. Unique project names keep simultaneous runs from sharing a container. Temporary container storage is independent of local and production data volumes.
+
+The runner attempts cleanup when interrupted. If cleanup fails, it prints the generated project name. Remove that project with `docker compose -p <project-name> -f compose.test.yaml down --remove-orphans`. The old `test:integration:down` command is gone because normal cleanup is automatic. To remove stopped test containers left from the earlier setup once, use `docker compose -f compose.test.yaml down --remove-orphans`.

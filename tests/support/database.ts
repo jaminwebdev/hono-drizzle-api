@@ -3,15 +3,17 @@ import type { Client, Pool } from 'pg';
 export const TEST_ADMIN_DATABASE = 'finance_test';
 
 export function testDatabaseOptions(values: NodeJS.ProcessEnv = process.env) {
-  if (values.RUN_DATABASE_TESTS !== '1' || values.TEST_DATABASE_HOST !== 'db' ||
+  const port = Number(values.TEST_DATABASE_PORT);
+  if (values.RUN_DATABASE_TESTS !== '1' || values.TEST_DATABASE_HOST !== '127.0.0.1' ||
+      !/^\d+$/.test(values.TEST_DATABASE_PORT ?? '') || !Number.isInteger(port) || port < 1 || port > 65535 ||
       values.TEST_DATABASE_USER !== 'finance_test' ||
       values.TEST_DATABASE_PASSWORD !== 'finance_test') {
     throw new Error('Database tests require the isolated Compose test settings.');
   }
 
   return {
-    host: 'db',
-    port: 5432,
+    host: '127.0.0.1',
+    port,
     user: 'finance_test',
     password: 'finance_test',
     database: TEST_ADMIN_DATABASE,

@@ -1,4 +1,5 @@
 # Separate project, credentials, network, and temporary database storage.
+# The runner overrides this name with a unique project per run.
 name: hono-drizzle-test
 
 services:
@@ -8,6 +9,8 @@ services:
       POSTGRES_USER: finance_test
       POSTGRES_PASSWORD: finance_test
       POSTGRES_DB: finance_test
+    ports:
+      - "127.0.0.1::5432"
     tmpfs:
       - /var/lib/postgresql
     healthcheck:
@@ -16,23 +19,3 @@ services:
       timeout: 3s
       retries: 20
       start_period: 10s
-
-  integration:
-    build:
-      context: .
-      target: development
-    environment:
-      RUN_DATABASE_TESTS: "1"
-      TEST_DATABASE_HOST: db
-      TEST_DATABASE_USER: finance_test
-      TEST_DATABASE_PASSWORD: finance_test
-    volumes:
-      - ./src:/app/src:ro
-      - ./tests:/app/tests:ro
-      - ./scripts:/app/scripts:ro
-      - ./bunfig.toml:/app/bunfig.toml:ro
-    depends_on:
-      db:
-        condition: service_healthy
-    init: true
-    command: ["bun", "--no-env-file", "scripts/test-integration.ts"]

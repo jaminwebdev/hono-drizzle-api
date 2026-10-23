@@ -14,7 +14,7 @@ try {
 
   const server = Bun.serve({
     fetch: app.fetch,
-    hostname: "0.0.0.0",
+    hostname: config.environment === "local" ? "127.0.0.1" : "0.0.0.0",
     port: config.apiPort,
   });
   console.info(`API listening on port ${server.port}`);

@@ -14,7 +14,8 @@ services:
       <<: *database-settings
       APP_ENV: ${APP_ENV:?Set APP_ENV=production in .env.production}
       API_PORT: ${API_PORT:-3001}
-      POSTGRES_PORT: ${POSTGRES_PORT:-5434}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
     ports:
       - "127.0.0.1:${API_PORT:-3001}:${API_PORT:-3001}"
     depends_on:
@@ -44,23 +45,6 @@ services:
       retries: 20
       start_period: 10s
     restart: unless-stopped
-
-  db-tools:
-    profiles: [tools]
-    build:
-      context: .
-      target: development
-    environment:
-      <<: *database-settings
-      APP_ENV: ${APP_ENV:?Set APP_ENV=production in .env.production}
-    volumes:
-      - ./src:/app/src:ro
-      - ./drizzle.config.ts:/app/drizzle.config.ts:ro
-      - ./bunfig.toml:/app/bunfig.toml:ro
-    depends_on:
-      db:
-        condition: service_healthy
-    init: true
 
 volumes:
   postgres_data:

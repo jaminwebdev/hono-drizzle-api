@@ -16,6 +16,7 @@ const credentialSchema = z
 const settingsSchema = z.object({
   APP_ENV: environmentSchema,
   API_PORT: portSchema.default(3000),
+  POSTGRES_HOST: z.string().regex(/^[a-zA-Z0-9._:-]+$/).default('127.0.0.1'),
   POSTGRES_PORT: portSchema.default(5433),
   POSTGRES_USER: credentialSchema,
   POSTGRES_PASSWORD: credentialSchema,
@@ -45,10 +46,9 @@ export function loadConfig(environment: unknown, values: NodeJS.ProcessEnv = pro
   return {
     environment: selectedEnvironment.data,
     apiPort: settings.API_PORT,
-    databaseHostPort: settings.POSTGRES_PORT,
     database: {
-      host: 'db',
-      port: 5432,
+      host: settings.POSTGRES_HOST,
+      port: settings.POSTGRES_PORT,
       user: settings.POSTGRES_USER,
       password: settings.POSTGRES_PASSWORD,
       database: settings.POSTGRES_DB,

@@ -3,13 +3,10 @@ WORKDIR /app
 RUN chown bun:bun /app
 USER bun
 
-FROM base AS development
+FROM base AS build
 COPY --chown=bun:bun package.json bun.lock bunfig.toml ./
 RUN bun install --frozen-lockfile
 COPY --chown=bun:bun . .
-CMD ["bun", "--no-env-file", "--watch", "src/server.ts", "local"]
-
-FROM development AS build
 RUN bun run build
 
 FROM base AS production-dependencies

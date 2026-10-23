@@ -28,14 +28,13 @@ afterEach(() => {
 });
 
 describe('configuration validation', () => {
-  it('uses the Docker database address and separate connection fields', () => {
-    const config = fromEnvironment({ ...credentials, POSTGRES_PORT: '15433' });
+  it('uses the supplied host database address and separate connection fields', () => {
+    const config = fromEnvironment({ ...credentials, POSTGRES_HOST: '127.0.0.1', POSTGRES_PORT: '15433' });
 
     expect(config.apiPort).toBe(3000);
-    expect(config.databaseHostPort).toBe(15433);
     expect(config.database).toEqual({
-      host: 'db',
-      port: 5432,
+      host: '127.0.0.1',
+      port: 15433,
       user: 'finance',
       password: 'test-password',
       database: 'finance',
@@ -70,7 +69,22 @@ describe('configuration validation', () => {
   it('accepts valid port boundaries', () => {
     const config = fromEnvironment({ ...credentials, API_PORT: '65535', POSTGRES_PORT: '1' });
     expect(config.apiPort).toBe(65535);
-    expect(config.databaseHostPort).toBe(1);
+    expect(config.database.port).toBe(1);
+  });
+
+  it('defaults to the published local database address', () => {
+    expect(fromEnvironment(credentials).database).toMatchObject({ host: '127.0.0.1', port: 5433 });
+  });
+
+  it('accepts an explicit container connection without guessing from APP_ENV', () => {
+    const config = loadConfig('production', {
+      ...credentials, APP_ENV: 'production', POSTGRES_HOST: 'db', POSTGRES_PORT: '5432',
+    });
+    expect(config.database).toMatchObject({ host: 'db', port: 5432 });
+  });
+
+  it.each(['', ' ', 'postgres://db', 'db/finance'])('rejects an invalid database host: %s', (host) => {
+    expect(() => fromEnvironment({ ...credentials, POSTGRES_HOST: host })).toThrow('POSTGRES_HOST');
   });
 
   it('preserves passwords containing URL-reserved characters', () => {

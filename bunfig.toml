@@ -1,4 +1,4 @@
-# Compose supplies environment settings. Do not load .env files automatically.
+# Commands select environment files explicitly. Do not load other files automatically.
 env = false
 
 [test]

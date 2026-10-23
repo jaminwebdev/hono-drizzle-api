@@ -3,22 +3,27 @@ import { requireTestDatabaseName, testDatabaseOptions } from './support/database
 
 const settings = {
   RUN_DATABASE_TESTS: '1',
-  TEST_DATABASE_HOST: 'db',
+  TEST_DATABASE_HOST: '127.0.0.1',
+  TEST_DATABASE_PORT: '15435',
   TEST_DATABASE_USER: 'finance_test',
   TEST_DATABASE_PASSWORD: 'finance_test',
 };
 
 describe('database test target guards', () => {
-  it('uses only the dedicated test credentials and internal Docker address', () => {
+  it('uses only the dedicated test credentials and a published loopback port', () => {
     expect(testDatabaseOptions(settings)).toMatchObject({
-      host: 'db', port: 5432, user: 'finance_test', database: 'finance_test', ssl: false,
+      host: '127.0.0.1', port: 15435, user: 'finance_test', database: 'finance_test', ssl: false,
     });
   });
 
   it.each([
     ['RUN_DATABASE_TESTS', undefined],
     ['RUN_DATABASE_TESTS', '0'],
-    ['TEST_DATABASE_HOST', 'localhost'],
+    ['TEST_DATABASE_HOST', 'db'],
+    ['TEST_DATABASE_PORT', undefined],
+    ['TEST_DATABASE_PORT', '0'],
+    ['TEST_DATABASE_PORT', '65536'],
+    ['TEST_DATABASE_PORT', '1.5'],
     ['TEST_DATABASE_HOST', 'production-db'],
     ['TEST_DATABASE_USER', 'finance'],
     ['TEST_DATABASE_PASSWORD', 'local-password'],

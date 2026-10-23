@@ -1,6 +1,6 @@
 # Hono + Drizzle example API: specification and implementation plan
 
-Status: Gate 5 implemented and user-verified. Code checks, 57 PostgreSQL integration tests, and the local schema push passed. Pause for review before Gate 6.
+Status: Gate 5 is complete. The user approved a pivot to host development before Gate 6. Implementation is ready; local checks pass and Docker/runtime verification is pending.
 
 ## Spec summary
 
@@ -8,13 +8,15 @@ Status: Gate 5 implemented and user-verified. Code checks, 57 PostgreSQL integra
 
 Build a **personal finance tracker API**: accounts, categories, immutable income/expense transactions, tags, monthly budgets, and balance/spending reports. This demonstrates foreign keys, many-to-many relationships, constraints, atomic writes, filtering, and aggregation. There is no frontend, bank integration, payment processing, investment accounting, or foreign exchange. Savings goals and transfers are future extensions.
 
-The requirements come from `setup.md`, including manual commits, review gates, tests, separate API/PostgreSQL containers, environment files, persistent storage, Drizzle Studio, seeding, and schema pushes rather than migration files. Authentication is optional follow-up work.
+The requirements come from `setup.md`, including manual commits, review gates, tests, PostgreSQL containers, environment files, persistent storage, Drizzle Studio, seeding, and schema pushes rather than migration files. Authentication is optional follow-up work.
 
 Local design references:
 
 - `./docs/archive/API_design.md`: HTTP Methods (39–65), Status Codes (67–110), Naming/Hierarchy/Filtering (112–201), JSON/Side Effects/Versioning (262–314), Validation/Error Handling (407–454), Logging/Security (456–493), and Connection Pooling/N+1 (516–536).
 - `./docs/archive/database_design.md`: Relationships and Keys (90–103), Constraints (105–117), Normalization/Values (119–187), Time/Transactions/Tenancy/Schema Change (189–209), Schema Review Checklist (211–220), and Personal Finance Tracker (449–502).
 - Design rationale follows `~/.opencode/docs/design_questions.md`, sections 1–9 (Data & Query Modeling through Operational & Maintainability Concerns).
+
+The current host-development workflow supersedes the original container-only setup. Earlier gate verification notes are historical.
 
 The approved project rules are recorded in `docs/PROJECT_MAP.md`. Every gate below must follow its stack, security, and persistence rules.
 
@@ -29,16 +31,16 @@ The approved project rules are recorded in `docs/PROJECT_MAP.md`. Every gate bel
 
 ### S3. Runtime, secrets, and persistence
 
-- Confirmed hybrid workflow: run the API, PostgreSQL, and verification checks in Docker. Install locked dependencies locally with Bun 1.3.14 for editor support. Keep local and container installations separate. The normal long-running services are `api` and `db`; optional `studio` runs separately. One-off development containers run schema pushes and code checks.
-- Default host bindings: API `127.0.0.1:3000`, PostgreSQL `127.0.0.1:5433` mapped to container port `5432`; ports configurable. API listens on `0.0.0.0` inside its container.
-- Local commands explicitly select `.env.local`; production variants explicitly select `.env.production`. Never load both or silently fall back to local credentials for a production command.
+- Approved local workflow: run the API, Drizzle, and checks in host Bun 1.3.14. Docker runs PostgreSQL only during development/testing. Keep the production API image for separate CI/deployment checks.
+- Default addresses: local API `127.0.0.1:3000`; PostgreSQL `127.0.0.1:5433`, published from container port `5432`. Local tools use these host addresses. The production API binds to `0.0.0.0` inside its container.
+- Local commands explicitly select `.env.local` using Bun. Automatic file loading stays disabled. Production examples explicitly select `.env.production` or inject settings. Validation reads supplied values only; never merge both files or guess a database target.
 - Commit `.env.example` with placeholders and descriptions. Ignore actual environment files and exclude them from image build contexts. Never put credentials in Docker build arguments or image layers.
-- One set of database credentials per selected environment: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`. Compose passes them to PostgreSQL and the API; build connection options from validated fields to avoid password URL-escaping bugs.
-- API and tooling containers always connect to `db:5432`. The mapped host port is only an optional convenience for external database clients; it is not used by project commands. No host-versus-container connection switching is needed.
+- One set of database credentials per selected environment: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`. Bun supplies them to local commands and Compose supplies them to PostgreSQL; build connection options from validated fields to avoid password URL-escaping bugs.
+- `POSTGRES_HOST` and `POSTGRES_PORT` are actual client connection settings, defaulting to `127.0.0.1:5433`. Deployment Compose explicitly overrides the API connection to `db:5432`. Do not infer addresses from APP_ENV or Docker detection.
 - Use a named PostgreSQL volume at the correct data path for the selected image major. Local and production Compose project names/volumes must be distinct.
-- Database health check gates API startup. `/health/live` tests the process; `/health/ready` performs a bounded database query and returns `503` on failure. Health checks do not require seeded business records.
-- `docker:up` starts both services but never silently pushes a schema or seeds data. Schema push and seed are explicit steps. Normal `docker:down` preserves volumes.
-- Production uses compiled code in a non-root runtime image. Development uses a bind mount/watch mode with container dependencies kept separate from host `node_modules`.
+- `db:up` waits for the database health check before the developer starts the local API. `/health/live` tests the process; `/health/ready` performs a bounded database query and returns `503` on failure. Health checks do not require seeded business records.
+- `db:up` starts PostgreSQL without pushes/seeds. Start the API separately with `dev`. `db:down` preserves volumes and does not stop local Bun processes.
+- Development uses local dependencies and Bun watch mode. Production uses built code in a non-root runtime image, verified separately.
 - Close the HTTP server and connection pool on termination. Bound body size, database pool size, and database query/connection timeouts.
 - Production environment support is configuration/build support; public deployment and TLS provisioning are outside this exercise. The unauthenticated core remains a local demo.
 
@@ -80,24 +82,9 @@ This preserves original financial entries but is not a complete audit system. Ca
 
 ### S6. Tooling and verification
 
-Planned commands (implement with their owning gate):
+Current commands are documented in README. Use `dev`, `check`, `db:up`, `db:down`, `db:logs`, `db:push`, `db:studio`, and `test:integration` for daily work. `docker:build` prepares the deployment image. Seed commands arrive in Gate 7. No Docker dispatcher, development-tooling containers, or duplicate editor/runtime installs are needed.
 
-| Script                                                        | Behavior                                                                                                        |
-| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `dev`, `build`, `start`                                       | Container-internal commands: watch mounted source, compile, run compiled API.                                   |
-| `docker:up`, `docker:down`, `docker:logs`                     | Explicit local env selection; build/start both services; preserve data on down.                                 |
-| `docker:rebuild` | Run local `bun install --frozen-lockfile`, build local API and tools images, then update services while preserving database volumes. |
-| `docker:up:production`, `docker:down:production`              | Explicit production env and separate project/volume; compiled runtime.                                          |
-| `db:push`, `db:seed` | One-off tooling containers against the local Compose DB; seed arrives in Gate 7. |
-| `db:studio` | Optional reusable Studio service, bound to host loopback. |
-| `db:push:production`                                          | Explicit production target; interactive review; no unconditional destructive flags.                             |
-| `test`, `test:watch`, `test:integration`, `typecheck`, `lint` | Fast Bun test suite, watch, PostgreSQL-backed suite, strict type checking, linting.                               |
-
-The README leads with host Bun shortcuts containing direct Compose commands, with no shell dispatcher. Standard Compose environment precedence applies; terminal values can override the selected file. The approved hybrid setup uses local `bun install --frozen-lockfile` for editor support and `docker:rebuild` to synchronize dependencies and rebuild the local images. Application and database-tool execution and verification remain in Docker. Docker lifecycle shortcuts run on the host and must not recursively launch Docker inside a container.
-
-Use Drizzle Kit pushes only: no migration generator, migration directory, or automatic destructive push. Seeding uses `drizzle-seed` with fixed IDs/seed and fixed business dates; generated relationships must satisfy ownership constraints. Re-running `db:seed` against an existing demo fixture must not duplicate or overwrite user edits: detect the fixture identity and no-op, with a clear message; fail on partial/conflicting fixtures. No automatic reset. Block seeds against production.
-
-Use Bun's built-in test runner throughout. Unit/request tests cover validation/error behavior without a listening server. Database integration tests use actual PostgreSQL in an isolated test database/Compose project and volume, never the local demo or production database. Guard cleanup by explicit test-target checks. Cover constraints, rollback, exact decimal reporting, owner isolation, and concurrent reversal behavior with independent connections. Mocking query builders is not a substitute for these checks.
+Use Bun's test runner throughout. Fast request tests do not open a port or need a database. Integration tests run locally against real PostgreSQL in a uniquely named temporary Docker project on an available loopback port. The runner creates its own database, verifies connection identity before cleanup, and removes its Docker resources. Never use demo/production storage. Cover constraints, rollback, exact decimal reporting, owner isolation, and concurrent reversals with independent connections.
 
 ## Design rationale
 
@@ -209,6 +196,23 @@ Verification: the user confirmed Docker type checking, lint, fast tests, bundlin
 Acceptance: database rejects invalid direct inserts, not only HTTP payloads. S4/S6; database Relationships/Constraints/Tenancy. Commit: `feat: define owner-scoped finance reference schema`.
 
 **PAUSE — user must approve before continuing to next batch.**
+
+### Approved workflow correction after Gate 5
+
+The user approved host development with Bun, keeping PostgreSQL in Docker and the production API image for CI/deployment. Earlier gate verification entries describe the previous container-development workflow.
+
+- [x] Run API, Drizzle, and checks locally; remove development tooling services, dispatcher-style helpers, and rebuild shortcuts.
+- [x] Validate explicit database host/port settings and preserve local database project/volume names.
+- [x] Run integration tests in local Bun with automatically provisioned, isolated PostgreSQL and guarded cleanup.
+- [x] Keep a production-only Dockerfile and optional deployment Compose example.
+- [x] Update application scaffolding, commands, project instructions, and guides.
+- [ ] Verify the local API, Studio, push, integration lifecycle, and production image build through the user's Docker-enabled terminal.
+
+Local verification: type checking, lint, 66 fast tests, and bundling pass. Integration tests remain skipped by the fast suite. Docker execution is unavailable to the assistant in this session.
+
+Suggested commit: `refactor: develop locally with Dockerized PostgreSQL`.
+
+Pause for workflow review before Gate 6.
 
 ### Gate 6 — financial schema
 
@@ -338,8 +342,8 @@ Official references consulted while planning; recheck compatible versions at imp
 
 ## RELAY
 
-- **Status:** Gate 5 schema, local push, code checks, and 57 PostgreSQL integration tests passed through the user's Docker terminal.
-- **Handoff:** Ready for review and manual commit. No assistant commits. Stop before Gate 6.
-- **User action:** Review the schema and database guide, commit when ready, and approve Gate 6 separately.
-- **Next gate:** Transactions, transaction tags, and budgets with composite owner relationships and financial checks.
-- **Drift risks:** Tests targeting local/production storage; caller-selected ownership; startup schema pushes/seeds; missing owner pairs on future foreign keys; failing to update `updated_at` during mutations. PostgreSQL 18 restricted deletions report `23001`, which later conflict handling must recognize alongside `23503`.
+- **Status:** Local-development pivot implemented after Gate 5; local checks passed. Awaiting user-run Docker/database/API verification.
+- **Handoff:** Finish verification and stop for workflow review. No assistant commits.
+- **User action:** Verify the new commands and local runtime, then review the pivot before approving Gate 6.
+- **Next gate:** Transactions, transaction tags, and budgets with owner-aware relationships and financial checks.
+- **Drift risks:** Reintroducing container-only development commands, automatic environment-file mixing, or guessed database addresses; tests touching real storage; startup pushes/seeds; missing owner pairs on future foreign keys.
