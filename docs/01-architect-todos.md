@@ -1,6 +1,6 @@
 # Hono + Drizzle example API: specification and implementation plan
 
-Status: Gate 8 shared HTTP behavior is verified. Local checks, 81 fast tests, and 26 PostgreSQL integration tests passed. Pause for review before Gate 9.
+Status: Gate 9 originally passed all 37 PostgreSQL tests. Its requested simplification passes local checks and 83 fast tests; PostgreSQL verification is pending. Pause before Gate 10.
 
 ## Spec summary
 
@@ -26,8 +26,8 @@ The approved project rules are recorded in `docs/PROJECT_MAP.md`. Every gate bel
 - PostgreSQL, Drizzle ORM with `pg` and a bounded connection pool, Drizzle Kit, `drizzle-seed`, and Zod for configuration/request validation.
 - Resolve compatible stable versions in Gate 1 and record the chosen runtime/PostgreSQL versions. Pin container versions; avoid floating `latest` tags.
 - Export an application factory separately from the server listener so Bun tests can use Hono's request interface without opening a port.
-- Organize by feature: `src/modules/{accounts,categories,transactions,tags,budgets,reports}`; shared HTTP/configuration code in `src/lib`; database client/schema/seed in `src/db`; process startup in `src/server.ts`.
-- Keep handlers thin. Put multi-query business operations in services; query code stays close to the feature. Avoid a generic repository framework.
+- Organize by feature in `src/modules/`, starting with `accounts.ts` and `categories.ts`; shared HTTP/configuration code in `src/lib`; database client/schema/seed in `src/db`; process startup in `src/server.ts`.
+- Keep schemas, route handlers, database queries, and responses together in a readable feature file. Do not split routes into controllers/services/repositories or add feature-specific helper chains. Multi-query operations can use a database transaction directly inside their handler. This supersedes the original thin-handler/service plan at the user's request.
 
 ### S3. Runtime, secrets, and persistence
 
@@ -46,7 +46,7 @@ The approved project rules are recorded in `docs/PROJECT_MAP.md`. Every gate bel
 
 ### S4. Data model and invariants
 
-Start with one seeded demo user and server-selected owner context. Clients cannot choose their owner using headers, body fields, or query parameters. This is a local demo convenience, not authentication. All owner-scoped service functions take an explicit owner ID, making later session integration a contained change.
+Start with one seeded demo user and server-selected owner context. Clients cannot choose their owner using headers, body fields, or query parameters. This is a local demo convenience, not authentication. Handlers obtain the server-selected owner ID from request context and explicitly filter their database queries by it. Later session authentication will replace the owner selection.
 
 | Table              | Purpose and important rules                                                                                                                                                             |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -96,7 +96,7 @@ Answers below correspond to the design-question framework sections cited in S1. 
 2. **Mutation and concurrency — relevant.** Transaction plus initial tags and reversal plus copied tags are atomic. Database constraints arbitrate duplicates and ownership races. Row locks serialize reversal and archive conflicts. Metadata/budget edits use documented last-write-wins semantics. Bulk imports/offline replay are not relevant because no such clients exist. General POST retry deduplication is deferred until an integration needs it.
 3. **History — relevant.** Entries are immutable and reversed rather than silently rewritten; reversal dates restate the original period, while creation timestamps preserve correction timing. No point-in-time report reconstruction, tamper-evident audit, restore UI, legal retention program, or event sourcing: this uses synthetic local demo data. Volume persistence and backup/restore guidance address accidental operational loss, not regulatory guarantees.
 4. **Lifecycle — relevant.** Accounts/categories transition active → archived; unarchive via patch is allowed. Archived parents retain history but reject new entries. Transactions are original or reversal, with at most one reversal per original. No schedulers, pending payment states, timeout transitions, or job retries because no external payment workflow exists.
-5. **Ownership/security — relevant.** All records are scoped to the server's demo owner initially, with composite FKs preventing cross-owner links and service filters preventing cross-owner reads. Test with a second owner. Never accept a caller-supplied owner. Optional authentication replaces demo context; it must not leave a production fallback to demo identity. Field-level roles/ownership transfer are not relevant to a personal tracker.
+5. **Ownership/security — relevant.** All records are scoped to the server's demo owner initially, with composite FKs preventing cross-owner links and owner-filtered queries preventing cross-owner reads. Test with a second owner. Never accept a caller-supplied owner. Optional authentication replaces demo context; it must not leave a production fallback to demo identity. Field-level roles/ownership transfer are not relevant to a personal tracker.
 6. **Scale/caching — relevant, capacity targets deferred.** Bounded pool, input/page sizes, SQL aggregation, explicit projections, and batched tag reads fit the exercise. No Redis, queues, denormalized balance cache, or background jobs: there is no measured need. Measure on a documented fixture before setting a performance claim; large imports/load testing are future scope.
 7. **Integrations — PostgreSQL only.** All consistency stays within one database transaction. Database failures produce bounded sanitized errors, not infinite retries. Provider webhooks, external synchronization, distributed consistency, and upstream retry/backoff are not relevant until a bank/payment integration is approved.
 8. **Frontend — not relevant.** There is no UI, optimistic client cache, offline state, live transport, multi-step form, or client history view. Curl examples and HTTP contracts are the consumer interface.
@@ -226,7 +226,7 @@ Implementation: transaction amounts and budget limits use exact numeric strings 
 
 Verification: local type checking, lint, 66 fast tests, and bundling passed. The user ran all 109 PostgreSQL integration tests successfully and confirmed the local `db:push` applied. Tests include fractional-cent/zero/nonfinite/range rejection, exact SQL sums, cross-owner references, duplicate insert/update rejection, competing reversals, date rules, archive preservation, and protected deletion. The test runner removes its temporary database/container normally. No seeds, API routes, migration files, dependency patch, or dependency upgrade were added.
 
-Deferred tooling issue: repeated pushes can propose rebuilding unchanged composite keys/indexes in the installed stable Drizzle Kit. The user explicitly asked to move on without fixing it; the extra repeat-push guard was removed. Keep normal push review. Opposite-amount/copy/no-chain reversal behavior and archived-parent write coordination belong to later service gates, not this schema gate.
+Deferred tooling issue: repeated pushes can propose rebuilding unchanged composite keys/indexes in the installed stable Drizzle Kit. The user explicitly asked to move on without fixing it; the extra repeat-push guard was removed. Keep normal push review. Opposite-amount/copy/no-chain reversal behavior and archived-parent write coordination belong to later feature gates, not this schema gate.
 
 Acceptance: schema satisfies S4's database rules, using Drizzle pushes only. The repeat-push acceptance condition is waived by the user. S4/S6; database Normalization/Transactions/Schema Review Checklist. Commit: `feat: model transactions tags and monthly budgets`.
 
@@ -260,9 +260,13 @@ Acceptance: response/status/log contracts match S5 and PROJECT_MAP security rule
 
 ### Gate 9 — account and category APIs
 
-- [ ] Implement owner-scoped list/create/get/patch endpoints with archive behavior and bounded pagination.
-- [ ] Map uniqueness and missing/other-owner resources to the specified HTTP errors.
-- [ ] Add request/database tests for duplicate names, archive/unarchive, isolation, and pagination boundaries.
+- [x] Implement owner-scoped list/create/get/patch endpoints with archive behavior and bounded pagination.
+- [x] Map uniqueness and missing/other-owner resources to the specified HTTP errors.
+- [x] Add request/database tests for duplicate names, archive/unarchive, isolation, and pagination boundaries.
+
+Implementation: one account file and one category file each contain validation, route handlers, direct queries, and responses for list/create/get/patch, server-controlled ownership, strict mutation/query fields, active-only default lists, includeArchived, known-column sorting, lookahead pagination, and server-controlled archive/restore timestamps. Database conflicts and availability errors are translated to safe responses. Added a process-local 120-request/minute feature budget to satisfy the backend skill's API rate-limit requirement; health checks are exempt. No dependencies or schema changes. See [accounts-and-categories.md](accounts-and-categories.md).
+
+Verification: the user confirmed all 37 PostgreSQL tests passed for the original implementation. The requested simplification removes services, separate validation files, referenceListOptions, pagination/sort helper chains, and query error wrappers. Local checks and 83 fast tests pass. Feature-level pagination and the same 37 integration tests remain; a fresh PostgreSQL run is pending.
 
 Acceptance: S4/S5 behaviors work against real PostgreSQL; no public user CRUD. API Naming/Status Codes; database Constraints/Tenancy. Commit: `feat: expose accounts and categories API`.
 
@@ -356,8 +360,8 @@ Official references consulted while planning; recheck compatible versions at imp
 
 ## RELAY
 
-- **Status:** Gate 8 verified. Local checks, 81 fast tests, and 26 PostgreSQL integration tests passed.
-- **Handoff:** Ready for review and manual commit. No assistant commits or Gate 9 work.
-- **User action:** Review shared HTTP behavior and the HTTP guide. Approve Gate 9 separately.
-- **Next gate:** Owner-scoped account and category APIs.
-- **Drift risks:** Never use caller-supplied owner IDs or log raw URLs/inputs. Apply strict mutation schemas and map allowed sort keys to known columns. CORS and demo identity are not authentication. Stable Drizzle repeat-push churn remains deferred.
+- **Status:** Gate 9's original 37 PostgreSQL tests passed. The requested direct-handler refactor passes local checks and 83 fast tests; the PostgreSQL rerun is pending.
+- **Handoff:** Keep schemas and queries in their route implementation files. No controller/service/repository split or feature-specific helper chain. No assistant commits or Gate 10 work.
+- **User action:** Rerun `bun run test:integration` to verify the simplified implementation, then review.
+- **Next gate:** Immutable transactions and atomic reversals, including archived-parent write checks.
+- **Drift risks:** Retain owner filters, strict input validation, protected archive history, safe errors, and allowlisted sorting while keeping the code direct. Stable Drizzle repeat-push churn remains deferred.

@@ -1,6 +1,6 @@
 # Bun, Hono, and Drizzle finance API
 
-A personal finance API built in reviewable gates. Users, accounts, categories, tags, transactions, tag links, and monthly budgets are defined. An explicit seed command adds demo data; business routes come next. See the [implementation plan](docs/01-architect-todos.md), [database guide](docs/database-guide.md), [HTTP guide](docs/http-guide.md), and [Docker walkthrough](docs/docker-guide.md).
+A personal finance API built in reviewable gates. Users, accounts, categories, tags, transactions, tag links, and monthly budgets are defined. An explicit seed command adds demo data. Account and category endpoints support listing, creation, updates, and archiving. See the [implementation plan](docs/01-architect-todos.md), [database guide](docs/database-guide.md), [HTTP guide](docs/http-guide.md), [account/category guide](docs/accounts-and-categories.md), and [Docker walkthrough](docs/docker-guide.md).
 
 Develop locally with Bun 1.3.14. PostgreSQL runs in Docker. The API, Drizzle, type checking, lint, and tests run directly on your machine. In WSL, install Bun in the distro and enable Docker Desktop's WSL Integration for it.
 
@@ -93,17 +93,30 @@ If the browser keeps connecting, allow **Apps on device** or the local/loopback 
 
 ## Checks and database tests
 
-Use `bun run check` during development. After schema changes, also run `bun run test:integration`. The database suites focus on our ownership, money, uniqueness, and history safeguards. Service and HTTP behavior tests will accompany those features as they are implemented.
+Use `bun run check` during development. After schema changes, also run `bun run test:integration`. The database suites focus on our ownership, money, uniqueness, and history safeguards. HTTP behavior tests accompany each feature.
 
 The schema enforces matching owners, whole-cent money within the allowed range, unique monthly budgets/tag links/reversals, and protected references. See the [database guide](docs/database-guide.md#financial-tables) for the rules and later API work.
 
 The integration runner starts PostgreSQL in a uniquely named Docker project, uses an available loopback port, creates a generated test database, pushes the schema, and runs the tests in local Bun. It checks database identity before clearing fixtures or dropping that database, then removes its container/network. Local and production data volumes stay separate. See the [database guide](docs/database-guide.md#how-database-tests-stay-separate).
 
+## Account and category APIs
+
+Use `/api/v1/accounts` and `/api/v1/categories` to list or create records. Use `/:id` to read or PATCH one record. Lists hide archived rows by default; `includeArchived=true` includes them. PATCH accepts `archived: true` to archive and `archived: false` to restore. There are no delete routes.
+
+```bash
+curl 'http://127.0.0.1:3000/api/v1/accounts?limit=10'
+curl -i http://127.0.0.1:3000/api/v1/categories \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Dining out"}'
+```
+
+See the [account/category guide](docs/accounts-and-categories.md) for supported fields, list options, response behavior, and examples. Transaction routes arrive in Gate 10.
+
 ## Shared request handling
 
 Every response gets a server-generated `X-Request-Id`, security headers, and `Cache-Control: no-store`. Request bodies are limited to 64 KiB. Errors use consistent JSON; logs contain route templates and status without submitted values. Optional browser access uses `CORS_ORIGINS` and is disabled by default.
 
-Validation, pagination, sorting, and a database-verified demo-owner context are ready for future feature routes. No business endpoints are registered yet. See the [HTTP guide](docs/http-guide.md) for the request flow, error format, and owner rules.
+Account and category routes use strict validation, bounded pagination, sorting, and a database-verified demo-owner context. Feature routes share a process-local limit of 120 requests per minute; excess requests return `429` and `Retry-After`. Health checks are outside this limit. See the [HTTP guide](docs/http-guide.md) for the request flow, error format, and owner rules.
 
 ## Health and shutdown
 

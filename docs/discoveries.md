@@ -142,3 +142,17 @@
 - Hono's `queries()` supplies arrays even for single values. Helpers unwrap exactly one value and reject duplicates. Tests exercise request behavior through test-only routes rather than adding example endpoints to the running application. The shared owner lookup is ready for Gate 9; health checks remain independent of the seeded owner.
 - Moved the shared demo identity to `src/lib/demo-identity.ts`, with the existing fixture export preserved. The API no longer imports and initializes the seed dataset.
 - Type checking, lint, 81 fast tests, and bundling pass. The user confirmed all 26 PostgreSQL integration tests passed, including the real HTTP owner lookup before and after seeding. The session cannot access Docker's socket, so database verification was user-run. Added the HTTP guide and updated the README and project ledger. Pause for Gate 8 review before Gate 9.
+
+
+## Gate 9: account and category endpoints
+
+- The user approved Gate 8 and requested Gate 9. Added feature validation, thin HTTP routes, and owner-scoped services for list/create/get/patch. The server registers them through `src/api.ts`. Names are trimmed and unique per owner ignoring case, including archived records. Lists default to active records, support includeArchived and allowlisted sorting, and use bounded lookahead pagination. Archive/restore uses a single UPDATE, preserves the first archive timestamp, and retains history.
+- Added shared input rules and driver-error translation. Other-owner resources return the same 404 as missing records; known unique conflicts return 409, invalid values 422, and unavailable database operations 503. Feature input tests reject caller owner fields and read-only timestamps before service calls. Added the backend skill's required API rate limit as a small shared process-local 120-request/minute budget, with 429/Retry-After and health exemptions. No IP tracking, dependencies, schema changes, or generic repository framework.
+- Local type checking, lint, 84 fast tests, and bundling pass. Added 11 real-endpoint database tests; the 37-test PostgreSQL run awaits user verification because this session cannot access Docker's socket. Updated API documentation and the project ledger. Pause for Gate 9 review before Gate 10.
+
+
+## Gate 9 review: direct route implementations
+
+- The user confirmed all 37 PostgreSQL tests passed, then rejected the route/service/helper layering as overly abstract. Consolidated each feature into one file containing schemas, handlers, direct database queries, and responses. Removed the feature service and validation files, `referenceListOptions`, unused pagination/sort helpers, and per-query error wrappers. The app error handler now translates database errors centrally.
+- Retained the same endpoint behavior and 37 database tests. Fast validation tests now verify rejection before database queries rather than before mock service calls. Removed one test for the deleted generic pagination/sort helpers; actual feature pagination tests remain. Local type checking, lint, 83 fast tests, and build pass; the PostgreSQL rerun is pending.
+- Updated AGENTS.md, the architecture plan, project map, and API guides to carry the user's preference forward. Keep future feature schemas, handlers, and queries together. No controller/service/repository split or feature-specific helper chains without a concrete need approved by the user. Pause before Gate 10.

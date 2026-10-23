@@ -4,7 +4,9 @@ import { secureHeaders } from 'hono/secure-headers';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { withTimeout } from './lib/with-timeout.js';
+import { toApiError } from './lib/database-errors.js';
 import { ApiError, errorResponse, type AppEnv } from './lib/http.js';
+import { apiLimit } from './lib/api-limit.js';
 import { demoOwner, type FindOwner } from './lib/demo-owner.js';
 
 export const READINESS_TIMEOUT_MS = 3_000;
@@ -43,13 +45,12 @@ export function createApp({
   app.use('*', secureHeaders());
   if (corsOrigins.length) app.use('*', cors({
     origin: corsOrigins, allowMethods: ['GET', 'HEAD', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type'], exposeHeaders: ['X-Request-Id', 'Location'], credentials: false,
+    allowHeaders: ['Content-Type'], exposeHeaders: ['X-Request-Id', 'Location', 'Retry-After'], credentials: false,
   }));
   app.use('*', bodyLimit({ maxSize: MAX_BODY_BYTES, onError: () => {
     throw new ApiError(413, 'PAYLOAD_TOO_LARGE', 'Request body exceeds 64 KiB.');
   } }));
-  app.onError((error, c) => errorResponse(c, error instanceof ApiError ? error :
-    new ApiError(500, 'INTERNAL_ERROR', 'An unexpected error occurred.')));
+  app.onError((error, c) => errorResponse(c, toApiError(error)));
 
   app.get('/health/live', (c) => c.json({ data: { status: 'ok' } }));
   app.get('/health/ready', async (c) => {
@@ -63,8 +64,9 @@ export function createApp({
     }
   });
 
-  // Feature routes arrive in Gate 9. Their owner context is shared here.
+  // All feature routes share the server-selected owner context.
   if (apiRoutes) {
+    app.use('/api/v1/*', apiLimit());
     app.use('/api/v1/*', demoOwner(findOwner ?? (() => Promise.resolve(false))));
     app.route('/api/v1', apiRoutes);
   }

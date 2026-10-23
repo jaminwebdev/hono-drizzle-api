@@ -130,7 +130,7 @@ An optional `reversal_of_id` points to another transaction belonging to the same
 
 PostgreSQL blocks deletion of an account/category referenced by a transaction, a category referenced by a budget, a tag referenced by a tag link, or a transaction referenced by a reversal or tag link. Archiving an account/category preserves its rows and related history. A budget can be edited/deleted, and tag links can be removed explicitly.
 
-The later reversal service must insert the exact opposite amount and copy the original account, category, business timestamp, and tags atomically. It must also reject reversing a reversal and coordinate writes with archiving. These cross-row business operations are not implemented in this schema gate. Direct administrative SQL remains outside the API's immutability boundary; no trigger makes transaction rows globally read-only.
+The later reversal handler must insert the exact opposite amount and copy the original account, category, business timestamp, and tags atomically. It must also reject reversing a reversal and coordinate writes with archiving. These cross-row business operations are not implemented in this schema gate. Direct administrative SQL remains outside the API's immutability boundary; no trigger makes transaction rows globally read-only.
 
 ### Indexes and their purpose
 
@@ -202,7 +202,7 @@ A completed seed is detected by its reserved IDs, owner, and original tag associ
 
 The database suites cover a small set of rules declared in our schema: owner isolation, reserved names, money limits, unique reversals and monthly budgets, and protected financial history. They use real tables, including competing reversal inserts. They do not check UUID generation, timestamp conversion, SQL arithmetic, or every field-validation example.
 
-The schema suites cover database safeguards only. Seed tests call our seed operation to check its results, safe repeats, conflicts, concurrent runs, and production rejection. Tests for creating transactions, copying reversal tags, refusing writes to archived accounts, and calculating reports belong at the service or HTTP boundary when those features exist.
+The schema suites cover database safeguards only. Seed tests call our seed operation to check its results, safe repeats, conflicts, concurrent runs, and production rejection. Tests for creating transactions, copying reversal tags, refusing writes to archived accounts, and calculating reports belong at the HTTP boundary when those features exist.
 
 Integration tests deliberately attempt invalid inserts and deletions. A passing test confirms PostgreSQL rejected them with the expected error. The local runner prints test output; database container logs can contain expected `ERROR` entries because those invalid writes are intentional.
 

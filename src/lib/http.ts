@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 
 export type AppEnv = { Variables: { requestId: string; ownerId: string } };
-export type ErrorStatus = 400 | 404 | 409 | 413 | 415 | 422 | 500 | 503;
+export type ErrorStatus = 400 | 404 | 409 | 413 | 415 | 422 | 429 | 500 | 503;
 export interface ValidationDetail { path: string; message: string }
 
 export class ApiError extends Error {

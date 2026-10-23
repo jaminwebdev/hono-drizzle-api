@@ -1,3 +1,4 @@
+import { createApi } from "./api.js";
 import { createApp } from "./app.js";
 import { loadConfig } from "./lib/config.js";
 import { createDatabase } from "./db/client.js";
@@ -8,6 +9,7 @@ try {
   const database = createDatabase(config.database);
   let closing = false;
   const app = createApp({
+    apiRoutes: createApi(database.db),
     corsOrigins: config.corsOrigins,
     findOwner: (id) => database.findOwner(id),
     checkDatabase: () => database.checkConnection(),

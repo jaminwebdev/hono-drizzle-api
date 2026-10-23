@@ -1,22 +1,21 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { createApp, MAX_BODY_BYTES, type RequestLog } from '../src/app.js';
+import { API_REQUEST_LIMIT } from '../src/lib/api-limit.js';
 import { DEMO_OWNER_ID } from '../src/db/demo-data.js';
 import type { AppEnv } from '../src/lib/http.js';
-import { mutationObject, parsePagination, parseSort, readJson } from '../src/lib/validation.js';
+import { readJson } from '../src/lib/validation.js';
 
 function setup(options: { findOwner?: (id: string) => Promise<boolean>; corsOrigins?: string[] } = {}) {
   const logs: RequestLog[] = [];
   const api = new Hono<AppEnv>();
   api.post('/examples', async (c) => {
-    const body = await readJson(c, mutationObject({ name: z.string().min(1).max(100) }));
+    const body = await readJson(c, z.strictObject({ name: z.string().min(1).max(100) }));
     return c.json({ data: { ...body, ownerId: c.get('ownerId') } }, 201);
   });
   api.get('/examples/:id', (c) => c.json({ data: { ownerId: c.get('ownerId') } }));
-  api.get('/examples', (c) => c.json({ data: {
-    ...parsePagination(c.req.queries()), ...parseSort(c.req.queries(), ['name', 'createdAt'], 'createdAt'),
-  } }));
+  api.get('/examples', (c) => c.json({ data: [] }));
   api.get('/failure', () => { throw new Error('password=private-database-secret SQL SELECT'); });
   const app = createApp({ apiRoutes: api, findOwner: () => Promise.resolve(true),
     logRequest: (entry) => { logs.push(entry); }, ...options });
@@ -137,17 +136,19 @@ describe('shared HTTP behavior', () => {
     expect((await missing.request('/health/live')).status).toBe(200);
   });
 
-  it('uses bounded pagination and only accepted sort keys and directions', async () => {
+  it('limits feature requests, leaves health available, and reopens the budget after a minute', async () => {
     const { app } = setup();
-    const defaults = await app.request('/api/v1/examples');
-    expect(await defaults.json()).toEqual({ data: { page: 1, limit: 25, offset: 0, sort: 'createdAt', direction: 'desc' } });
-    const selected = await app.request('/api/v1/examples?page=3&limit=10&sort=name&direction=asc');
-    expect(await selected.json()).toEqual({ data: { page: 3, limit: 10, offset: 20, sort: 'name', direction: 'asc' } });
-    for (const query of ['limit=101', 'page=0', 'page=1&page=2', 'sort=private-secret', 'direction=sideways', 'page=9007199254740991']) {
-      const response = await app.request(`/api/v1/examples?${query}`);
-      expect(response.status).toBe(422);
-      expect((await errorBody(response)).error.code).toBe('VALIDATION_ERROR');
+    for (let index = 0; index < API_REQUEST_LIMIT; index++) {
+      expect((await app.request('/api/v1/examples')).status).toBe(200);
     }
+    const limited = await app.request('/api/v1/examples');
+    expect(limited.status).toBe(429);
+    expect((await errorBody(limited)).error.code).toBe('RATE_LIMITED');
+    expect(Number(limited.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect((await app.request('/health/live')).status).toBe(200);
+    const clock = spyOn(Date, 'now').mockReturnValue(Date.now() + 60_001);
+    try { expect((await app.request('/api/v1/examples')).status).toBe(200); }
+    finally { clock.mockRestore(); }
   });
 
   it('keeps browser-origin sharing disabled by default and matches the configured allowlist exactly', async () => {
