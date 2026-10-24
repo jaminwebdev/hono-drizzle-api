@@ -1,6 +1,6 @@
 # Separate project, credentials, network, and temporary database storage.
 # The runner overrides this name with a unique project per run.
-name: hono-drizzle-test
+name: hono-drizzle-postgres-test
 
 services:
   db:
@@ -14,7 +14,8 @@ services:
     tmpfs:
       - /var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U finance_test -d finance_test"]
+      test:
+        ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U finance_test -d finance_test"]
       interval: 2s
       timeout: 3s
       retries: 20

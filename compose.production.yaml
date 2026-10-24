@@ -1,4 +1,4 @@
-name: hono-drizzle-production
+name: hono-drizzle-postgres-production
 
 x-database-settings: &database-settings
   POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.production}
@@ -26,7 +26,14 @@ services:
     stop_grace_period: 15s
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "bun", "--no-env-file", "-e", "fetch('http://127.0.0.1:' + process.env.API_PORT + '/health/ready', { signal: AbortSignal.timeout(5000) }).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "bun",
+          "--no-env-file",
+          "-e",
+          "fetch('http://127.0.0.1:' + process.env.API_PORT + '/health/ready', { signal: AbortSignal.timeout(5000) }).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
       interval: 5s
       timeout: 6s
       retries: 10
@@ -40,7 +47,11 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      test:
+        [
+          "CMD-SHELL",
+          'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"',
+        ]
       interval: 3s
       timeout: 3s
       retries: 20
