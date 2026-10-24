@@ -1,5 +1,0 @@
-# Commands select environment files explicitly. Do not load other files automatically.
-env = false
-
-[test]
-root = "./tests"
