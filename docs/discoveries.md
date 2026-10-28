@@ -1,5 +1,17 @@
 # Project discoveries
 
+## 2026-10-28. Auth now precedes finance features
+
+The user chose email/password login with server-side sessions in HttpOnly, Secure cookies, with Requestly desktop as the manual client. The revised plan introduces users and sessions before accounts and adds ownership with every finance table and endpoint.
+
+Why this matters: the original plan assumed one unauthenticated local dataset. Merely adding a login route would leave finance queries, tags, category references, summaries, and deleted transaction history exposed across users. Those ownership rules must arrive with each feature instead of becoming a later retrofit. The plan remains pending implementation approval.
+
+## 2026-10-28. Bun 1.3.14 supports the proposed password-hash settings
+
+A synthetic local check called `Bun.password.hash` with `algorithm: "argon2id"`, `memoryCost: 19456`, and `timeCost: 2`. The encoded parameters were `m=19456,t=2,p=1`, and `Bun.password.verify` accepted the same invented password. No user password or hash was printed or stored in the repository.
+
+Why this matters: current Bun documentation describes newer releases. Checking the pinned runtime confirms that the plan's password API and memory units work on Bun 1.3.14. This primitive check does not validate the future authentication implementation.
+
 ## 2026-10-23. Old Docker storage remains after the source restart
 
 Docker reported one volume, `hono-drizzle-local_postgres_data`, and no containers. Its Compose labels identify project `hono-drizzle-local` and volume key `postgres_data`. The remaining Compose files use different names, `hono-drizzle-postgres-local` and `hono-drizzle-postgres-production`. A later Docker inventory may differ from this snapshot.
