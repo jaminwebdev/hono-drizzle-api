@@ -1,4 +1,4 @@
-setup.md
+/setup.md
 .env*
 !.env.example
 node_modules/

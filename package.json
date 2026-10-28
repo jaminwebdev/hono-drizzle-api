@@ -9,6 +9,12 @@
   },
   "scripts": {
     "dev": "bun --env-file=.env.local --watch src/server.ts",
+    "db:up": "bun --env-file=.env.local exec 'docker compose --env-file /dev/null -p finance-tracker-fresh-local -f compose.yaml up -d --wait'",
+    "db:down": "bun --env-file=.env.local exec 'docker compose --env-file /dev/null -p finance-tracker-fresh-local -f compose.yaml down'",
+    "db:logs": "bun --env-file=.env.local exec 'docker compose --env-file /dev/null -p finance-tracker-fresh-local -f compose.yaml logs --follow db'",
+    "db:test:up": "bun --env-file=.env.test exec 'docker compose --env-file /dev/null -p finance-tracker-fresh-test -f compose.test.yaml up -d --wait'",
+    "db:test:down": "bun --env-file=.env.test exec 'docker compose --env-file /dev/null -p finance-tracker-fresh-test -f compose.test.yaml down'",
+    "db:test:logs": "bun --env-file=.env.test exec 'docker compose --env-file /dev/null -p finance-tracker-fresh-test -f compose.test.yaml logs --follow db'",
     "build": "bun --no-env-file build src/server.ts --target=bun --outdir=dist",
     "typecheck": "bun --no-env-file run --bun tsc --noEmit",
     "lint": "bun --no-env-file run --bun eslint .",

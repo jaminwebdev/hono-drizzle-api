@@ -1,6 +1,6 @@
 # Development runs Bun locally. Compose manages PostgreSQL only.
 # Bun's db:* commands supply settings from .env.local.
-name: hono-drizzle-postgres-local
+name: finance-tracker-fresh-local
 
 services:
   db:
@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.local}
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.local}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:?Set POSTGRES_PORT in .env.local}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:

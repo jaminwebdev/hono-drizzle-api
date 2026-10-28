@@ -1,4 +1,4 @@
-name: hono-drizzle-postgres-production
+name: finance-tracker-fresh-production
 
 x-database-settings: &database-settings
   POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.production}
@@ -43,7 +43,7 @@ services:
     image: postgres:18.6-bookworm
     environment: *database-settings
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:-5434}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:?Set POSTGRES_PORT in .env.production}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:

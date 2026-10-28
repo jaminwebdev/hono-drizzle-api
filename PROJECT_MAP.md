@@ -6,7 +6,9 @@ The application runs on Bun 1.3.14 with Hono. `src/server.ts` starts a loopback 
 
 `bun run check` runs type checking, ESLint, and the Bun build. The bundle is `dist/server.js`. `bunfig.toml` disables automatic environment loading for application commands; `dev` explicitly selects `.env.local`. See [project notes](docs/discoveries.md) for the Bun package-manager exception.
 
-The current application is a liveness scaffold. Database connections, authentication, and finance features follow in the [approval-gated implementation plan](sessions/001_fresh_start/01-architect-todos.md).
+PostgreSQL runs separately through `bun run db:up` and `bun run db:down`. Test commands use the `db:test:*` namespace. Local and test Compose files contain only PostgreSQL and retain their named volumes on shutdown. The [setup guide](docs/setup.md) lists environment identities and operating commands.
+
+The current API is a liveness scaffold with no database queries. Database connection code, authentication, and finance features follow in the [approval-gated implementation plan](sessions/001_fresh_start/01-architect-todos.md).
 
 ## Confirmed project rules
 
@@ -23,12 +25,12 @@ The current application is a liveness scaffold. Database connections, authentica
 | R9. Schema changes | Use `drizzle-kit push` for all database schema changes, including local development, integration tests, and production checks. Do not generate or apply database migration files. |
 | R10. Learning sequence | Scaffold first, then authentication, accounts, transactions, tags, and categories. Add each feature's schema, endpoints, middleware, validation, tests, and examples in small steps before moving to the next feature. Extend the schema with pushes as needed. Do not create the whole schema or future feature files in advance. Each review should explain the current request flow and how it changed. |
 | R11. Authentication | Use email/password login and server-side sessions with an opaque session credential in an HttpOnly, Secure cookie. Build authentication after the scaffold and enforce user ownership as each finance feature is introduced. Passkeys and external login providers are deferred. |
-| R12. Manual API testing | Use Requestly desktop for the documented manual walkthrough. Use its cookie jar for the session and a separate CSRF token for writes. Do not require copying the session credential into collection or environment variables. |
+| R12. Manual API testing | The user controls the development API in their own terminal and prefers manual checks in Requestly desktop. Agents may probe an existing instance when necessary. Use Requestly's cookie jar for the session and a separate CSRF token for writes. Do not require copying the session credential into collection or environment variables. |
 
 ## Boundaries
 
 Build the remaining features only after their phase is approved. Authentication and ownership must precede finance endpoints. Each user will access only their own records. Public deployment is a separate decision.
 
-Preserve existing Docker data. The Compose files still use `hono-drizzle-postgres-local` and `hono-drizzle-postgres-production`; their fresh-storage setup is the next phase. PostgreSQL 18 volumes use `/var/lib/postgresql`.
+Preserve existing Docker data. The Compose projects are `finance-tracker-fresh-local`, `finance-tracker-fresh-test`, and `finance-tracker-fresh-production`. Host database ports are 5433, 5435, and 5434 respectively, all bound to loopback. PostgreSQL 18 volumes use `/var/lib/postgresql`.
 
 The retained Dockerfile and production Compose configuration have not been validated for this scaffold. Follow the host development commands in the [README](README.md).

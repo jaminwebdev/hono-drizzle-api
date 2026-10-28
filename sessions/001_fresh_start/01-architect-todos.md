@@ -1,6 +1,6 @@
 # Finance tracker architecture and implementation todos
 
-This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phase 1 is complete. Later phases remain subject to their individual approval gates.
+This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases 1 and 2 are complete. Later phases remain subject to their individual approval gates.
 
 ## Spec summary
 
@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. The user approved phase 1. Its completion is recorded below; subsequent phases need separate approval.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. The user approved phases 1 and 2. Their completion is recorded below; subsequent phases need separate approval.
 
 ### Build one feature at a time
 
@@ -497,7 +497,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-Phase 1 is approved and complete. Phase 2 is the next approval gate. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1 and 2 are approved and complete. Phase 3 is the next approval gate. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests and guide edits, not permission to create an absent file early. The scaffold has eight planned files; later phases target two to seven and may reach nine with dependency/configuration work. Before implementation, split any phase that would reach ten files or mix separate behaviors. Split within the same feature and update phase references before proceeding.
 
@@ -527,12 +527,14 @@ PAUSE — user must approve before continuing to next batch.
 
 Expected files, 6: `compose.yaml`, `compose.test.yaml`, `compose.production.yaml`, `.env.example`, `package.json`, `docs/setup.md`.
 
-- [ ] Set the fresh local/production Compose names and add only the PostgreSQL test service, retaining the PostgreSQL 18 mount.
-- [ ] Document and create ignored environment files with distinct database identities and credentials; preserve the existing local password.
-- [ ] Add explicit local/test up, down, and logs commands and verify resolved names against the current Docker inventory.
-- [ ] Check local health and persistence across container recreation using a disposable marker, then remove only that marker and document the storage flow.
+- [x] Set the fresh local/production Compose names and add only the PostgreSQL test service, retaining the PostgreSQL 18 mount.
+- [x] Document and create ignored environment files with distinct database identities and credentials; preserve the existing local password.
+- [x] Add explicit local/test up, down, and logs commands and verify resolved names against the current Docker inventory.
+- [x] Check local health and persistence across container recreation using a disposable marker, then remove only that marker and document the storage flow.
 
 Acceptance: S2; PROJECT_MAP R2, R4, R7–R10. No application tables or API image start. Existing volumes remain untouched. Also review the ignored environment files without printing secrets; the total review stays below ten files.
+
+Validation: all three Compose configurations resolve to separate project, volume, database, and loopback-port identities, including with an inherited old project name. Local PostgreSQL passed health and password-authenticated SQL checks. A marker survived container recreation and was removed; no application tables remain. Old volume metadata is unchanged. The verification stopped its local container, leaving its data volume available for the user. The API was not started.
 
 Suggested commit: `chore: isolate fresh finance database environments`
 
@@ -1110,9 +1112,9 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Is each review bounded? | Every phase has 2–9 explicitly expected tracked files, 3–4 todos, one acceptance block, one suggested commit, and one approval gate. File counts include tests and guides. Adding request examples must stay inside the nine-file ceiling. |
 | Are repetitive catalogs still reviewable? | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small. |
 | Is push-only schema management preserved? | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset. |
-| Is approval preserved? | Yes. All 41 phases retain their gates. Phase 1 was approved and completed; phases 2–41 still require their own approval. |
+| Is approval preserved? | Yes. All 41 phases retain their gates. Phases 1–2 were approved and completed; phases 3–41 still require their own approval. |
 
-Structural checks confirmed consecutive phase numbers, matching overview ranges, 41 approval gates, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Feature tests, browser checks, and Docker changes belong to their future implementation phases.
+Structural checks confirmed consecutive phase numbers, matching overview ranges, 41 approval gates, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Feature tests and browser checks belong to their future implementation phases.
 
 Before each implementation gate, re-estimate the actual diff. Split a phase if it would exceed nine tracked files, introduce a second independent behavior, or require too much new code to explain in one request walkthrough. This rule applies even when a phase has only three todos.
 
@@ -1122,12 +1124,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 1 complete and awaiting user review. Phase 2 is pending approval.
+Status: Phase 2 complete and awaiting user review. Phase 3 is pending approval.
 
-Handoff note: Review phase 1 and let the user make the suggested commit. After phase 2 is approved, isolate fresh PostgreSQL storage. Recheck Docker before startup and preserve existing credentials and volumes. Phases 3–14 then add connection lifecycle and authentication before any finance schema.
+Handoff note: Review phase 2 and let the user make its suggested commit. The API and verification database container are stopped; the local data volume remains. The user controls the API in their terminal and prefers Requestly checks. After phase 3 is approved, add validated settings and connection lifecycle without finance tables.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing CSRF/origin checks for desktop clients; weakening Secure cookies for HTTP; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review phase 1, make its commit, and approve phase 2 when ready. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review phase 2, make its commit, and approve phase 3 when ready. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the architect skill. "Implement only phase 2 of `sessions/001_fresh_start/01-architect-todos.md`. Isolate fresh PostgreSQL storage without changing old volumes, explain the setup, suggest the commit, and stop at the approval gate."
+Suggested next specialist and prompt: Continue with the architect skill. "Implement only phase 3 of `sessions/001_fresh_start/01-architect-todos.md`. Add supplied-value configuration and database lifecycle, preserve the user-controlled development server, explain the request flow, suggest the commit, and stop at the approval gate."
