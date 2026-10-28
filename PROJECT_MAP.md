@@ -2,9 +2,11 @@
 
 ## Current state
 
-The application runs on Bun 1.3.14 with Hono. `src/server.ts` starts a loopback HTTP server at `127.0.0.1:3000` and forwards requests to `src/app.ts`. `GET /health/live` returns `200` with `{ "status": "ok" }`. Importing the app does not start a server.
+The application runs on Bun 1.3.14 with Hono. `src/config.ts` uses a small Valibot schema to validate `APP_ENV` and convert `API_PORT` into a number. Invalid values stop startup with errors that omit submitted values. Configuration does not read files. Database and browser-origin validation arrive when those features need them.
 
-`bun run check` runs type checking, ESLint, and the Bun build. The bundle is `dist/server.js`. `bunfig.toml` disables automatic environment loading for application commands; `dev` explicitly selects `.env.local`. See [project notes](docs/discoveries.md) for the Bun package-manager exception.
+`src/server.ts` uses the validated `API_PORT` and forwards requests to `src/app.ts`. Local and test modes listen on loopback; production mode listens on all interfaces. The local template uses `127.0.0.1:3000`. `GET /health/live` returns `200` with `{ "status": "ok" }`. Importing the app does not start a server.
+
+`bun run check` runs type checking, ESLint, Bun unit tests, and the Bun build. Test files are included in type checking. The bundle is `dist/server.js`. `bunfig.toml` disables automatic environment loading for application commands; `dev` explicitly selects `.env.local`. `start` requires caller-supplied settings. Both commands use `APP_ENV` for the mode. See the [README](README.md) for commands and [project notes](docs/discoveries.md) for the Bun package-manager exception.
 
 PostgreSQL runs separately through `bun run db:up` and `bun run db:down`. Test commands use the `db:test:*` namespace. Local and test Compose files contain only PostgreSQL and retain their named volumes on shutdown. The [setup guide](docs/setup.md) lists environment identities and operating commands.
 

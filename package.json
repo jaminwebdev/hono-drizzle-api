@@ -18,10 +18,13 @@
     "build": "bun --no-env-file build src/server.ts --target=bun --outdir=dist",
     "typecheck": "bun --no-env-file run --bun tsc --noEmit",
     "lint": "bun --no-env-file run --bun eslint .",
-    "check": "bun --no-env-file run typecheck && bun --no-env-file run lint && bun --no-env-file run build"
+    "check": "bun --no-env-file run typecheck && bun --no-env-file run lint && bun --no-env-file run test && bun --no-env-file run build",
+    "start": "bun --no-env-file dist/server.js",
+    "test": "bun --no-env-file test tests/unit"
   },
   "dependencies": {
-    "hono": "4.13.14"
+    "hono": "4.13.14",
+    "valibot": "1.5.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
