@@ -1,45 +1,23 @@
-# Project discoveries
+# Project notes
 
-## 2026-10-28. Auth now precedes finance features
+These notes explain current tool behavior and decisions. Project rules live in [PROJECT_MAP.md](../PROJECT_MAP.md).
 
-The user chose email/password login with server-side sessions in HttpOnly, Secure cookies, with Requestly desktop as the manual client. The revised plan introduces users and sessions before accounts and adds ownership with every finance table and endpoint.
+## Environment files
 
-Why this matters: the original plan assumed one unauthenticated local dataset. Merely adding a login route would leave finance queries, tags, category references, summaries, and deleted transaction history exposed across users. Those ownership rules must arrive with each feature instead of becoming a later retrofit. The plan remains pending implementation approval.
+`env = false` in `bunfig.toml` disables automatic environment-file loading for application, check, and build commands. `bun run dev` explicitly selects `.env.local`. Configuration code must validate supplied values rather than read environment files itself.
 
-## 2026-10-28. Bun 1.3.14 supports the proposed password-hash settings
+Bun 1.3.14's package manager ignores those controls and reads default files such as `.env.local` and `.env.production`. Run dependency installation in a checkout without environment files. For an existing checkout, move those files outside the checkout during package commands and restore them afterward. A clean temporary installation directory also works without moving project credentials.
 
-A synthetic local check called `Bun.password.hash` with `algorithm: "argon2id"`, `memoryCost: 19456`, and `timeCost: 2`. The encoded parameters were `m=19456,t=2,p=1`, and `Bun.password.verify` accepted the same invented password. No user password or hash was printed or stored in the repository.
+Why: runtime environment controls do not cover the pinned version's package manager. Keeping environment files out of dependency installation prevents package commands from receiving application credentials. See the [upstream Bun issue](https://github.com/oven-sh/bun/issues/31450) and [runtime environment settings](https://bun.sh/docs/runtime/environment-variables).
 
-Why this matters: current Bun documentation describes newer releases. Checking the pinned runtime confirms that the plan's password API and memory units work on Bun 1.3.14. This primitive check does not validate the future authentication implementation.
+## TypeScript and lint compatibility
 
-## 2026-10-23. Old Docker storage remains after the source restart
+The scaffold pins TypeScript 6.0.3 and typescript-eslint 8.72.1. That lint version supports TypeScript below 6.1.0. Bun's type package is pinned to 1.3.14 to match the runtime.
 
-Docker reported one volume, `hono-drizzle-local_postgres_data`, and no containers. Its Compose labels identify project `hono-drizzle-local` and volume key `postgres_data`. The remaining Compose files use different names, `hono-drizzle-postgres-local` and `hono-drizzle-postgres-production`. A later Docker inventory may differ from this snapshot.
+Why: installing the newest TypeScript release independently can exceed the lint tooling's supported range. Check peer dependencies when changing these packages and include `bun.lock` with dependency changes.
 
-Why this matters: deleting source files does not delete Docker volumes. Changing `POSTGRES_DB` or a password also does not reinitialize a database that already has data. The restart should use new Compose projects and verify their resolved volume names before starting PostgreSQL. Leave the old volume untouched.
+## PostgreSQL volume layout
 
-Temporary copies of the retained Compose files confirmed that explicit `-p finance-tracker-fresh-local` and `-p finance-tracker-fresh-production` resolve to their corresponding new `*_postgres_data` volumes, even with `COMPOSE_PROJECT_NAME=hono-drizzle-local` inherited from the shell. The check used invented credentials and did not start containers or change repository configuration.
+PostgreSQL 18 uses `/var/lib/postgresql/18/docker` as its default data directory. The retained Compose files correctly mount the named volume at `/var/lib/postgresql`.
 
-Source: read-only `docker volume ls`, `docker ps -a`, and `docker volume inspect` during this session. See [Compose project naming](https://docs.docker.com/compose/how-tos/project-name/) and the PostgreSQL image's [environment-variable behavior](https://hub.docker.com/_/postgres).
-
-## 2026-10-23. The existing PostgreSQL 18 mount is correct
-
-Keep `/var/lib/postgresql` as the volume target while using PostgreSQL 18. Its default data directory is `/var/lib/postgresql/18/docker`.
-
-Why this matters: older PostgreSQL image examples commonly mount `/var/lib/postgresql/data`. Applying that older path here could leave the intended volume outside the active data directory. Fresh storage requires a new volume identity, not an older mount path.
-
-Source: the official [PostgreSQL image documentation, PGDATA](https://hub.docker.com/_/postgres).
-
-## 2026-10-23. Bun 1.3.14 supports the required explicit environment workflow
-
-A scratch directory under `/tmp` verified that `env = false` in `bunfig.toml` prevented automatic loading of `.env` and `.env.local`. Adding `--env-file=.env.local` loaded only the explicitly selected test file. The check used invented values and did not read project credentials.
-
-Why this matters: the API, Drizzle, and Compose commands can share Bun's parsed environment without a second dotenv loader. Compose commands should use `--env-file /dev/null` after Bun loads the selected file, so Compose does not independently parse an unrelated `.env` file.
-
-Source: local Bun 1.3.14 execution and [Bun environment documentation](https://bun.sh/docs/runtime/environment-variables).
-
-## 2026-10-23. The retained Dockerfile is not buildable yet
-
-The Dockerfile expects `package.json`, `bun.lock`, `bunfig.toml`, a build command, and `dist/server.js`. Those application inputs do not exist. Its `EXPOSE 3000` also differs from the production Compose default API port of 3001.
-
-Why this matters: retain the image structure as a starting point, then reconcile the build output, startup arguments, and port in the production phase. A failed image build now would reflect the missing application, not a newly introduced regression.
+Why: PostgreSQL 17 examples often use `/var/lib/postgresql/data`, which is a different image layout. Preserve the PostgreSQL 18 mount and isolate database storage through Compose project names. An explicit global volume name bypasses that project naming boundary. See the [PostgreSQL image documentation](https://hub.docker.com/_/postgres) and [Compose volume names](https://docs.docker.com/reference/compose-file/volumes/#name).

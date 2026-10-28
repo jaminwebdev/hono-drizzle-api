@@ -24,10 +24,7 @@
     ]
   },
   "include": [
-    "src/**/*.ts",
-    "tests/**/*.ts",
-    "drizzle.config.ts",
-    "scripts/**/*.ts"
+    "src/**/*.ts"
   ],
   "exclude": [
     "dist",

@@ -1,6 +1,6 @@
 # Finance tracker architecture and implementation todos
 
-This document proposes the application described in [new_start.md](../../docs/archive/new_start.md). It is an implementation contract for review. No application code or Docker configuration has been changed in this planning session.
+This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phase 1 is complete. Later phases remain subject to their individual approval gates.
 
 ## Spec summary
 
@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. This revision is planning work only; implementation waits for the user's first-phase approval.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. The user approved phase 1. Its completion is recorded below; subsequent phases need separate approval.
 
 ### Build one feature at a time
 
@@ -497,7 +497,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-All phases are pending. This revision does not approve implementation. After the user approves phase 1, execute only that phase and stop at its gate. Continue one approved phase at a time. The user reviews and makes every Git commit.
+Phase 1 is approved and complete. Phase 2 is the next approval gate. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests and guide edits, not permission to create an absent file early. The scaffold has eight planned files; later phases target two to seven and may reach nine with dependency/configuration work. Before implementation, split any phase that would reach ten files or mix separate behaviors. Split within the same feature and update phase references before proceeding.
 
@@ -511,11 +511,13 @@ Run type checking, lint, build, and relevant Bun tests once available. Database 
 
 Expected files, 8: `package.json`, `bun.lock`, `bunfig.toml`, `tsconfig.json`, `eslint.config.js`, `src/app.ts`, `src/server.ts`, `README.md`.
 
-- [ ] Add Bun 1.3.14, Hono, TypeScript, Bun types, and lint dependencies with a frozen lockfile and automatic environment loading disabled.
-- [ ] Add only a loopback liveness app/server and direct dev, build, typecheck, lint, and check commands.
-- [ ] Explain the current two-file request flow and verify installation, build, and the liveness response.
+- [x] Add Bun 1.3.14, Hono, TypeScript, Bun types, and lint dependencies with a frozen lockfile and automatic environment loading disabled.
+- [x] Add only a loopback liveness app/server and direct dev, build, typecheck, lint, and check commands.
+- [x] Explain the current two-file request flow and verify installation, build, and the liveness response.
 
 Acceptance: S1–S2; PROJECT_MAP R1–R4, R7–R10. No database client, auth feature, finance schema, or future test stubs exist. This setup commit is expected to fit eight tracked files; split it if the real diff is harder to review.
+
+Validation: clean frozen-lockfile installation, type checking, ESLint, and build passed on Bun 1.3.14. The development command and built bundle both returned HTTP 200 with the documented JSON. Dependency installation used a clean temporary directory because of the pinned package-manager environment-file limitation. The active project docs now describe the scaffold and current decisions without archived-brief dependencies.
 
 Suggested commit: `chore: scaffold a minimal Bun Hono application`
 
@@ -1108,9 +1110,9 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Is each review bounded? | Every phase has 2–9 explicitly expected tracked files, 3–4 todos, one acceptance block, one suggested commit, and one approval gate. File counts include tests and guides. Adding request examples must stay inside the nine-file ceiling. |
 | Are repetitive catalogs still reviewable? | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small. |
 | Is push-only schema management preserved? | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset. |
-| Is approval preserved? | Yes. All 41 phases are pending, each ends at its own gate, and phase 1 cannot start until the user approves it. |
+| Is approval preserved? | Yes. All 41 phases retain their gates. Phase 1 was approved and completed; phases 2–41 still require their own approval. |
 
-Structural checks confirmed consecutive phase numbers, matching overview ranges, 41 approval gates, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Full type checks, application tests, browser checks, and Docker changes belong to the future implementation phases.
+Structural checks confirmed consecutive phase numbers, matching overview ranges, 41 approval gates, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Feature tests, browser checks, and Docker changes belong to their future implementation phases.
 
 Before each implementation gate, re-estimate the actual diff. Split a phase if it would exceed nine tracked files, introduce a second independent behavior, or require too much new code to explain in one request walkthrough. This rule applies even when a phase has only three todos.
 
@@ -1120,12 +1122,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Planning complete. Every implementation phase is pending approval.
+Status: Phase 1 complete and awaiting user review. Phase 2 is pending approval.
 
-Handoff note: Begin only after the user approves phase 1's minimal Bun/Hono scaffold. Phases 1–3 establish the scaffold; phases 4–14 build authentication before any finance schema. Then finish accounts, transactions, tags, and categories in order. Recheck Docker before startup, preserve old volumes, and extend the schema only for the current feature.
+Handoff note: Review phase 1 and let the user make the suggested commit. After phase 2 is approved, isolate fresh PostgreSQL storage. Recheck Docker before startup and preserve existing credentials and volumes. Phases 3–14 then add connection lifecycle and authentication before any finance schema.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing CSRF/origin checks for desktop clients; weakening Secure cookies for HTTP; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review the contract and approve phase 1 or request specific changes. The agent must stop at each phase gate so the user can inspect the diff and make the suggested commit.
+User action: Review phase 1, make its commit, and approve phase 2 when ready. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the architect skill. "Implement only phase 1 of `sessions/001_fresh_start/01-architect-todos.md`. Run the minimal Bun/Hono scaffold without finance tables or feature files, explain its request flow, suggest the commit, and stop at the approval gate."
+Suggested next specialist and prompt: Continue with the architect skill. "Implement only phase 2 of `sessions/001_fresh_start/01-architect-todos.md`. Isolate fresh PostgreSQL storage without changing old volumes, explain the setup, suggest the commit, and stop at the approval gate."
