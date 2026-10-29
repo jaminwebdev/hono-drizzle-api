@@ -43,6 +43,13 @@ describe('common HTTP responses', () => {
     expect(response.headers.has('Strict-Transport-Security')).toBe(false);
   });
 
+  test('returns JSON regardless of the Accept header', async () => {
+    const response = await fixture().request('/status', { headers: { Accept: 'text/html' } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toContain('application/json');
+    expect(await response.json()).toEqual({ status: 'ok' });
+  });
+
   test('uses the common error shape for a missing URL', async () => {
     await expectError(await fixture().request('/missing?secret=not-returned'), 404, 'NOT_FOUND');
   });
@@ -75,32 +82,6 @@ describe('common HTTP responses', () => {
   });
 });
 
-describe('JSON response negotiation', () => {
-  test.each(['', '*/*', 'application/*', 'application/json', 'APPLICATION/JSON',
-    'text/html, application/json;q=0.5', 'application/json;q=0.5, */*;q=0'])(
-    'accepts a request allowing JSON: %s', async (accept) => {
-      const response = await fixture().request('/status', { headers: { Accept: accept } });
-      expect(response.status).toBe(200);
-      expect(response.headers.get('Content-Type')).toContain('application/json');
-    },
-  );
-
-  test.each(['text/html', 'application/xml', 'application/json;q=0', '*/*;q=0',
-    'application/json;q=0, */*;q=1', 'application/*;q=0, */*;q=1'])(
-    'returns a safe 406 when JSON is not acceptable: %s', async (accept) => {
-      await expectError(await fixture().request('/status', { headers: { Accept: accept } }),
-        406, 'NOT_ACCEPTABLE');
-    },
-  );
-
-  test('leaves CORS preflight handling to Hono', async () => {
-    const response = await fixture([browserOrigin]).request('/json', { method: 'OPTIONS', headers: {
-      Origin: browserOrigin, 'Access-Control-Request-Method': 'POST', Accept: 'text/html',
-    } });
-    expect(response.status).toBe(204);
-  });
-});
-
 describe('safe request logging', () => {
   test('logs only metadata and the route template', async () => {
     const response = await fixture().request('/records/private-record-id?secret=query-secret', {
@@ -130,7 +111,6 @@ describe('safe request logging', () => {
     const requests = [
       { url: '/json', init: { method: 'POST' }, status: 403 },
       { url: '/status', init: { method: 'POST', headers: { Origin: apiOrigin } }, status: 405 },
-      { url: '/status', init: { headers: { Accept: 'text/html' } }, status: 406 },
       { url: '/status?' + 'x'.repeat(8192), init: {}, status: 414 },
       { url: '/unexpected', init: {}, status: 500 },
       { url: '/missing/private-missing-id?secret=hidden', init: {}, status: 404 },

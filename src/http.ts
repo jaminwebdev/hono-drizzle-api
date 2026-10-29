@@ -1,5 +1,4 @@
 import type { Context, Hono } from 'hono';
-import { accepts } from 'hono/accepts';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { methodNotAllowed } from 'hono/method-not-allowed';
@@ -65,23 +64,6 @@ export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
       exposeHeaders: ['ETag', 'Location', 'X-Request-Id'],
     }));
   }
-  app.use(async (c, next) => {
-    const responseType = accepts(c, {
-      header: 'Accept',
-      supports: ['application/json'],
-      default: 'application/json',
-      match: (ranges) => {
-        const preference = ranges.find((range) => range.type.toLowerCase() === 'application/json')
-          ?? ranges.find((range) => range.type.toLowerCase() === 'application/*')
-          ?? ranges.find((range) => range.type === '*/*');
-        return preference && preference.q > 0 ? 'application/json' : '';
-      },
-    });
-    if (!responseType) {
-      return errorResponse(c, 406, 'NOT_ACCEPTABLE', 'This API returns application/json.');
-    }
-    await next();
-  });
   app.use(bodyLimit({
     maxSize: 64 * 1024,
     onError: () => {

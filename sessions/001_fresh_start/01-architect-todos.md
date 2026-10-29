@@ -321,7 +321,7 @@ Use one error response shape, including router, parsing, validation, and databas
 }
 ```
 
-Generate a server request ID and return it in the response header and error body. Error details contain field paths and safe messages, never submitted values. Use `400` for invalid input, `404` for missing resources, `409` for duplicate names or reference conflicts, `413` for oversized bodies, `415` for unsupported body types, and `500` for unexpected failures. Apply the version statuses from S4. Handle non-JSON `Accept` requests with `406`, while accepting absent `Accept` and `*/*`. Reject unsupported methods on known resources with `405` and an `Allow` header. Expected database conflicts need narrow PostgreSQL-code mapping, including Drizzle's wrapped error cause when applicable; all unknown failures remain generic. On Bun 1.3.14, the PostgreSQL SQLSTATE identifier is in the driver's `errno`, reached through `cause` when Drizzle wraps it. The driver's `code` instead names the Bun error type. The 3B timeout smoke check confirmed this distinction.
+Generate a server request ID and return it in the response header and error body. Error details contain field paths and safe messages, never submitted values. Use `400` for invalid input, `404` for missing resources, `409` for duplicate names or reference conflicts, `413` for oversized bodies, `415` for unsupported body types, and `500` for unexpected failures. Apply the version statuses from S4. Return JSON regardless of the request's `Accept` header. Reject unsupported methods on known resources with `405` and an `Allow` header. Expected database conflicts need narrow PostgreSQL-code mapping, including Drizzle's wrapped error cause when applicable; all unknown failures remain generic. On Bun 1.3.14, the PostgreSQL SQLSTATE identifier is in the driver's `errno`, reached through `cause` when Drizzle wraps it. The driver's `code` instead names the Bun error type. The 3B timeout smoke check confirmed this distinction.
 
 Limit JSON bodies to 64 KiB before parsing, including chunked requests. Require `application/json` for JSON writes, allowing its charset parameter. Limit the full URL to 8 KiB before query decoding. Use parameterized queries and allowlisted orderings. Limit the database pool to five connections and use five-second connection and statement timeouts. Readiness runs a simple `SELECT 1` through Drizzle and returns 200 or 503. At the user's request, do not add a separate readiness deadline, reservation handling, cancellation, or queue tracking. The existing timeouts do not impose a deadline while waiting for a pool slot.
 
@@ -648,9 +648,13 @@ PAUSE — user must approve before continuing to next batch.
 
 The user requested a review after 5C. Findings are in [02-architecture-retro.md](02-architecture-retro.md). The user committed 5C and approved documentation consolidation. That cleanup is complete: README is a quick start, setup owns configuration/commands/storage/tool notes, the API guide owns HTTP behavior and middleware order, and PROJECT_MAP holds the code map and rules. The former discoveries file was merged into setup with its useful notes preserved.
 
-Validation: local Markdown links and anchors, documented package commands, and Git whitespace checks passed. No runtime files, settings, or dependencies changed, so no application checks or services were run for this documentation-only cleanup. Strict Accept negotiation and other runtime proposals remain unchanged. Discuss them or approve phase 6 separately.
+Validation: local Markdown links and anchors, documented package commands, and Git whitespace checks passed. No runtime files, settings, or dependencies changed, so no application checks or services were run for this documentation-only cleanup.
 
 Suggested commit: `docs: consolidate setup and API references`
+
+The user subsequently approved removing strict `Accept` checks. The API now returns JSON regardless of that header. The parser middleware and its rejection tests were removed, and one regression test confirms that `Accept: text/html` receives the usual JSON response. The URL limit remains in place. Phase 6 still requires separate approval.
+
+Validation: type checking, ESLint, all 69 Bun tests, the build, and Git whitespace checks passed on Bun 1.3.14. No API process or database container was started.
 
 ### Phase 6. Define only users and the push commands
 
@@ -1193,12 +1197,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 5C is committed. The approved documentation consolidation is complete and awaiting review. Runtime retrospective decisions and phase 6 remain unapproved. Local development remains on HTTP.
+Status: Phase 5C and documentation consolidation are committed. The approved removal of strict Accept checks is implemented. Phase 6 remains unapproved. Local development remains on HTTP.
 
-Handoff note: Review the documentation-only consolidation. Setup is the configuration, commands, database, and tool-notes reference; the API guide explains HTTP behavior and installHttp in execution order. No runtime behavior changed. Keep useful details in their owning guide and link to them from README and PROJECT_MAP. Discuss strict Accept negotiation or approve phase 6 before changing runtime code or adding users.
+Handoff note: Review the removal of strict Accept checks. The API always returns JSON; setup and the API guide remain the references for current behavior. Keep useful details in their owning guide and link to them from README and PROJECT_MAP. Phase 6 requires explicit approval before adding users.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing CSRF/origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review the documentation cleanup and middleware explanation, then choose any remaining retrospective cleanup or approve phase 6. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review the Accept-check removal, then choose any remaining retrospective cleanup or approve phase 6. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the architect skill. "Review the remaining runtime candidates in `sessions/001_fresh_start/02-architecture-retro.md`, especially strict Accept negotiation, or implement phase 6 only after explicit approval. Keep shared HTTP code simple and documentation in its owning guide."
+Suggested next specialist and prompt: Continue with the architect skill. "Review any remaining simplifications, or implement phase 6 only after explicit approval. Keep shared HTTP code simple and documentation in its owning guide."

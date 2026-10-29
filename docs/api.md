@@ -36,7 +36,6 @@ The request ID matches the response header. The timestamp uses UTC. Unexpected f
 | `403` | `ORIGIN_REJECTED` | A write has a missing or unapproved Origin. |
 | `404` | `NOT_FOUND` | No resource matches the URL. |
 | `405` | `METHOD_NOT_ALLOWED` | The URL exists but does not support that method. `Allow` lists supported methods. |
-| `406` | `NOT_ACCEPTABLE` | The Accept header does not permit a JSON response. |
 | `413` | `PAYLOAD_TOO_LARGE` | The request body exceeds the size limit. |
 | `414` | `URI_TOO_LONG` | The full request URL exceeds the size limit. |
 | `415` | `UNSUPPORTED_MEDIA_TYPE` | A JSON reader received a content type other than `application/json`. |
@@ -47,7 +46,7 @@ In Requestly, send `GET /missing` to see a `404`. To see a `405`, send `POST /he
 
 ## JSON responses and request logs
 
-The API returns JSON. Omit `Accept` or use `Accept: application/json`, `application/*`, or `*/*`. An unsupported value such as `text/html` returns `406 NOT_ACCEPTABLE`. Hono parses the header; the most specific matching range decides whether JSON is allowed. A quality value of zero rejects that range, so `application/json;q=0, */*;q=1` still rejects JSON. CORS preflights remain Hono's responsibility and do not need to accept JSON.
+The API returns JSON with `Content-Type: application/json` regardless of the request's `Accept` header. It supports one response format, so there is no format negotiation.
 
 Each completed request writes one JSON log entry to the terminal:
 
@@ -95,9 +94,8 @@ The following order matches `installHttp`:
 | 3 | URL limit | Rejects a full URL over 8 KiB with `414` before query parsing. |
 | 4 | Write-origin check | Requires an allowed Origin for methods other than GET, HEAD, and OPTIONS. Rejects missing or unapproved values with `403`. |
 | 5 | Hono `cors`, when configured | Adds browser access headers and handles preflights. This middleware is not registered when the browser allowlist is empty. |
-| 6 | JSON response negotiation | Uses Hono's Accept parser to decide whether the client allows JSON. Returns `406` otherwise. |
-| 7 | Hono `bodyLimit` | Caps request bodies at 64 KiB before a route parses them. Returns the common `413` error when oversized. |
-| 8 | Hono `methodNotAllowed` | Lets routing run, then turns a missing-method result for a known URL into `405` and supplies its `Allow` header. Unknown URLs remain `404`. |
+| 6 | Hono `bodyLimit` | Caps request bodies at 64 KiB before a route parses them. Returns the common `413` error when oversized. |
+| 7 | Hono `methodNotAllowed` | Lets routing run, then turns a missing-method result for a known URL into `405` and supplies its `Allow` header. Unknown URLs remain `404`. |
 
 Origin checking and CORS have separate jobs. The origin check rejects unapproved writes on the server; CORS tells browsers whether they may read a response. Neither authenticates a caller.
 
