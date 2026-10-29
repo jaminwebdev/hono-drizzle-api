@@ -1,6 +1,6 @@
 # API guide
 
-Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Authentication and finance endpoints do not exist yet.
+Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration is available; login, sessions, and finance endpoints come later.
 
 ## Health requests
 
@@ -11,6 +11,46 @@ Use `http://127.0.0.1:3000` with the local settings. Start the API in your termi
 | `HEAD` on either health URL | Uses the GET behavior and returns headers without a body. |
 
 Readiness uses the existing database timeouts. It has no separate deadline or connection-reservation logic.
+
+## Register a user
+
+Send `POST /api/v1/auth/register` with `Origin: http://127.0.0.1:3000`, `Content-Type: application/json`, and exactly these fields:
+
+```json
+{"email":"learner@example.test","password":"choose your own long passphrase"}
+```
+
+Email is trimmed, lowercased, checked for a valid format, and limited to 254 characters. Dots and `+` suffixes remain part of the address. Passwords must contain 15–128 Unicode code points. A code point is a Unicode value, so one emoji may count as one even though JavaScript's string length counts two. Passwords keep their exact spaces and case, with no trimming or normalization.
+
+The small local blocklist rejects these passwords regardless of case: `passwordpassword`, `password123456789`, `123456789012345`, `qwertyuiopasdfgh`, and `letmeinletmeinletmein`. It is a limited learning example rather than a comprehensive list of compromised passwords.
+
+Success returns `201` with only the new user's ID and normalized email inside `data`:
+
+```json
+{"data":{"id":"4d598d39-dc7a-4ca5-aab6-509ad69080d1","email":"learner@example.test"}}
+```
+
+The server stores an Argon2id password hash using Bun's asynchronous password API, with `memoryCost: 19456` and `timeCost: 2`. It never returns the password or hash. Registration does not log in or issue a cookie. A duplicate normalized email returns `409 ACCOUNT_NOT_AVAILABLE`, including when two requests race. Email is an unverified login identifier; this response can reveal that an address is registered. Email verification and public signup protection are deferred.
+
+```mermaid
+flowchart LR
+    Request[Registration request] --> Shared[Origin and body-size checks]
+    Shared --> Limit[Count attempt for connection peer]
+    Limit --> Validate[Parse JSON and validate fields]
+    Validate --> Hash[Hash the unchanged password]
+    Hash --> Insert[Insert user with unique email]
+    Insert --> Response[Return ID and email]
+```
+
+Each peer IP gets five attempts per fixed one-hour window, starting with its first attempt. Invalid JSON, invalid fields, and duplicate emails count too. The server uses Bun's connection address and ignores forwarded IP headers. At most two registrations may be hashing or finishing their insert at once. Capacity errors return `429 RATE_LIMITED` with a `Retry-After` header in seconds. A missing connection address returns a safe `503`.
+
+The limiter stores at most 1,024 peers and removes expired entries on the next registration request. When full, it refuses new peers with `429`. These limits belong to one running app and reset on restart. They are sufficient for this local exercise; multiple API instances would need shared limits.
+
+### Try registration in Requestly
+
+Import [requests/auth.json](../requests/auth.json) through Requestly's **Import → Postman** option. This is a collection format Requestly supports; no Postman installation is needed. See [Requestly's import guide](https://docs.requestly.com/api-client/import-export/import-from-postman).
+
+The collection includes `baseUrl` and `email` variables. Set your email and fill in the blank password in the request body locally. Send the request once for `201`, then repeat it for `409`. The file contains no password or session credential. Keep exports containing your entered password out of Git. After five attempts from your IP, wait for the stated window or restart your local API to clear its in-memory limit.
 
 ## Errors
 
@@ -32,15 +72,18 @@ The request ID matches the response header. The timestamp uses UTC. Unexpected f
 
 | Status | Code | Meaning |
 | --- | --- | --- |
-| `400` | `INVALID_INPUT` | The JSON body is empty or malformed. |
+| `400` | `INVALID_INPUT` | The JSON body is empty, malformed, or contains invalid registration fields. |
 | `403` | `ORIGIN_REJECTED` | A write has a missing or unapproved Origin. |
 | `404` | `NOT_FOUND` | No resource matches the URL. |
 | `405` | `METHOD_NOT_ALLOWED` | The URL exists but does not support that method. `Allow` lists supported methods. |
+| `409` | `ACCOUNT_NOT_AVAILABLE` | The normalized registration email is already in use. |
 | `413` | `PAYLOAD_TOO_LARGE` | The request body exceeds the size limit. |
 | `414` | `URI_TOO_LONG` | The full request URL exceeds the size limit. |
 | `415` | `UNSUPPORTED_MEDIA_TYPE` | A JSON reader received a content type other than `application/json`. |
+| `429` | `RATE_LIMITED` | The registration attempt or password-processing limit was reached. `Retry-After` gives seconds before retrying. |
 | `500` | `INTERNAL_ERROR` | An unexpected application failure occurred. |
 | `503` | `DATABASE_UNAVAILABLE` | The readiness query failed. |
+| `503` | `SERVICE_UNAVAILABLE` | Registration could not determine the connection's peer address. |
 
 In Requestly, send `GET /missing` to see a `404`. To see a `405`, send `POST /health/live` with `Origin: http://127.0.0.1:3000`; that method is unsupported even with an allowed origin. Neither request needs a body. Inspect `X-Request-Id` and, for the method error, `Allow` in the response headers.
 
@@ -103,4 +146,4 @@ Origin checking and CORS have separate jobs. The origin check rejects unapproved
 
 `app.notFound` and `app.onError` are handlers, not middleware entries. The former produces the common `404`; the latter preserves explicit safe `ApiError` responses and turns unexpected exceptions into a generic `500`.
 
-`readJson` is a helper called explicitly by a JSON route. It checks `Content-Type: application/json`, allowing a charset parameter, then calls `c.req.json()` with a safe parsing error. Feature handlers will validate their own fields with Valibot. Only the test POST route uses this helper today; the running app still exposes health routes only.
+`readJson` is a helper called explicitly by a JSON route. It checks `Content-Type: application/json`, allowing a charset parameter, then calls `c.req.json()` with a safe parsing error. Registration uses it before validating its fields with Valibot.

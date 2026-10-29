@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 6 are complete, including the requested simplicity retrospective and removal of strict Accept checks. Phase 7 requires approval. Local development uses HTTP, following the user's removal of the local HTTPS phase.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 7 are complete, including the requested simplicity retrospective and removal of strict Accept checks. Phase 8 requires approval. Local development uses HTTP, following the user's removal of the local HTTPS phase.
 
 ### Build one feature at a time
 
@@ -497,7 +497,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, and 6 are complete. Phase 4 was removed at the user's request. Phase 6 is awaiting review; phase 7 requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, and 7 are complete. Phase 4 was removed at the user's request. Phase 7 is awaiting review; phase 8 requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests and guide edits, not permission to create an absent file early. The scaffold has eight planned files; later phases target two to seven and may reach nine with dependency/configuration work. Before implementation, split a phase that would reach ten files or mix separate behaviors. Phase 5B is the documented exception for short settings call-site, test, and current-guide updates; it contains only the origin/CORS policy. Split within the same feature and update phase references before proceeding.
 
@@ -675,14 +675,16 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 7. Register users with hashed passwords
 
-Expected files, 7: `src/features/auth.ts`, `src/app.ts`, `tests/unit/auth.test.ts`, `tests/integration/auth.test.ts`, `docs/auth.md`, `requests/auth.json`, `requests/environment.example.json`.
+Review files, 9: `src/features/auth.ts`, `src/app.ts`, `tests/integration/auth.test.ts`, `package.json`, `docs/api.md`, `docs/setup.md`, `requests/auth.json`, `PROJECT_MAP.md`, and this plan. Registration tests stay together in one guarded database suite. Keep behavior in the API guide, test commands in setup, and nonsecret collection variables in the Requestly import file rather than adding separate auth and environment documents.
 
-- [ ] Add strict email/password validation, the documented password blocklist, and bounded registration/hash-work throttling inside the auth feature.
-- [ ] Add POST /auth/register with Bun Argon2id hashing and safe duplicate-email handling, without automatic login.
-- [ ] Test normalization, password bounds/preservation, duplicate races, throttle limits, and response/log redaction.
-- [ ] Document registration and its current email-ownership/enumeration limits, and add the first secret-free Requestly request and environment example.
+- [x] Add strict email/password validation, the documented password blocklist, and bounded registration/hash-work throttling inside the auth feature.
+- [x] Add POST /api/v1/auth/register with Bun Argon2id hashing and safe duplicate-email handling, without automatic login.
+- [x] Test normalization, password bounds/preservation, duplicate races, throttle limits, and response/log redaction.
+- [x] Document registration and its current email-ownership/enumeration limits, and add the first secret-free Requestly request with collection variables.
 
 Acceptance: S6–S8; PROJECT_MAP R1, R3, R6–R8, R10–R11. Apply JSON, origin, and rate checks before credential work; use the S8 local HTTP cookie policy. No password or hash appears in responses. There is still no sessions table or login implementation.
+
+Validation: type checking, ESLint, all 69 unit tests, and the build passed. All 22 registration tests passed against the guarded test database, including concurrent duplicate emails, exact password preservation, hash format/verification, safe errors, forwarded-header rejection, expiry, bounded peer storage, and password-work capacity recovery. The final route uses `/api/v1` and the response uses the S5 `data` envelope. The schema push reported no changes. A three-sample Argon2id timing check on this machine took 28, 13, and 13 milliseconds; this is a local observation, not a latency guarantee. Tests delete only their own generated users. The test database was stopped afterward with its volume preserved. No development API was started, and no dependencies or schema changed. Requestly JSON, 19 local guide/map links, and Git whitespace checks passed.
 
 Suggested commit: `feat: register users with Argon2id passwords`
 
@@ -1187,7 +1189,7 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Is each review bounded? | Earlier reviews fit nine tracked files or fewer. Phase 5B is a documented 12-file exception for one origin/CORS policy, including short settings call-site changes, their tests, and accurate docs. Response negotiation and logging are separate in 5C. Other phases keep the nine-file target and their own gates. |
 | Are repetitive catalogs still reviewable? | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small. |
 | Is push-only schema management preserved? | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset. |
-| Is approval preserved? | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, and 6 are complete; phases 7–41 require their own approval. |
+| Is approval preserved? | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, and 7 are complete; phases 8–41 require their own approval. |
 
 Structural checks confirmed consecutive phase numbers, matching feature order, 44 approval gates after splitting phases 3 and 5 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Phase 5A passed common-error and JSON-reader tests, type checking, lint, and build. Phase 5B passed origin/CORS policy tests, configuration checks, type checking, lint, and build. Phase 5C passed negotiation and metadata-log tests, type checking, lint, and build. Feature and browser end-to-end checks remain for their own phases.
 
@@ -1199,12 +1201,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 6 is complete and awaiting review. The users schema and guarded local/test push commands are implemented. Local development remains on HTTP.
+Status: Phase 7 is complete and awaiting review. Registration validates input, hashes passwords, inserts users, and applies bounded per-peer/password-work limits. Local development remains on HTTP.
 
-Handoff note: Review the users schema, Drizzle configuration, test-database helper, and setup guide. Only users exists, and there are no new API endpoints. Phase 7 adds registration, validation, password hashing, bounded auth attempts, and the first endpoint integration tests after approval. Keep schema and testing notes in setup while they remain small.
+Handoff note: Review the single auth feature file, guarded registration suite, Requestly collection, and current guides. Registration returns only ID/email and issues no cookie. Phase 8 adds the sessions table after approval; login remains a separate phase. Keep schema notes in setup and authentication behavior in the API guide while they remain small.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing CSRF/origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review phase 6, then approve phase 7 when ready. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review phase 7, then approve phase 8 when ready. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the architect skill. "Implement phase 7 only after approval. Keep registration validation, handlers, queries, and the small limiter in one auth feature file. Use the guarded test connection and keep the review small."
+Suggested next specialist and prompt: Continue with the architect skill. "Implement phase 8 only after approval. Add only the session schema and its current constraints, preserve users during pushes, and keep the diagram in setup. Do not add login or session middleware yet."

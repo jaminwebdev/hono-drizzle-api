@@ -95,7 +95,7 @@ Pressing `Ctrl+C` during `db:logs` only stops following the logs. For the separa
 
 ## Schema and database tools
 
-`src/db/schema.ts` defines the current database structure. It contains only `users`; registration, sessions, and finance records come later.
+`src/db/schema.ts` defines the current database structure. It contains only `users`, used by [registration](api.md#register-a-user). Sessions and finance records come later.
 
 ```mermaid
 erDiagram
@@ -108,7 +108,7 @@ erDiagram
     }
 ```
 
-Each user has a generated UUID, a unique email of at most 254 characters, a password hash, and timestamps that include a time zone. Every field is required. The database rejects empty emails and emails with uppercase letters or surrounding spaces, so callers must trim and lowercase them before insertion. Registration will add email-format checks and password hashing. The timestamps default to the insertion time; future update handlers must set `updated_at` explicitly.
+Each user has a generated UUID, a unique email of at most 254 characters, a password hash, and timestamps that include a time zone. Every field is required. The database rejects empty emails and emails with uppercase letters or surrounding spaces. Registration trims and lowercases email, validates its format, and hashes the password before insertion. The timestamps default to the insertion time; future update handlers must set `updated_at` explicitly.
 
 | Command | Purpose |
 | --- | --- |
@@ -126,14 +126,15 @@ Drizzle Kit 0.31.11 uses the development dependency `pg` for these tools. The AP
 
 `tests/integration/setup.ts` provides `createTestDatabase()`. It validates the supplied settings and requires the exact test mode, host, port, and database listed above before creating a database object. It never loads an environment file or falls back to local settings. Tests must use this helper before making writes or deleting their fixtures, and close the returned database's `$client` afterward.
 
-To prepare the database for future integration tests:
+To run registration tests:
 
 ```sh
 bun run db:test:up
 bun run db:test:push
+bun run test:integration
 ```
 
-There is no integration suite yet. The first endpoint will add it. Unit tests still run without private environment files or PostgreSQL. Integration tests will explicitly load `.env.test`, run serially when sharing tables, and remove only their own fixtures.
+Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the registration suite serially against the guarded test database. It covers validation, actual password hashes, concurrent duplicate emails, safe errors, and the bounded limiter. Tests supply a trusted connection-address fixture and delete only their own users afterward. Stop the test container with `bun run db:test:down` when finished; its volume remains.
 
 ## Check and build
 
@@ -142,6 +143,7 @@ There is no integration suite yet. The first endpoint will add it. Unit tests st
 | `bun run typecheck` | Check source and tests with TypeScript. |
 | `bun run lint` | Check source and configuration with ESLint. |
 | `bun run test` | Run Bun unit tests without PostgreSQL. |
+| `bun run test:integration` | Run registration tests against the prepared test PostgreSQL database. |
 | `bun run build` | Bundle the server into `dist/server.js`. |
 | `bun run check` | Run type checking, lint, tests, and build in order. |
 

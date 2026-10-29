@@ -23,7 +23,8 @@
     "lint": "bun --no-env-file run --bun eslint .",
     "check": "bun --no-env-file run typecheck && bun --no-env-file run lint && bun --no-env-file run test && bun --no-env-file run build",
     "start": "bun --no-env-file dist/server.js",
-    "test": "bun --no-env-file test tests/unit"
+    "test": "bun --no-env-file test tests/unit",
+    "test:integration": "bun --env-file=.env.test test tests/integration"
   },
   "dependencies": {
     "drizzle-orm": "0.45.4",
