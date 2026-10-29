@@ -16,6 +16,7 @@ function fixture(corsOrigins: string[] = []) {
   app.post('/json', async (c) => c.json({ data: await readJson(c) }));
   app.get('/unexpected', () => { throw new Error('synthetic-secret-never-log'); });
   app.get('/expected', () => { throw new ApiError(400, 'INVALID_INPUT', 'A field is invalid.'); });
+  app.get('/missing-record', () => { throw new ApiError(404, 'NOT_FOUND', 'The record was not found.'); });
   app.post('/records/:id', async (c) => {
     await readJson(c);
     c.header('Set-Cookie', 'synthetic-session=never-log');
@@ -28,6 +29,8 @@ async function expectError(response: Response, status: number, code: string) {
   expect(response.status).toBe(status);
   expect(response.headers.get('X-Request-Id')).toMatch(/^[a-f\d-]{36}$/);
   expect(response.headers.get('Cache-Control')).toBe('no-store');
+  expect(response.headers.get('Content-Type')).toContain('application/json');
+  expect(response.headers.get('X-Content-Type-Options')).toBe('nosniff');
   expect(await response.json()).toMatchObject({
     error: { status, code, requestId: response.headers.get('X-Request-Id'), timestamp: expect.any(String) as unknown },
   });
@@ -63,6 +66,16 @@ describe('common HTTP responses', () => {
     const head = await app.request('/status', { method: 'HEAD' });
     expect(head.status).toBe(200);
     expect(await head.text()).toBe('');
+  });
+
+  test('preserves a route-specific 404 and still detects unsupported methods on that route', async () => {
+    const app = fixture();
+    const response = await app.request('/missing-record');
+    await expectError(response.clone(), 404, 'NOT_FOUND');
+    expect(await response.json()).toMatchObject({ error: { message: 'The record was not found.' } });
+    const unsupported = await app.request('/missing-record', { method: 'POST', headers: { Origin: apiOrigin } });
+    await expectError(unsupported, 405, 'METHOD_NOT_ALLOWED');
+    expect(unsupported.headers.get('Allow')).toBe('GET, HEAD');
   });
 
   test('hides unexpected error messages and preserves explicit safe errors', async () => {

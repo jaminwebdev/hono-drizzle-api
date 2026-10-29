@@ -152,6 +152,9 @@ describe('registration limits', () => {
       const blocked = await register(app, {});
       expect(blocked.status).toBe(429);
       expect(blocked.headers.get('Retry-After')).toBe('3600');
+      expect(await blocked.json()).toMatchObject({ error: {
+        status: 429, code: 'RATE_LIMITED', requestId: blocked.headers.get('X-Request-Id'),
+      } });
       expect((await register(app, {}, '192.0.2.2')).status).toBe(400);
       clock.mockReturnValue(3_601_000);
       expect((await register(app, {})).status).toBe(400);
@@ -169,6 +172,9 @@ describe('registration limits', () => {
       const full = await register(app, {}, '192.0.2.99');
       expect(full.status).toBe(429);
       expect(full.headers.get('Retry-After')).toBe('60');
+      expect(await full.json()).toMatchObject({ error: {
+        status: 429, code: 'RATE_LIMITED', requestId: full.headers.get('X-Request-Id'),
+      } });
       clock.mockReturnValue(3_601_000);
       expect((await register(app, {}, '192.0.2.99')).status).toBe(400);
     } finally { clock.mockRestore(); }
@@ -189,6 +195,9 @@ describe('registration limits', () => {
       const blocked = await register(app, { email: email(), password }, '192.0.2.3');
       expect(blocked.status).toBe(429);
       expect(blocked.headers.get('Retry-After')).toBe('1');
+      expect(await blocked.json()).toMatchObject({ error: {
+        status: 429, code: 'RATE_LIMITED', requestId: blocked.headers.get('X-Request-Id'),
+      } });
       rejectHashes.splice(0).forEach((reject) => reject(new Error('synthetic-private-hash-failure')));
       const failures = await Promise.all(pending);
       for (const response of failures) {

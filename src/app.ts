@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
 import type { Database } from './db/client';
 import { createAuthRoutes } from './features/auth';
-import { errorResponse, installHttp, type HttpEnv, type HttpSettings } from './http';
+import { ApiError, installHttp, type HttpEnv, type HttpSettings } from './http';
 
 export function createApp(database: Database, settings: HttpSettings) {
   const app = new Hono<HttpEnv>();
@@ -18,7 +18,7 @@ export function createApp(database: Database, settings: HttpSettings) {
       await database.execute(sql`select 1`);
       return c.json({ status: 'ok' });
     } catch {
-      return errorResponse(c, 503, 'DATABASE_UNAVAILABLE', 'The database is unavailable.');
+      throw new ApiError(503, 'DATABASE_UNAVAILABLE', 'The database is unavailable.');
     }
   });
 

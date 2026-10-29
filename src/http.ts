@@ -17,10 +17,13 @@ export class ApiError extends Error {
   }
 }
 
-export function errorResponse(c: Context<HttpEnv>, status: ErrorStatus, code: string, message: string) {
+function errorResponse(c: Context<HttpEnv>, error: ApiError) {
   return c.json({
-    error: { code, message, status, requestId: c.get('requestId'), timestamp: new Date().toISOString() },
-  }, status);
+    error: {
+      code: error.code, message: error.message, status: error.status,
+      requestId: c.get('requestId'), timestamp: new Date().toISOString(),
+    },
+  }, error.status);
 }
 
 export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
@@ -43,7 +46,7 @@ export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
   });
   app.use(async (c, next) => {
     if (new TextEncoder().encode(c.req.url).byteLength > 8192) {
-      return errorResponse(c, 414, 'URI_TOO_LONG', 'The request URL must be at most 8 KiB.');
+      throw new ApiError(414, 'URI_TOO_LONG', 'The request URL must be at most 8 KiB.');
     }
     await next();
   });
@@ -51,7 +54,7 @@ export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
     const origin = c.req.header('Origin');
     const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes(c.req.method);
     if (unsafe && (!origin || !allowedOrigins.includes(origin))) {
-      return errorResponse(c, 403, 'ORIGIN_REJECTED', 'The request origin is not allowed.');
+      throw new ApiError(403, 'ORIGIN_REJECTED', 'The request origin is not allowed.');
     }
     await next();
   });
@@ -70,17 +73,25 @@ export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
       throw new ApiError(413, 'PAYLOAD_TOO_LARGE', 'The request body must be at most 64 KiB.');
     },
   }));
+  app.use(async (c, next) => {
+    // Let Hono check for an unsupported method before treating the URL as missing.
+    await next();
+    if (c.res.status === 404 && !c.error) {
+      throw new ApiError(404, 'NOT_FOUND', 'The requested resource was not found.');
+    }
+  });
   app.use(methodNotAllowed({
     app,
     onMethodNotAllowed: (c, methods) => {
       c.header('Allow', methods.join(', '));
-      return errorResponse(c, 405, 'METHOD_NOT_ALLOWED', 'This method is not supported for this URL.');
+      throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'This method is not supported for this URL.');
     },
   }));
-  app.notFound((c) => errorResponse(c, 404, 'NOT_FOUND', 'The requested resource was not found.'));
   app.onError((error, c) => {
-    if (error instanceof ApiError) return errorResponse(c, error.status, error.code, error.message);
-    return errorResponse(c, 500, 'INTERNAL_ERROR', 'An unexpected error occurred.');
+    const apiError = error instanceof ApiError
+      ? error
+      : new ApiError(500, 'INTERNAL_ERROR', 'An unexpected error occurred.');
+    return errorResponse(c, apiError);
   });
 }
 

@@ -5,7 +5,7 @@ import { getConnInfo } from 'hono/bun';
 import * as v from 'valibot';
 import type { Database } from '../db/client';
 import { users } from '../db/schema';
-import { ApiError, errorResponse, readJson, type HttpEnv } from '../http';
+import { ApiError, readJson, type HttpEnv } from '../http';
 
 const commonPasswords = new Set([
   'passwordpassword', 'password123456789', '123456789012345',
@@ -36,11 +36,11 @@ export function createAuthRoutes(database: Database) {
     const entry = attempts.get(peer);
     if (entry && entry.count >= 5) {
       c.header('Retry-After', String(Math.max(1, Math.ceil((entry.expiresAt - now) / 1000))));
-      return errorResponse(c, 429, 'RATE_LIMITED', 'Too many registration attempts.');
+      throw new ApiError(429, 'RATE_LIMITED', 'Too many registration attempts.');
     }
     if (!entry && attempts.size >= 1024) {
       c.header('Retry-After', '60');
-      return errorResponse(c, 429, 'RATE_LIMITED', 'Registration capacity is temporarily full.');
+      throw new ApiError(429, 'RATE_LIMITED', 'Registration capacity is temporarily full.');
     }
     attempts.set(peer, { count: (entry?.count ?? 0) + 1, expiresAt: entry?.expiresAt ?? now + 3_600_000 });
 
@@ -50,7 +50,7 @@ export function createAuthRoutes(database: Database) {
     }
     if (activeHashes >= 2) {
       c.header('Retry-After', '1');
-      return errorResponse(c, 429, 'RATE_LIMITED', 'Password processing is temporarily full.');
+      throw new ApiError(429, 'RATE_LIMITED', 'Password processing is temporarily full.');
     }
 
     activeHashes++;

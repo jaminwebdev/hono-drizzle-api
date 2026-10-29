@@ -690,6 +690,16 @@ Suggested commit: `feat: register users with Argon2id passwords`
 
 PAUSE — user must approve before continuing to next batch.
 
+### Follow-up before phase 8. Use one HTTP error path
+
+The user requested an application-wide convention: routes, middleware, and helpers throw `ApiError` for expected request failures. Only `app.onError` calls `errorResponse`, which is private to `src/http.ts`. Unexpected errors become generic `500` responses. Header-bearing failures set headers before throwing. Readiness, request limits, origin rejection, method errors, missing URLs, and registration limits now follow this rule.
+
+Hono's method middleware needs its normal routing result to distinguish an unsupported method from a missing URL. The missing-URL check waits for that middleware before throwing its `404`; explicit errors from routes retain their details.
+
+Validation: type checking, ESLint, all 70 unit tests, all 22 registration tests, and the build passed on Bun 1.3.14. Checks preserve error JSON, request IDs, security headers, logging, route-specific 404 messages, `Allow`, and `Retry-After`. No schema or dependencies changed. Only the test database was started for these checks; the user's local database and API remain under their control.
+
+Suggested commit: `refactor: centralize HTTP error handling`
+
 ### Phase 8. Define server-side sessions
 
 Expected files, 2: `src/db/schema.ts`, `docs/data-model.md`.
@@ -1201,12 +1211,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 7 is complete and awaiting review. Registration validates input, hashes passwords, inserts users, and applies bounded per-peer/password-work limits. Local development remains on HTTP.
+Status: Phase 7 is committed. The user-approved uniform error-handling cleanup is complete and awaiting review. Phase 8 remains unapproved. Local development remains on HTTP.
 
-Handoff note: Review the single auth feature file, guarded registration suite, Requestly collection, and current guides. Registration returns only ID/email and issues no cookie. Phase 8 adds the sessions table after approval; login remains a separate phase. Keep schema notes in setup and authentication behavior in the API guide while they remain small.
+Handoff note: Expected HTTP failures now throw `ApiError` throughout the application. `errorResponse` is private and called only by `app.onError`. Keep this convention as features grow. Phase 8 adds the sessions table after approval; login remains a separate phase. Keep schema notes in setup and authentication behavior in the API guide while they remain small.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing CSRF/origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review phase 7, then approve phase 8 when ready. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review the error-handling cleanup, then approve phase 8 when ready. The agent must stop at each phase gate so the user can inspect the diff.
 
 Suggested next specialist and prompt: Continue with the architect skill. "Implement phase 8 only after approval. Add only the session schema and its current constraints, preserve users during pushes, and keep the diagram in setup. Do not add login or session middleware yet."

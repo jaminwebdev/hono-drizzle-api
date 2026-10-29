@@ -138,12 +138,25 @@ The following order matches `installHttp`:
 | 4 | Write-origin check | Requires an allowed Origin for methods other than GET, HEAD, and OPTIONS. Rejects missing or unapproved values with `403`. |
 | 5 | Hono `cors`, when configured | Adds browser access headers and handles preflights. This middleware is not registered when the browser allowlist is empty. |
 | 6 | Hono `bodyLimit` | Caps request bodies at 64 KiB before a route parses them. Returns the common `413` error when oversized. |
-| 7 | Hono `methodNotAllowed` | Lets routing run, then turns a missing-method result for a known URL into `405` and supplies its `Allow` header. Unknown URLs remain `404`. |
+| 7 | Missing URL check | Waits for routing and the method check, then throws `ApiError(404)` for an unmatched URL. Preserves explicit errors from routes. |
+| 8 | Hono `methodNotAllowed` | Lets routing run, then throws `ApiError(405)` for an unsupported method on a known URL and supplies its `Allow` header. |
 
 Origin checking and CORS have separate jobs. The origin check rejects unapproved writes on the server; CORS tells browsers whether they may read a response. Neither authenticates a caller.
 
 ### Error handlers and JSON helper
 
-`app.notFound` and `app.onError` are handlers, not middleware entries. The former produces the common `404`; the latter preserves explicit safe `ApiError` responses and turns unexpected exceptions into a generic `500`.
+Routes, middleware, and helpers throw `ApiError` for expected request failures. They return successful responses normally. If an error needs a header such as `Retry-After`, set it with `c.header()` before throwing. Catch database errors only to translate a known failure into a safe `ApiError`; rethrow unknown failures.
+
+`app.onError` is the only place that calls `errorResponse`, which is private to `src/http.ts`. It preserves an `ApiError`'s status, code, and safe message, and converts unexpected exceptions to a generic `500`. All errors use the same JSON format shown above. `finally` blocks still run, including registration's password-capacity cleanup.
+
+```mermaid
+flowchart LR
+    Failure[Route, middleware, or helper throws] --> Hono[Hono catches the error]
+    Hono --> Handler[app.onError chooses safe error details]
+    Handler --> Format[Private errorResponse formats JSON]
+    Format --> Client[Client receives the error response]
+```
+
+Hono's method check examines its normal routing result before the missing-URL check runs. An unsupported method becomes `405`; an unmatched URL becomes `404`. Both throw `ApiError` and use the same central handler.
 
 `readJson` is a helper called explicitly by a JSON route. It checks `Content-Type: application/json`, allowing a charset parameter, then calls `c.req.json()` with a safe parsing error. Registration uses it before validating its fields with Valibot.

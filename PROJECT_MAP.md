@@ -18,6 +18,8 @@ The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, 
 
 Importing or constructing the app opens no database connection and starts no server. Bootstrap owns the resources and passes them to the app.
 
+Routes, middleware, and helpers throw `ApiError` for expected request failures. Only `app.onError` calls the private error formatter; unexpected exceptions become generic `500` responses.
+
 Use [setup](docs/setup.md) for settings, commands, database identities, storage, and tool notes. Use [the API guide](docs/api.md) for endpoints, request limits, origin policy, middleware order, and errors. The [implementation plan](sessions/001_fresh_start/01-architect-todos.md) holds approval gates and session decisions.
 
 ## Confirmed project rules
