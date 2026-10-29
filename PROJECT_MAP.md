@@ -16,7 +16,7 @@ PostgreSQL runs separately through `bun run db:up` and `bun run db:down`. Test c
 
 SIGINT, SIGTERM, uncaught exceptions, and unhandled promise rejections use one shutdown path. It stops accepting connections, drains requests, then closes the pool. A five-second deadline forces exit if cleanup stalls. Fatal errors and failed cleanup exit nonzero without logging raw error details.
 
-The scaffold provides health checks and shutdown. HTTPS, authentication, and finance features follow in the [approval-gated implementation plan](sessions/001_fresh_start/01-architect-todos.md).
+Local development uses HTTP on loopback with no certificate setup. The scaffold provides health checks and shutdown. Authentication and finance features follow in the [approval-gated implementation plan](sessions/001_fresh_start/01-architect-todos.md).
 
 ## Confirmed project rules
 
@@ -32,7 +32,7 @@ The scaffold provides health checks and shutdown. HTTPS, authentication, and fin
 | R8. Documentation | Active docs describe current behavior and decision reasons in beginner-friendly language, with useful examples and Mermaid diagrams. Apply `unslop` and preserve exact commands, paths, fields, and syntax. Keep history in session artifacts or the archive. Active docs must stand alone and contain no links to archived briefs. |
 | R9. Schema changes | Use `drizzle-kit push` for all database schema changes, including local development, integration tests, and production checks. Do not generate or apply database migration files. |
 | R10. Learning sequence | Scaffold first, then authentication, accounts, transactions, tags, and categories. Add each feature's schema, endpoints, middleware, validation, tests, and examples in small steps before moving to the next feature. Extend the schema with pushes as needed. Do not create the whole schema or future feature files in advance. Each review should explain the current request flow and how it changed. |
-| R11. Authentication | Use email/password login and server-side sessions with an opaque session credential in an HttpOnly, Secure cookie. Build authentication after the scaffold and enforce user ownership as each finance feature is introduced. Passkeys and external login providers are deferred. |
+| R11. Authentication | Use email/password login and server-side sessions with an opaque session credential in an HttpOnly cookie. Local/test HTTP cookies omit Secure; production requires HTTPS and Secure cookies. Keep SameSite=Lax, host-only cookies, origin checks, and CSRF protection. Build authentication after the scaffold and enforce user ownership as each finance feature is introduced. Passkeys and external login providers are deferred. |
 | R12. Manual API testing | The user controls the development API in their own terminal and prefers manual checks in Requestly desktop. Agents may probe an existing instance when necessary. Use Requestly's cookie jar for the session and a separate CSRF token for writes. Do not require copying the session credential into collection or environment variables. |
 
 ## Boundaries

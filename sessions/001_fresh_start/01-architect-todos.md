@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. The user approved phases 1, 2, 3A, 3B, and 3C. Phase 3 was split before implementation into settings in 3A, the connection in 3B, and readiness/shutdown in 3C to keep each review small. Completed work is recorded below; phase 4 retains its separate approval gate.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. The user approved phases 1, 2, 3A, 3B, and 3C. Phase 3 was split before implementation into settings in 3A, the connection in 3B, and readiness/shutdown in 3C to keep each review small. The user removed the local HTTPS phase before implementation. Completed work is recorded below; phase 5 is the next implementation gate.
 
 ### Build one feature at a time
 
@@ -23,7 +23,7 @@ The schema diagram and full API contract below describe the intended finished ap
 | Work | Phases | Schema introduced in these phases |
 | --- | --- | --- |
 | Scaffold | 1–3C | No application tables. Establish Bun, fresh PostgreSQL storage, validated settings, and connection lifecycle. |
-| Authentication | 4–14 | Add HTTPS and request checks, then `users`, registration, `sessions`, login, middleware, CSRF, logout, password change, and session cleanup. Review the Requestly and browser flows before finance work. |
+| Authentication | 5–14 | Add request checks, then `users`, registration, `sessions`, login, middleware, CSRF, logout, password change, and session cleanup. Review the Requestly and browser flows before finance work. |
 | Accounts | 15–19 | Add only owned `accounts`, then create/detail, list/search, edit/archive, and deletion in separate commits. |
 | Transactions | 20–27 | Add owned transactions and history without tag/category fields, then creation, corrections, deletion, search, balances, summaries, and seeds. |
 | Tags | 28–32 | Add the owned tag catalog, then its account and transaction relationships and filters. |
@@ -272,7 +272,7 @@ Example create request:
 ```http
 POST /api/v1/transactions
 Content-Type: application/json
-Origin: https://localhost:3000
+Origin: http://127.0.0.1:3000
 X-CSRF-Token: <value from the authenticated CSRF endpoint>
 
 {
@@ -325,7 +325,7 @@ Generate a server request ID and return it in the response header and error body
 
 Limit JSON bodies to 64 KiB before parsing, including chunked requests. Require `application/json` for JSON writes, allowing its charset parameter. Limit the full URL to 8 KiB before query decoding. Use parameterized queries and allowlisted orderings. Limit the database pool to five connections and use five-second connection and statement timeouts. Readiness runs a simple `SELECT 1` through Drizzle and returns 200 or 503. At the user's request, do not add a separate readiness deadline, reservation handling, cancellation, or queue tracking. The existing timeouts do not impose a deadline while waiting for a pool slot.
 
-Bind the local API to `127.0.0.1` and add HTTPS before credential endpoints. S8 defines cookie, origin, and CSRF checks. Disable CORS by default; Requestly desktop does not need browser CORS permissions. If a separate browser origin is configured later, use exact origins with credentials enabled, explicit methods/headers, and exposed `ETag`/`Location` headers. Never use a wildcard origin with credentials. CORS is a browser sharing policy and does not authenticate a caller. Every unsafe request, including from Requestly, supplies an allowed `Origin`; authenticated writes also supply the CSRF header. Test missing and rejected origins and preflights.
+Bind the local API to `127.0.0.1` and use HTTP for local development. Require HTTPS before public deployment. S8 defines cookie, origin, and CSRF checks. Disable CORS by default; Requestly desktop does not need browser CORS permissions. If a separate browser origin is configured later, use exact origins with credentials enabled, explicit methods/headers, and exposed `ETag`/`Location` headers. Never use a wildcard origin with credentials. CORS is a browser sharing policy and does not authenticate a caller. Every unsafe request, including from Requestly, supplies an allowed `Origin`; authenticated writes also supply the CSRF header. Test missing and rejected origins and preflights.
 
 Treat API descriptions and names as plain data. Any future UI must escape them when rendering. Add Hono's secure headers. Use `Cache-Control: no-store` for financial and history responses. Do not trust forwarded client IP headers until a trusted reverse proxy is configured. Host commands and Docker published ports remain loopback-only. Production containers may listen on `0.0.0.0` internally while their host port stays loopback-only.
 
@@ -388,15 +388,17 @@ Get the peer address from Bun's connection information, not untrusted forwarded 
 
 Password policy and storage references: [OWASP authentication guidance](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html#implement-proper-password-strength-controls), [OWASP Argon2id guidance](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id), and [Bun password APIs](https://bun.sh/docs/runtime/hashing).
 
-### Cookies, HTTPS, and session lifecycle
+### Cookies and session lifecycle
 
 Login creates a fresh independent session credential, ignoring any client-supplied credential for session creation. Cookie-only authentication accepts no session ID from request bodies, query parameters, or Bearer headers. This keeps session fixation and credential exchange rules explicit.
 
-Use this cookie policy in every auth-capable environment:
+Use the cookie name `session` in all environments. For local/test HTTP:
 
 ```http
-Set-Cookie: __Host-session=<opaque credential>; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=604800
+Set-Cookie: session=<opaque credential>; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800
 ```
+
+Production adds `Secure` and requires an HTTPS `API_ORIGIN`. Derive the Secure option from the validated application mode, without an independent switch that can disable it in production. Keep HttpOnly, SameSite, origin checks, and CSRF protection in every environment. Do not use the `__Host-` prefix for the local HTTP cookie because that prefix requires Secure.
 
 Omit `Domain`. Clear the same cookie with matching attributes and `Max-Age=0`. Proposed server deadlines are a 30-minute idle timeout and a 7-day absolute lifetime. Cookie persistence never extends the server deadline. Reject expired or revoked sessions before a handler runs. For this small application, update `last_seen_at` through a conditional database operation on successful validation; no session cache is needed. A failed or unavailable session store fails closed. Already authorized requests may finish after a concurrent logout; revocation applies to subsequent validation.
 
@@ -404,11 +406,9 @@ Logout deletes the current session and clears its cookie. Password change verifi
 
 Expired rows may remain briefly but never authenticate. Add explicit local/test/production session-cleanup commands that delete only rows past an idle or absolute deadline. Bound their work; do not add a worker or delete finance data. Test expiry with supplied time values rather than long sleeps.
 
-Add local HTTPS before registration/login. The host Bun server reads certificate/key files from explicitly supplied `TLS_CERT_PATH` and `TLS_KEY_PATH`; `src/config.ts` only validates supplied settings and paths. Ignore `.certs/` in Git and the image context. Use a development certificate trusted by the machine and Requestly, with the hostname actually used in URLs. Document creation and trust setup rather than silently installing a local certificate authority. Do not disable certificate verification globally or weaken the production cookie for convenience.
+Local development and browser tests use HTTP on loopback, without certificates or trust-store changes. Auth and finance walkthroughs use `http://127.0.0.1:3000` consistently. Do not alternate `localhost` and `127.0.0.1` when reusing host-only cookies. Public deployment requires HTTPS termination and a separate deployment review; it is not part of the local certificate-free workflow.
 
-The initial no-data liveness scaffold may use plain HTTP before this phase. Auth and finance walkthroughs use one consistent HTTPS base URL, such as `https://localhost:3000`. Do not alternate `localhost` and `127.0.0.1` when reusing host-only cookies. Unit tests may invoke Hono directly without sockets; end-to-end cookie checks use HTTPS. The production image smoke check later mounts certificates read-only and supplies a trusted CA to its HTTPS health checks.
-
-Session and HTTPS references: [OWASP session storage and lifecycle](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), [Hono cookie helpers](https://hono.dev/docs/helpers/cookie), and [Bun TLS configuration](https://bun.sh/docs/runtime/http/tls).
+Session references: [OWASP session storage and lifecycle](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html) and [Hono cookie options and prefix rules](https://hono.dev/docs/helpers/cookie).
 
 ### Origin and CSRF rules
 
@@ -442,7 +442,7 @@ sequenceDiagram
     participant DB as PostgreSQL
     Client->>API: Login with email, password, and allowed Origin
     API->>DB: Verify user and create hashed session record
-    API-->>Client: Set HttpOnly Secure session cookie
+    API-->>Client: Set HttpOnly session cookie
     Client->>API: GET auth/csrf with stored cookie
     API-->>Client: Separate CSRF token
     Client->>API: Write with cookie, Origin, and CSRF header
@@ -497,7 +497,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-Phases 1, 2, 3A, 3B, and 3C are complete. Phase 3C awaits review; phase 4 follows only after approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1, 2, 3A, 3B, and 3C are complete. Phase 3C is approved. Phase 4 was removed at the user's request; phase 5 is the next approval gate. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests and guide edits, not permission to create an absent file early. The scaffold has eight planned files; later phases target two to seven and may reach nine with dependency/configuration work. Before implementation, split any phase that would reach ten files or mix separate behaviors. Split within the same feature and update phase references before proceeding.
 
@@ -590,24 +590,15 @@ Suggested commit: `feat: add readiness and graceful database shutdown`
 
 PAUSE — user must approve before continuing to next batch.
 
-### Phase 4. Enable local HTTPS for cookie authentication
+### Phase 4. Removed: local HTTPS
 
-Expected files, 7: `src/config.ts`, `src/server.ts`, `.env.example`, `.gitignore`, `.dockerignore`, `tests/unit/config.test.ts`, `docs/setup.md`.
-
-- [ ] Add explicit API_ORIGIN and certificate/key settings; only server startup reads the supplied TLS files.
-- [ ] Enable host Bun HTTPS and ignore local certificates and private keys in Git and the image context.
-- [ ] Document trusted local certificate setup and verify the liveness/readiness URL with a trusted client.
-
-Acceptance: S2, S6, S8; PROJECT_MAP R2–R4, R8, R11–R12. Auth-capable commands fail clearly without valid TLS settings. Use one HTTPS hostname consistently. No automatic certificate-authority installation or disabled TLS verification. Unit tests validate missing/inconsistent settings.
-
-Suggested commit: `feat: enable local HTTPS before authentication`
-
-PAUSE — user must approve before continuing to next batch.
+The user removed this phase before implementation. Local development stays on HTTP with no local certificates. Keep later phase numbers unchanged so existing references remain useful. The environment-specific cookie policy is in S8.
 
 ### Phase 5. Add request checks for the upcoming auth endpoints
 
-Expected files, 4: `src/http.ts`, `src/app.ts`, `tests/unit/http.test.ts`, `docs/api.md`.
+Expected files, 9: `src/config.ts`, `.env.example`, `src/http.ts`, `src/app.ts`, `tests/unit/config.test.ts`, `tests/unit/http.test.ts`, `docs/api.md`, `PROJECT_MAP.md`, and this plan.
 
+- [ ] Add explicit API_ORIGIN and browser-origin validation when the origin checks first need them; local/test use HTTP on loopback, and production requires HTTPS.
 - [ ] Add bounded JSON parsing and a consistent safe error shape with server request IDs.
 - [ ] Validate exact configured browser origins when adding the S6 origin, preflight, content negotiation, secure-header, no-store, and redacted logging rules.
 - [ ] Test malformed/chunked/oversized bodies, unsupported types/methods, rejected origins, preflights, and secret-free errors; document the shared contract.
@@ -642,7 +633,7 @@ Expected files, 7: `src/features/auth.ts`, `src/app.ts`, `tests/unit/auth.test.t
 - [ ] Test normalization, password bounds/preservation, duplicate races, throttle limits, and response/log redaction.
 - [ ] Document registration and its current email-ownership/enumeration limits, and add the first secret-free Requestly request and environment example.
 
-Acceptance: S6–S8; PROJECT_MAP R1, R3, R6–R8, R10–R11. Apply HTTPS, JSON, origin, and rate checks before credential work. No password or hash appears in responses. There is still no sessions table or login implementation.
+Acceptance: S6–S8; PROJECT_MAP R1, R3, R6–R8, R10–R11. Apply JSON, origin, and rate checks before credential work; use the S8 local HTTP cookie policy. No password or hash appears in responses. There is still no sessions table or login implementation.
 
 Suggested commit: `feat: register users with Argon2id passwords`
 
@@ -662,13 +653,13 @@ Suggested commit: `feat: define hashed server-side sessions`
 
 PAUSE — user must approve before continuing to next batch.
 
-### Phase 9. Log in and issue the secure session cookie
+### Phase 9. Log in and issue the session cookie
 
 Expected files, 4: `src/features/auth.ts`, `tests/integration/auth.test.ts`, `tests/unit/auth.test.ts`, `docs/auth.md`.
 
 - [ ] Add login throttling and generic credential failures with comparable verification work for unknown users.
-- [ ] Add POST /auth/login with fresh random credentials, hash-only session storage, and the specified Secure/HttpOnly cookie.
-- [ ] Lock/recheck the user password hash before session creation; test cookie flags, stored hashes, bad credentials, and an ignored preexisting session ID.
+- [ ] Add POST /auth/login with fresh random credentials, hash-only session storage, and the S8 HttpOnly cookie, with Secure required in production and omitted for local/test HTTP.
+- [ ] Lock/recheck the user password hash before session creation; test local/production cookie flags, stored hashes, bad credentials, and an ignored preexisting session ID.
 - [ ] Document the Set-Cookie response and Requestly's intended cookie reuse without an environment-variable session token.
 
 Acceptance: S6–S8; PROJECT_MAP R3, R6–R8, R10–R12. No protected finance endpoint exists. Login cannot return the session credential in JSON, reuse a supplied ID, or disclose whether an email exists through its error message.
@@ -738,11 +729,11 @@ PAUSE — user must approve before continuing to next batch.
 Expected files, 6: `requests/auth.json`, `requests/environment.example.json`, `docs/auth.md`, `tests/browser/auth.test.ts`, `package.json`, `bun.lock`.
 
 - [ ] Verify the Requestly collection built with each auth endpoint now covers register, login, me, CSRF, logout, and password change in the current export format.
-- [ ] Document the HTTPS base URL, explicit Origin, cookie jar, and a script for the separate CSRF token; verify actual outgoing Cookie headers in the installed desktop build.
-- [ ] Add Bun-run browser checks with browser automation as a library for Secure/HttpOnly cookie behavior and rejected cross-site writes.
+- [ ] Document the local HTTP base URL, explicit Origin, cookie jar, and a script for the separate CSRF token; verify actual outgoing Cookie headers in the installed desktop build.
+- [ ] Add Bun-run browser checks with browser automation as a library for HttpOnly cookie behavior and rejected cross-site writes; verify production Secure attributes in the endpoint tests.
 - [ ] Run the auth acceptance flow with two users and reconcile the guide with actual cookie/expiry behavior.
 
-Acceptance: S7–S8; PROJECT_MAP R1–R2, R6–R8, R10–R12. No product frontend or finance tables. Earlier auth phases already have unit/integration tests. The browser check uses the guarded test database and HTTPS fixture, not an auth bypass or global TLS-verification disable.
+Acceptance: S7–S8; PROJECT_MAP R1–R2, R6–R8, R10–R12. No product frontend or finance tables. Earlier auth phases already have unit/integration tests. The browser check uses the guarded test database and local HTTP origin, without an auth bypass or certificate setup.
 
 Suggested commit: `test: verify auth with Requestly and browser cookies`
 
@@ -1079,7 +1070,7 @@ PAUSE — user must approve before continuing to next batch.
 Expected files, 4: `Dockerfile`, `.dockerignore`, `package.json`, `docs/operations.md`.
 
 - [ ] Reconcile the retained image with the real Bun 1.3.14 build, nonroot runtime, production dependencies, and startup arguments.
-- [ ] Keep keys, environment files, Requestly secrets, and test fixtures out of image layers; mount TLS files at runtime.
+- [ ] Keep environment files, Requestly secrets, and test fixtures out of image layers. HTTPS termination for public hosting remains a separate deployment decision.
 - [ ] Build the image and document its supplied settings and port behavior without starting a production stack.
 
 Acceptance: S1–S2, S6, S8; PROJECT_MAP R1–R4, R7–R8, R11. This phase changes packaging only. No schema push, seed, public deployment, or certificate-authority modification occurs during the build.
@@ -1092,8 +1083,8 @@ PAUSE — user must approve before continuing to next batch.
 
 Expected files, 3: `compose.production.yaml`, `package.json`, `docs/operations.md`.
 
-- [ ] Reconcile the fresh production identity, TLS mounts, explicit database addresses, trusted HTTPS health check, and loopback publication.
-- [ ] Add explicit host production push/start commands; start the database, push, then run the image health and auth smoke flow.
+- [ ] Reconcile the fresh production identity, explicit database addresses, HTTP health check, and loopback publication. This image check requires no local certificates.
+- [ ] Add explicit host production push/start commands; start the database, push, then run image health and database connectivity checks. Production auth over HTTPS belongs to the separate deployment review; do not relax production cookies for this HTTP image check.
 - [ ] Validate backup/restore to a separate scratch database and document schema-push recovery and the remaining public-service prerequisites.
 
 Acceptance: S2, S6–S8; PROJECT_MAP R2–R4, R7–R12. No shared local/test volume, embedded secrets, automatic startup push, or global TLS-verification bypass. This is a local deployment check, not publication.
@@ -1107,7 +1098,7 @@ PAUSE — user must approve before continuing to next batch.
 Expected files, 3: `.github/workflows/ci.yaml`, `package.json`, `docs/testing.md`.
 
 - [ ] Add CI with pinned Bun, frozen dependencies, type checking, lint, build, and unit tests.
-- [ ] Push schema and run host integration/browser tests with per-job PostgreSQL identities, test-only TLS, and guarded cleanup.
+- [ ] Push schema and run host integration/browser tests with per-job PostgreSQL identities, the local HTTP test origin, and guarded cleanup.
 - [ ] Verify two-user isolation checks run and no workflow uses real environment files or prunes unrelated volumes.
 
 Acceptance: S1–S2, S7–S8; PROJECT_MAP R1–R2, R4, R6–R12. Only PostgreSQL runs in Docker for development/integration tests. The existing Bun test runner drives the tests. Keep image automation for the next commit.
@@ -1120,7 +1111,7 @@ PAUSE — user must approve before continuing to next batch.
 
 Expected files, 3: `.github/workflows/ci.yaml`, `PROJECT_MAP.md`, `docs/discoveries.md`.
 
-- [ ] Add the existing production image build/health smoke flow to CI after the host checks, with isolated resources and trusted test TLS.
+- [ ] Add the existing production image build/health smoke flow to CI after the host checks, with isolated resources and loopback HTTP health checks.
 - [ ] Run the complete checks and report unresolved failures without marking incomplete phases done.
 - [ ] Reconcile the ledger and discoveries with implemented auth, ownership, push-only schema changes, and the actual completion state.
 
@@ -1137,7 +1128,7 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Check | Result and correction |
 | --- | --- |
 | Does phase 1 stay a scaffold? | Yes. It contains eight expected setup files and only a liveness request. Auth/database feature files wait for their own phases. |
-| Does auth precede all finance features? | Yes. HTTPS and HTTP checks precede registration. Users arrive before registration; sessions before login; session middleware with the real current-user endpoint; CSRF middleware with logout, the first authenticated write. |
+| Does auth precede all finance features? | Yes. HTTP request checks precede registration; local HTTPS was removed at the user's request. Users arrive before registration; sessions before login; session middleware with the real current-user endpoint; CSRF middleware with logout, the first authenticated write. |
 | Are auth concerns separate commits? | Yes. Password change and expired-session cleanup are separate gates. Requestly/browser verification follows working auth, with route tests and examples already added earlier. |
 | Is schema growth feature-driven? | Yes. Users at 6, sessions at 8, accounts at 15, transactions/history at 20, tags at 28, account tag links at 30, transaction tag links at 31, categories at 33, and category assignment at 35. Composite reference keys arrive when their relationship first needs them. |
 | Do finance features finish in learning order? | Yes. Accounts finish at 19, transactions at 27, tags at 32, and categories at 36. Later features extend the existing endpoints and snapshots without resets or speculative fields. |
@@ -1147,9 +1138,9 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Is each review bounded? | Each implemented review stays within nine tracked files, including tests and guides. The connection in 3B and readiness/shutdown in 3C have separate reviews of nine and eight expected files. Other phases retain their estimates, acceptance blocks, suggested commits, and approval gates. Adding request examples must stay inside the nine-file ceiling. |
 | Are repetitive catalogs still reviewable? | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small. |
 | Is push-only schema management preserved? | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset. |
-| Is approval preserved? | Yes. The 41 numbered phases retain their gates, with phase 3 split into 3A/3B/3C for 43 review gates. Phases 1, 2, 3A, 3B, and 3C are complete; phases 4–41 require their own approval. |
+| Is approval preserved? | Yes. Phase 3 is split into 3A/3B/3C and phase 4 is removed, leaving 42 review gates. Phases 1, 2, 3A, 3B, and 3C are complete; phases 5–41 require their own approval. |
 
-Structural checks confirmed consecutive phase numbers, matching feature order, 43 approval gates after splitting phase 3, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Feature and browser checks belong to their future implementation phases.
+Structural checks confirmed consecutive phase numbers, matching feature order, 42 approval gates after splitting phase 3 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Feature and browser checks belong to their future implementation phases.
 
 Before each implementation gate, re-estimate the actual diff. Split a phase if it would exceed nine tracked files, introduce a second independent behavior, or require too much new code to explain in one request walkthrough. This rule applies even when a phase has only three todos.
 
@@ -1159,12 +1150,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 3C complete and awaiting user review. Phase 4 is pending approval.
+Status: Phase 3C is approved. Local HTTPS was removed before implementation. Phase 5 is the next approval gate.
 
-Handoff note: Review the simple health checks, app factory, and graceful shutdown change and let the user make its suggested commit. Readiness uses one Drizzle SELECT 1 with the existing driver timeouts. Do not restore strict readiness deadlines or reservation/cancellation handling; the user explicitly requested simplicity. The test API processes and verification database are stopped. The user controls their development API and prefers Requestly checks. After phase 4 is approved, add local HTTPS before authentication.
+Handoff note: Keep local HTTP and the simple readiness query. No TLS code, certificate files, or trust-store changes were introduced. Local/test session cookies will be HttpOnly without Secure; production still requires HTTPS and Secure cookies. The next implementation is phase 5, which introduces shared request checks and API_ORIGIN when they have a real use.
 
-Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing CSRF/origin checks for desktop clients; weakening Secure cookies for HTTP; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
+Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing CSRF/origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review phase 3C, make its commit, and approve phase 4 when ready. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review this plan correction and approve phase 5 when ready. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the architect skill. "Implement only phase 4 of `sessions/001_fresh_start/01-architect-todos.md`. Add local HTTPS with simple explicit settings, preserve the user-controlled development server, explain the request flow, suggest the commit, and stop at the approval gate."
+Suggested next specialist and prompt: Continue with the architect skill. "Implement only phase 5 of `sessions/001_fresh_start/01-architect-todos.md`. Add the shared request checks and origin settings on local HTTP, preserve the user-controlled development server, explain the request flow, suggest the commit, and stop at the approval gate."

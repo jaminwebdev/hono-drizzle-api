@@ -1,6 +1,6 @@
 # Run the API and PostgreSQL locally
 
-Run Bun 1.3.14 on the host. Docker provides PostgreSQL separately. Startup requires PostgreSQL; the liveness endpoint itself makes no database query.
+Run Bun 1.3.14 on the host. Docker provides PostgreSQL separately. Local development uses HTTP on loopback and needs no certificates. Startup requires PostgreSQL; the liveness endpoint itself makes no database query.
 
 ## Start and stop the API
 
