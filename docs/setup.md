@@ -95,7 +95,7 @@ Pressing `Ctrl+C` during `db:logs` only stops following the logs. For the separa
 
 ## Schema and database tools
 
-`src/db/schema.ts` defines the current database structure. It contains `users`, used by [registration](api.md#register-a-user), and `sessions`, ready for the later login feature. Finance tables come later.
+`src/db/schema.ts` defines the current database structure. It contains `users`, used by [registration](api.md#register-a-user) and [login](api.md#log-in), and `sessions`, created during login. Finance tables come later.
 
 ```mermaid
 erDiagram
@@ -121,9 +121,9 @@ Each user has a generated UUID, a unique email of at most 254 characters, a pass
 
 One user can have several sessions, such as separate logins on two devices. Each session has its own generated UUID and a unique credential hash. The foreign key requires an existing user. Deleting a user directly from the database also deletes that user's sessions; there is no user-deletion API.
 
-`token_hash` is for the SHA-256 hash of the session credential that the later login endpoint will put in an HttpOnly cookie. The raw credential must never be stored here. Login will generate the credential; this schema change does not create sessions or cookies. Writes require an approved Origin, with an explicit browser allowlist and SameSite cookies, as explained in the [API guide](api.md#origins-and-browser-access).
+`token_hash` stores the SHA-256 hash of the random session credential issued by login in an HttpOnly cookie. The raw credential is never stored in the database. Writes require an approved Origin, with an explicit browser allowlist and SameSite cookies, as explained in the [API guide](api.md#origins-and-browser-access).
 
-`created_at` records session creation, `last_seen_at` records the latest accepted use, and `expires_at` is the absolute expiry time. The first two default to insertion time; login must supply the absolute deadline. Later session validation will enforce idle and absolute expiry and update `last_seen_at`. Timestamps alone do not enforce expiry or delete rows. The unique credential index supports session lookup, while separate indexes on `user_id`, `last_seen_at`, and `expires_at` support revoking a user's sessions and cleaning up idle or expired rows.
+`created_at` records session creation, `last_seen_at` records the latest accepted use, and `expires_at` is the absolute expiry time. The first two default to insertion time; login supplies a deadline seven days later. Session validation, which comes next, will enforce idle and absolute expiry and update `last_seen_at`. Timestamps alone do not enforce expiry or delete rows. The unique credential index supports session lookup, while separate indexes on `user_id`, `last_seen_at`, and `expires_at` support revoking a user's sessions and cleaning up idle or expired rows.
 
 | Command | Purpose |
 | --- | --- |
@@ -141,7 +141,7 @@ Drizzle Kit 0.31.11 uses the development dependency `pg` for these tools. The AP
 
 `tests/integration/setup.ts` provides `createTestDatabase()`. It validates the supplied settings and requires the exact test mode, host, port, and database listed above before creating a database object. It never loads an environment file or falls back to local settings. Tests must use this helper before making writes or deleting their fixtures, and close the returned database's `$client` afterward.
 
-To run registration tests:
+To run registration and login tests:
 
 ```sh
 bun run db:test:up
@@ -149,7 +149,7 @@ bun run db:test:push
 bun run test:integration
 ```
 
-Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the registration suite serially against the guarded test database. It covers validation, actual password hashes, concurrent duplicate emails, safe errors, and the bounded limiter. Tests supply a trusted connection-address fixture and delete only their own users afterward. Stop the test container with `bun run db:test:down` when finished; its volume remains.
+Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the auth suite serially against the guarded test database. It covers registration, login, password preservation, independent hashed session credentials, safe errors, cookie flags, password-change races, and bounded limits. Tests supply a trusted connection-address fixture and delete only their own users and cascading sessions afterward. Cookie flags are checked through Hono requests; real-browser behavior has a later test phase. Stop the test container with `bun run db:test:down` when finished; its volume remains.
 
 ## Check and build
 
@@ -158,7 +158,7 @@ Unit tests run without private environment files or PostgreSQL. `test:integratio
 | `bun run typecheck` | Check source and tests with TypeScript. |
 | `bun run lint` | Check source and configuration with ESLint. |
 | `bun run test` | Run Bun unit tests without PostgreSQL. |
-| `bun run test:integration` | Run registration tests against the prepared test PostgreSQL database. |
+| `bun run test:integration` | Run registration and login tests against the prepared test PostgreSQL database. |
 | `bun run build` | Bundle the server into `dist/server.js`. |
 | `bun run check` | Run type checking, lint, tests, and build in order. |
 

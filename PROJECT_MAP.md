@@ -2,7 +2,7 @@
 
 ## Code map
 
-The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks, shared HTTP handling, and email/password registration. The users and sessions tables are defined. Login, session validation, and finance tables are not implemented yet.
+The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks, shared HTTP handling, email/password registration, and login with an HttpOnly session cookie. The users and sessions tables are defined. Session validation and finance tables are not implemented yet.
 
 | File | Responsibility |
 | --- | --- |
@@ -14,7 +14,7 @@ The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, 
 | [tests/integration/setup.ts](tests/integration/setup.ts) | Create test database objects only for the isolated test target. |
 | [src/app.ts](src/app.ts) | Build Hono routes with the explicitly supplied database and HTTP settings. |
 | [src/http.ts](src/http.ts) | Install shared middleware, common errors, and the small JSON parsing helper. |
-| [src/features/auth.ts](src/features/auth.ts) | Validate registration, bound attempts and password work, hash passwords, and insert users. |
+| [src/features/auth.ts](src/features/auth.ts) | Validate credentials, bound auth attempts/password work, register users, and create hashed sessions with environment-appropriate cookies. |
 
 Importing or constructing the app opens no database connection and starts no server. Bootstrap owns the resources and passes them to the app.
 

@@ -1,6 +1,6 @@
 # API guide
 
-Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration is available; login, session cookies, and finance endpoints come later.
+Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration and login are available. Session validation, logout, and finance endpoints come later.
 
 ## Health requests
 
@@ -42,7 +42,7 @@ flowchart LR
     Insert --> Response[Return ID and email]
 ```
 
-Each peer IP gets five attempts per fixed one-hour window, starting with its first attempt. Invalid JSON, invalid fields, and duplicate emails count too. The server uses Bun's connection address and ignores forwarded IP headers. At most two registrations may be hashing or finishing their insert at once. Capacity errors return `429 RATE_LIMITED` with a `Retry-After` header in seconds. A missing connection address returns a safe `503`.
+Each peer IP gets five attempts per fixed one-hour window, starting with its first attempt. Invalid JSON, invalid fields, and duplicate emails count too. The server uses Bun's connection address and ignores forwarded IP headers. Registration and login share a limit of two password operations, including their database work. Capacity errors return `429 RATE_LIMITED` with a `Retry-After` header in seconds. A missing connection address returns a safe `503`.
 
 The limiter stores at most 1,024 peers and removes expired entries on the next registration request. When full, it refuses new peers with `429`. These limits belong to one running app and reset on restart. They are sufficient for this local exercise; multiple API instances would need shared limits.
 
@@ -51,6 +51,39 @@ The limiter stores at most 1,024 peers and removes expired entries on the next r
 Import [requests/auth.json](../requests/auth.json) through Requestly's **Import → Postman** option. This is a collection format Requestly supports; no Postman installation is needed. See [Requestly's import guide](https://docs.requestly.com/api-client/import-export/import-from-postman).
 
 The collection includes `baseUrl` and `email` variables. Set your email and fill in the blank password in the request body locally. Send the request once for `201`, then repeat it for `409`. The file contains no password or session credential. Keep exports containing your entered password out of Git. After five attempts from your IP, wait for the stated window or restart your local API to clear its in-memory limit.
+
+## Log in
+
+Send `POST /api/v1/auth/login` with the same Origin and JSON headers as registration, and exactly `email` and `password`. Email is normalized the same way as registration. Passwords are checked as supplied, including their spaces and case. Login accepts a nonempty password of at most 128 Unicode code points; the registration blocklist applies when choosing a password, not when verifying an existing one.
+
+Success returns `200` with `{"data":{"id":"...","email":"learner@example.test"}}` and sets a cookie. With local/test HTTP, the cookie has these attributes:
+
+```http
+Set-Cookie: session=<random credential>; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800
+```
+
+Production adds `Secure`. This choice comes from validated `APP_ENV`, with no separate switch to disable it. The cookie is host-only because no Domain is set. `HttpOnly` keeps it unavailable to page JavaScript. The browser or Requestly cookie jar manages it.
+
+Each successful login generates a fresh 32-byte random credential, encoded as base64url. The session table stores only its SHA-256 hash, the user reference, and timestamps. No session credential or password hash appears in the JSON response or request logs. A preexisting session cookie does not determine the new credential, and separate logins create independent sessions. No refresh-token exchange or extra token-fetch request is involved.
+
+An unknown email and a wrong password both return `401 INVALID_CREDENTIALS` with `Invalid email or password.` Unknown emails still perform Argon2id verification against a public dummy hash to keep password work comparable. After verification, a database transaction locks the user row and rechecks the password hash before inserting the session. If the password changed during verification, login fails. The cookie is set only after that transaction commits.
+
+Login allows 30 attempts per connection peer and 10 attempts per normalized email in fixed 15-minute windows. Invalid input counts toward the peer limit. After input validation, every attempt counts toward the email limit, including successful logins. Success does not clear earlier attempts. Each counter allows new attempts when its window expires. Both maps hold at most 1,024 entries, remove expired entries when that limit is checked, and refuse new entries when full. These limits and the shared password-work limit return `429 RATE_LIMITED` with `Retry-After` in seconds. Registration and login use the same small counter function in `src/features/auth.ts`. Restarting the local API clears its in-memory limits.
+
+```mermaid
+sequenceDiagram
+    participant Client as Requestly or browser
+    participant API as Login handler
+    participant DB as PostgreSQL
+    Client->>API: Email, password, and approved Origin
+    API->>DB: Find user by normalized email
+    API->>API: Verify password with Bun
+    API->>DB: Lock user, recheck hash, and insert session
+    DB-->>API: Transaction committed
+    API-->>Client: User ID/email and HttpOnly session cookie
+```
+
+In Requestly, use the collection's **Log in** request and enter the same password used during registration. Check the `Set-Cookie` response and cookie jar after a `200`. Keep `baseUrl` set to `http://127.0.0.1:3000` so the hostname matches the cookie. Do not copy the session value into a variable or script. The server now issues sessions; `/api/v1/auth/me`, session expiry validation, and logout are separate later steps.
 
 ## Errors
 
@@ -72,7 +105,8 @@ The request ID matches the response header. The timestamp uses UTC. Unexpected f
 
 | Status | Code | Meaning |
 | --- | --- | --- |
-| `400` | `INVALID_INPUT` | The JSON body is empty, malformed, or contains invalid registration fields. |
+| `400` | `INVALID_INPUT` | The JSON body is empty, malformed, or contains invalid credential fields. |
+| `401` | `INVALID_CREDENTIALS` | The login email or password is incorrect, or the password changed during verification. |
 | `403` | `ORIGIN_REJECTED` | A write has a missing or unapproved Origin. |
 | `404` | `NOT_FOUND` | No resource matches the URL. |
 | `405` | `METHOD_NOT_ALLOWED` | The URL exists but does not support that method. `Allow` lists supported methods. |
@@ -80,10 +114,10 @@ The request ID matches the response header. The timestamp uses UTC. Unexpected f
 | `413` | `PAYLOAD_TOO_LARGE` | The request body exceeds the size limit. |
 | `414` | `URI_TOO_LONG` | The full request URL exceeds the size limit. |
 | `415` | `UNSUPPORTED_MEDIA_TYPE` | A JSON reader received a content type other than `application/json`. |
-| `429` | `RATE_LIMITED` | The registration attempt or password-processing limit was reached. `Retry-After` gives seconds before retrying. |
+| `429` | `RATE_LIMITED` | An authentication attempt or password-processing limit was reached. `Retry-After` gives seconds before retrying. |
 | `500` | `INTERNAL_ERROR` | An unexpected application failure occurred. |
 | `503` | `DATABASE_UNAVAILABLE` | The readiness query failed. |
-| `503` | `SERVICE_UNAVAILABLE` | Registration could not determine the connection's peer address. |
+| `503` | `SERVICE_UNAVAILABLE` | A credential endpoint could not determine the connection's peer address. |
 
 In Requestly, send `GET /missing` to see a `404`. To see a `405`, send `POST /health/live` with `Origin: http://127.0.0.1:3000`; that method is unsupported even with an allowed origin. Neither request needs a body. Inspect `X-Request-Id` and, for the method error, `Allow` in the response headers.
 
@@ -105,11 +139,11 @@ An origin is a scheme, hostname, and port, such as `http://127.0.0.1:3000`. Path
 
 Every POST, PUT, PATCH, or DELETE request must include an `Origin` exactly matching `API_ORIGIN` or an explicitly allowed browser origin. Missing values, `null`, and unlisted values return `403 ORIGIN_REJECTED`. GET and HEAD need no Origin.
 
-For Requestly, leave `CORS_ORIGINS` empty and add the `Origin` header to write requests. CORS means cross-origin resource sharing; browsers use it to decide whether a page may read another origin's responses. Requestly desktop does not need browser CORS permission. Origin checks do not authenticate a caller; session authentication arrives with its own endpoints.
+For Requestly, leave `CORS_ORIGINS` empty and add the `Origin` header to write requests. CORS means cross-origin resource sharing; browsers use it to decide whether a page may read another origin's responses. Requestly desktop does not need browser CORS permission. Origin checks do not authenticate a caller. Login issues the session cookie; session validation on protected endpoints comes next.
 
 To allow a separate browser frontend, set an explicit list, for example `CORS_ORIGINS=http://127.0.0.1:5173`. Keep the same hostname when using local session cookies. Hono's CORS middleware allows credentials only for listed origins and exposes `ETag`, `Location`, and `X-Request-Id`. It allows GET, HEAD, POST, PUT, PATCH, and DELETE with `Content-Type` and `If-Match` request headers. Wildcard origins are rejected.
 
-Protection against cross-site request forgery uses required exact Origin checks on writes, strict JSON content types where a body is expected, the explicit CORS allowlist, and the planned host-only SameSite=Lax session cookie. GET, HEAD, and OPTIONS must never perform business mutations. Authenticated requests will use the session cookie without a separate token-fetch request or per-write token header. Reject missing and unapproved write origins even for desktop clients.
+Protection against cross-site request forgery uses required exact Origin checks on writes, strict JSON content types where a body is expected, the explicit CORS allowlist, and the host-only SameSite=Lax session cookie. GET, HEAD, and OPTIONS must never perform business mutations. Authenticated requests will use the session cookie without a separate token-fetch request or per-write token header. Reject missing and unapproved write origins even for desktop clients.
 
 A browser preflight is an OPTIONS request with `Access-Control-Request-Method`. When CORS is enabled, Hono returns `204` and includes `Access-Control-Allow-Origin` only for an allowed origin. Without that header, the browser denies access. When CORS is disabled, OPTIONS follows ordinary route and method handling. A successful preflight does not guarantee that the requested endpoint or method exists.
 
@@ -161,4 +195,4 @@ flowchart LR
 
 Hono's method check examines its normal routing result before the missing-URL check runs. An unsupported method becomes `405`; an unmatched URL becomes `404`. Both throw `ApiError` and use the same central handler.
 
-`readJson` is a helper called explicitly by a JSON route. It checks `Content-Type: application/json`, allowing a charset parameter, then calls `c.req.json()` with a safe parsing error. Registration uses it before validating its fields with Valibot.
+`readJson` is a helper called explicitly by a JSON route. It checks `Content-Type: application/json`, allowing a charset parameter, then calls `c.req.json()` with a safe parsing error. Registration and login use it before validating fields with Valibot.

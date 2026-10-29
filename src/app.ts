@@ -1,13 +1,14 @@
 import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
 import type { Database } from './db/client';
+import type { Config } from './config';
 import { createAuthRoutes } from './features/auth';
-import { ApiError, installHttp, type HttpEnv, type HttpSettings } from './http';
+import { ApiError, installHttp, type HttpEnv } from './http';
 
-export function createApp(database: Database, settings: HttpSettings) {
+export function createApp(database: Database, settings: Pick<Config, 'APP_ENV' | 'API_ORIGIN' | 'CORS_ORIGINS'>) {
   const app = new Hono<HttpEnv>();
   installHttp(app, settings);
-  app.route('/api/v1/auth', createAuthRoutes(database));
+  app.route('/api/v1/auth', createAuthRoutes(database, settings.APP_ENV));
 
   app.get('/health/live', (c) => {
     return c.json({ status: 'ok' });

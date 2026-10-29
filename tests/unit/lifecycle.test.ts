@@ -5,7 +5,7 @@ import type { Database } from '../../src/db/client';
 function appWith(query: () => Promise<unknown>) {
   const execute = mock(query);
   const database = { execute } as unknown as Database;
-  return { app: createApp(database, { API_ORIGIN: 'http://127.0.0.1:3000', CORS_ORIGINS: [] }), execute };
+  return { app: createApp(database, { APP_ENV: 'test', API_ORIGIN: 'http://127.0.0.1:3000', CORS_ORIGINS: [] }), execute };
 }
 
 describe('health routes', () => {

@@ -1,6 +1,6 @@
 # Finance tracker architecture and implementation todos
 
-This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases through 8 are complete. Later phases remain subject to their individual approval gates.
+This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases through 9 are complete. Later phases remain subject to their individual approval gates.
 
 ## Spec summary
 
@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 8 are complete, including the requested simplicity retrospective and uniform error-handling cleanup. Phase 9 requires approval. Local development uses HTTP, following the user's removal of the local HTTPS phase.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Unimplemented details such as idle expiry and future endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 9 are complete, including the requested simplicity retrospective and uniform error-handling cleanup. Phase 10 requires approval. Local development uses HTTP, following the user's removal of the local HTTPS phase.
 
 ### Build one feature at a time
 
@@ -381,7 +381,7 @@ Accept passwords of 15–128 Unicode code points, including spaces, without trim
 
 Registration returns `201` with only user ID and email, without automatically logging in. Duplicate normalized email returns `409 ACCOUNT_NOT_AVAILABLE`. This local registration response can reveal that an email is already registered; public signup and recovery need a separately designed anti-enumeration flow. Login returns the same `401 INVALID_CREDENTIALS` for an unknown email or wrong password and performs a comparable dummy password verification for unknown users.
 
-Add bounded throttling with the first credential endpoint. Proposed single-process limits are 5 registrations per peer IP per hour, 10 failed logins per normalized email per 15 minutes, and 30 login attempts per peer IP per 15 minutes. Limit simultaneous password-hash work to 2 operations and return `429` with `Retry-After` when capacity is exceeded. Limit password-change attempts too. The in-memory limiter has a fixed maximum number of entries, expiry cleanup, and a defined refusal when full. Do not introduce Redis for this local exercise. Restarting the process clears this protection; public or multi-instance hosting requires a shared limiter.
+Add bounded throttling with the first credential endpoint. Single-process limits are 5 registrations per peer IP per hour, 10 login attempts per normalized email per 15 minutes, and 30 login attempts per peer IP per 15 minutes. Count every attempt that reaches a limit, including successful logins; clear counters only when their windows expire. Keep the counter logic in one small function in the auth feature. Limit simultaneous password-hash work to 2 operations and return `429` with `Retry-After` when capacity is exceeded. Limit password-change attempts too. The in-memory limiter has a fixed maximum number of entries, expiry cleanup, and a defined refusal when full. Do not introduce Redis for this local exercise. Restarting the process clears this protection; public or multi-instance hosting requires a shared limiter.
 
 Get the peer address from Bun's connection information, not untrusted forwarded headers. Tests supply a trusted peer-address fixture explicitly. Do not log limiter keys or submitted emails/passwords. Implement and test the limiter inside the auth feature while it is the only feature needing it.
 
@@ -486,7 +486,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, and 8 are complete. Phase 4 was removed at the user's request. Phase 8 is awaiting review; phase 9 requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete. Phase 4 was removed at the user's request. Phase 9 is awaiting review; phase 10 requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests and guide edits, not permission to create an absent file early. The scaffold has eight planned files; later phases target two to seven and may reach nine with dependency/configuration work. Before implementation, split a phase that would reach ten files or mix separate behaviors. Phase 5B is the documented exception for short settings call-site, test, and current-guide updates; it contains only the origin/CORS policy. Split within the same feature and update phase references before proceeding.
 
@@ -709,14 +709,18 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 9. Log in and issue the session cookie
 
-Expected files, 4: `src/features/auth.ts`, `tests/integration/auth.test.ts`, `tests/unit/auth.test.ts`, `docs/auth.md`.
+Review files, 9: `src/features/auth.ts`, `src/app.ts`, `tests/integration/auth.test.ts`, `tests/unit/lifecycle.test.ts`, `docs/api.md`, `docs/setup.md`, `requests/auth.json`, `PROJECT_MAP.md`, and this plan. Pass the validated application mode through the existing app factory for cookie settings, keep auth tests together, and extend the current guides and collection rather than creating new helper files or documents.
 
-- [ ] Add login throttling and generic credential failures with comparable verification work for unknown users.
-- [ ] Add POST /auth/login with fresh random credentials, hash-only session storage, and the S8 HttpOnly cookie, with Secure required in production and omitted for local/test HTTP.
-- [ ] Lock/recheck the user password hash before session creation; test local/production cookie flags, stored hashes, bad credentials, and an ignored preexisting session ID.
-- [ ] Document the Set-Cookie response and Requestly's intended cookie reuse without an environment-variable session token.
+- [x] Add login throttling and generic credential failures with comparable verification work for unknown users.
+- [x] Add POST /api/v1/auth/login with fresh random credentials, hash-only session storage, and the S8 HttpOnly cookie, with Secure required in production and omitted for local/test HTTP.
+- [x] Lock/recheck the user password hash before session creation; test local/production cookie flags, stored hashes, bad credentials, and an ignored preexisting session ID.
+- [x] Document the Set-Cookie response and Requestly's intended cookie reuse without an environment-variable session token.
 
 Acceptance: S6–S8; PROJECT_MAP R3, R6–R8, R10–R12. No protected finance endpoint exists. Login cannot return the session credential in JSON, reuse a supplied ID, or disclose whether an email exists through its error message.
+
+Validation: type checking, ESLint, all 70 unit tests, all 40 auth integration tests, and the build passed on Bun 1.3.14. Tests cover cookie flags for local/test/production, fresh independent credentials, hash-only storage, a seven-day absolute deadline, generic bad-credential responses with dummy verification, strict input/origin checks, password-hash changes before session creation, failed session transactions, bounded peer/email maps, quota expiry/reset, and shared registration/login password capacity. Tests remove only their own users and cascading sessions. The test database was stopped with its volume preserved; the existing local database stayed running. No development API, schema changes, dependencies, session-validation middleware, or extra token mechanisms were added.
+
+Login checks a nonempty password up to 128 Unicode code points without reapplying the new-password blocklist. Registration and login share one small counter function. Login counts all attempts rather than tracking failures or resetting on success. The public dummy Argon2id hash is a fixed non-user value, so importing or constructing the app performs no password hashing or database query. The handler sets the cookie only after the locked session transaction commits.
 
 Suggested commit: `feat: log in with secure cookie sessions`
 
@@ -1192,7 +1196,7 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Is each review bounded? | Earlier reviews fit nine tracked files or fewer. Phase 5B is a documented 12-file exception for one origin/CORS policy, including short settings call-site changes, their tests, and accurate docs. Response negotiation and logging are separate in 5C. Other phases keep the nine-file target and their own gates. |
 | Are repetitive catalogs still reviewable? | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small. |
 | Is push-only schema management preserved? | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset. |
-| Is approval preserved? | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, and 8 are complete; phases 9–41 require their own approval. |
+| Is approval preserved? | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete; phases 10–41 require their own approval. |
 
 Structural checks confirmed consecutive phase numbers, matching feature order, 44 approval gates after splitting phases 3 and 5 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Phase 5A passed common-error and JSON-reader tests, type checking, lint, and build. Phase 5B passed origin/CORS policy tests, configuration checks, type checking, lint, and build. Phase 5C passed negotiation and metadata-log tests, type checking, lint, and build. Feature and browser end-to-end checks remain for their own phases.
 
@@ -1204,12 +1208,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 8 and the user-approved request-protection simplification are complete and awaiting review. The sessions schema is pushed to local/test databases, with existing users and remaining session data preserved. Phase 9 remains unapproved. Local development remains on HTTP.
+Status: Phase 9 is complete and awaiting review. Login issues an HttpOnly session cookie after password verification and locked session creation. Phase 10 remains unapproved. Local development remains on HTTP.
 
-Handoff note: Users and sessions are the only tables. Session credential hashes are unique; session rows reference users with cascading deletion and have user, last-seen, and expiry indexes. Writes rely on the required Origin check, JSON validation, CORS allowlist, and SameSite policy, without a separate token endpoint or per-write token. Login, cookie issuance, and session validation are still unimplemented. After approval, phase 9 adds login and generates the session credential. Keep expected HTTP failures as thrown `ApiError` values, schema notes in setup, and endpoint behavior in the API guide.
+Handoff note: Registration and login are implemented in the auth feature. Login creates independent 32-byte credentials, stores their SHA-256 hashes, and sets host-only SameSite=Lax cookies with Secure in production. Registration/login share two password-work slots and have bounded attempt maps. Phase 10 adds session validation and GET /api/v1/auth/me after approval. Do not add logout, password change, finance tables, or a separate token endpoint yet. Keep expected HTTP failures as thrown `ApiError` values and update the current guides and collection.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing required Origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review phase 8 and the request-protection simplification, then approve phase 9 when ready. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review phase 9 and try login in Requestly, then approve phase 10 when ready. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the architect skill. "Implement phase 9 only after approval. Add bounded login, fresh random credentials, hash-only session storage, and environment-appropriate cookies. Reuse the auth feature and current guides. Keep session validation and protected routes for phase 10."
+Suggested next specialist and prompt: Continue with the architect skill. "Implement phase 10 only after approval. Add session validation for GET /api/v1/auth/me, including malformed/expired/revoked credentials, idle and absolute deadlines, and last-seen updates. Keep logout and finance routes for their own phases."
