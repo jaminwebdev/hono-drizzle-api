@@ -114,7 +114,7 @@ The API and developer commands use the same database settings. Docker supplies d
 
 ## S2. Environments and fresh Docker storage
 
-The old volume `hono-drizzle-local_postgres_data` existed during the earlier inspection, with no containers present. Recheck that inventory before startup. The retained Compose names differ from that older name, but the restart should have clearly new names regardless. See [discoveries.md](../../docs/discoveries.md).
+The old volume `hono-drizzle-local_postgres_data` existed during the earlier inspection, with no containers present. Recheck that inventory before startup. The retained Compose names differ from that older name, but the restart should have clearly new names regardless. See [database storage](../../docs/setup.md#database-storage).
 
 Use these proposed identities consistently:
 
@@ -646,7 +646,11 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Simplicity retrospective before phase 6
 
-The user requested a review after 5C before more implementation. Findings are in [02-architecture-retro.md](02-architecture-retro.md). Discuss strict Accept negotiation, documentation duplication, and helpers added before their first real handler. Keep any approved cleanup as its own small commit; do not automatically begin the users schema or apply the review's proposals.
+The user requested a review after 5C. Findings are in [02-architecture-retro.md](02-architecture-retro.md). The user committed 5C and approved documentation consolidation. That cleanup is complete: README is a quick start, setup owns configuration/commands/storage/tool notes, the API guide owns HTTP behavior and middleware order, and PROJECT_MAP holds the code map and rules. The former discoveries file was merged into setup with its useful notes preserved.
+
+Validation: local Markdown links and anchors, documented package commands, and Git whitespace checks passed. No runtime files, settings, or dependencies changed, so no application checks or services were run for this documentation-only cleanup. Strict Accept negotiation and other runtime proposals remain unchanged. Discuss them or approve phase 6 separately.
+
+Suggested commit: `docs: consolidate setup and API references`
 
 ### Phase 6. Define only users and the push commands
 
@@ -1148,11 +1152,11 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 41. Automate the image check and reconcile project truth
 
-Expected files, 3: `.github/workflows/ci.yaml`, `PROJECT_MAP.md`, `docs/discoveries.md`.
+Expected files, 3: `.github/workflows/ci.yaml`, `PROJECT_MAP.md`, `docs/setup.md`.
 
 - [ ] Add the existing production image build/health smoke flow to CI after the host checks, with isolated resources and loopback HTTP health checks.
 - [ ] Run the complete checks and report unresolved failures without marking incomplete phases done.
-- [ ] Reconcile the ledger and discoveries with implemented auth, ownership, push-only schema changes, and the actual completion state.
+- [ ] Reconcile the ledger and setup tool notes with implemented auth, ownership, push-only schema changes, and the actual completion state.
 
 Acceptance: S1–S8; PROJECT_MAP R1–R12. No public deployment, future auth-provider work, or extra feature tables. All cleanup is scoped to this run. The user still makes the commits.
 
@@ -1189,12 +1193,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 5C is complete and awaiting review. The requested simplicity retrospective is ready for discussion. Phase 6 remains unapproved. Local development remains on HTTP.
+Status: Phase 5C is committed. The approved documentation consolidation is complete and awaiting review. Runtime retrospective decisions and phase 6 remain unapproved. Local development remains on HTTP.
 
-Handoff note: Review 5C and the short simplicity retrospective before starting another feature. Hono parses Accept headers and supplies route templates for a five-field JSON request log. No services were started. The review recommends discussing optional strict Accept handling and consolidating repeated documentation. It also notes that JSON reading has no real caller until registration. No retrospective cleanup has been applied; agree on any small cleanup commit or approve phase 6 explicitly before proceeding.
+Handoff note: Review the documentation-only consolidation. Setup is the configuration, commands, database, and tool-notes reference; the API guide explains HTTP behavior and installHttp in execution order. No runtime behavior changed. Keep useful details in their owning guide and link to them from README and PROJECT_MAP. Discuss strict Accept negotiation or approve phase 6 before changing runtime code or adding users.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing CSRF/origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review phase 5C, make its suggested commit, and discuss the retrospective before choosing cleanup or phase 6. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review the documentation cleanup and middleware explanation, then choose any remaining retrospective cleanup or approve phase 6. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the architect skill. "Discuss `sessions/001_fresh_start/02-architecture-retro.md` and agree on the smallest useful cleanup before more feature work. Do not implement unapproved cleanup or start phase 6 automatically."
+Suggested next specialist and prompt: Continue with the architect skill. "Review the remaining runtime candidates in `sessions/001_fresh_start/02-architecture-retro.md`, especially strict Accept negotiation, or implement phase 6 only after explicit approval. Keep shared HTTP code simple and documentation in its owning guide."

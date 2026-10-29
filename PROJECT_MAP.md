@@ -1,28 +1,20 @@
 # Project map
 
-## Current state
+## Code map
 
-The application runs on Bun 1.3.14 with Hono. `src/config.ts` uses Valibot to validate the mode, database settings, API/database ports, and exact HTTP origins. `API_ORIGIN` is required and must use HTTPS in production. `CORS_ORIGINS` is an optional browser allowlist, empty by default. Invalid values stop startup with errors that omit submitted values. Configuration does not read files or guess a database target.
+The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks and shared HTTP handling. Authentication and finance tables are not implemented yet.
 
-`src/server.ts` opens the database connection and passes it with the validated HTTP settings to `createApp(database, settings)` in `src/app.ts` before listening. Start PostgreSQL with `bun run db:up` before `bun run dev`. Local and test modes listen on loopback; production mode listens on all interfaces. The local template uses `127.0.0.1:3000`. Importing or constructing the app starts no server and opens no connection.
+| File | Responsibility |
+| --- | --- |
+| [src/server.ts](src/server.ts) | Validate settings, create the database, start Bun, and own shutdown. |
+| [src/config.ts](src/config.ts) | Validate supplied values without reading environment files. |
+| [src/db/client.ts](src/db/client.ts) | Create one Drizzle database object backed by Bun's connection pool. |
+| [src/app.ts](src/app.ts) | Build Hono routes with the explicitly supplied database and HTTP settings. |
+| [src/http.ts](src/http.ts) | Install shared middleware, common errors, and the small JSON parsing helper. |
 
-`GET /health/live` returns `200` with `{ "status": "ok" }` without querying PostgreSQL. `GET /health/ready` runs `SELECT 1` through Drizzle and returns `200` with the same body or a common `503` error with code `DATABASE_UNAVAILABLE`. Readiness uses the existing database timeouts; it adds no separate deadline or connection-reservation logic.
+Importing or constructing the app opens no database connection and starts no server. Bootstrap owns the resources and passes them to the app.
 
-`src/http.ts` installs server-generated request IDs, no-store responses, browser security headers, an 8 KiB URL limit, method errors, and a common JSON error shape. Unexpected errors omit raw exception details. Hono's body-limit middleware enforces a 64 KiB request limit. The small JSON helper checks content type and calls `c.req.json()` with a safe parsing error. Feature fields remain the responsibility of each feature.
-
-Unsafe requests require an exact allowed `Origin`; failures return `403 ORIGIN_REJECTED`. GET and HEAD health requests need no Origin. Hono handles credentialed CORS and preflights only when browser origins are configured. Requestly needs the write-request Origin header but no CORS configuration. See [the API guide](docs/api.md) for examples.
-
-Hono parses Accept headers for JSON response negotiation; unsupported response types return `406 NOT_ACCEPTABLE`. Request logs contain only the server-generated request ID, method, registered route template, status, and elapsed milliseconds. They omit concrete resource IDs, query strings, headers, bodies, and raw errors.
-
-`src/db/client.ts` builds one Drizzle 0.45.4 database object backed by Bun's SQL pool. Explicit settings choose the target; credentials are passed as options. The pool permits five connections, times out connection attempts after five seconds, applies PostgreSQL's five-second statement timeout, and closes idle connections after 30 seconds. Importing the module opens no connection. No application tables exist yet.
-
-`bun run check` runs type checking, ESLint, Bun unit tests, and the Bun build. Test files are included in type checking. The bundle is `dist/server.js`. `bunfig.toml` disables automatic environment loading for application commands; `dev` explicitly selects `.env.local`. `start` requires caller-supplied settings. Both commands use `APP_ENV` for the mode. See the [README](README.md) for commands and [project notes](docs/discoveries.md) for the Bun package-manager exception.
-
-PostgreSQL runs separately through `bun run db:up` and `bun run db:down`. Test commands use the `db:test:*` namespace. Local and test Compose files contain only PostgreSQL and retain their named volumes on shutdown. The [setup guide](docs/setup.md) lists environment identities and operating commands.
-
-SIGINT, SIGTERM, uncaught exceptions, and unhandled promise rejections use one shutdown path. It stops accepting connections, drains requests, then closes the pool. A five-second deadline forces exit if cleanup stalls. Fatal errors and failed cleanup exit nonzero without logging raw error details.
-
-Local development uses HTTP on loopback with no certificate setup. The scaffold provides health checks and shutdown. Authentication and finance features follow in the [approval-gated implementation plan](sessions/001_fresh_start/01-architect-todos.md).
+Use [setup](docs/setup.md) for settings, commands, database identities, storage, and tool notes. Use [the API guide](docs/api.md) for endpoints, request limits, origin policy, middleware order, and errors. The [implementation plan](sessions/001_fresh_start/01-architect-todos.md) holds approval gates and session decisions.
 
 ## Confirmed project rules
 
@@ -43,8 +35,6 @@ Local development uses HTTP on loopback with no certificate setup. The scaffold 
 
 ## Boundaries
 
-Build the remaining features only after their phase is approved. Authentication and ownership must precede finance endpoints. Each user will access only their own records. Public deployment is a separate decision.
+Run development on the host with PostgreSQL in Docker. Local HTTP needs no certificates. Preserve existing Docker data and keep fresh environments separate; their exact identities are in [setup](docs/setup.md#database-storage).
 
-Preserve existing Docker data. The Compose projects are `finance-tracker-fresh-local`, `finance-tracker-fresh-test`, and `finance-tracker-fresh-production`. Host database ports are 5433, 5435, and 5434 respectively, all bound to loopback. PostgreSQL 18 volumes use `/var/lib/postgresql`.
-
-The retained Dockerfile and production Compose configuration have not been validated for this scaffold. Follow the host development commands in the [README](README.md).
+Each feature requires its own approval. Authentication and ownership precede finance endpoints. Public deployment is a separate decision; the retained production image and Compose stack remain unverified.

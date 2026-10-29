@@ -12,8 +12,6 @@ Use `http://127.0.0.1:3000` with the local settings. Start the API in your termi
 
 Readiness uses the existing database timeouts. It has no separate deadline or connection-reservation logic.
 
-Every response has a server-generated `X-Request-Id` and `Cache-Control: no-store`. The server ignores any request ID supplied by a client. Browser security headers include `X-Content-Type-Options: nosniff`. Local HTTP responses do not include Strict-Transport-Security, which tells browsers to require HTTPS.
-
 ## Errors
 
 All API errors use this shape:
@@ -39,8 +37,8 @@ The request ID matches the response header. The timestamp uses UTC. Unexpected f
 | `404` | `NOT_FOUND` | No resource matches the URL. |
 | `405` | `METHOD_NOT_ALLOWED` | The URL exists but does not support that method. `Allow` lists supported methods. |
 | `406` | `NOT_ACCEPTABLE` | The Accept header does not permit a JSON response. |
-| `413` | `PAYLOAD_TOO_LARGE` | A request body exceeds 65,536 bytes, or 64 KiB. |
-| `414` | `URI_TOO_LONG` | The full request URL exceeds 8,192 bytes, or 8 KiB. |
+| `413` | `PAYLOAD_TOO_LARGE` | The request body exceeds the size limit. |
+| `414` | `URI_TOO_LONG` | The full request URL exceeds the size limit. |
 | `415` | `UNSUPPORTED_MEDIA_TYPE` | A JSON reader received a content type other than `application/json`. |
 | `500` | `INTERNAL_ERROR` | An unexpected application failure occurred. |
 | `503` | `DATABASE_UNAVAILABLE` | The readiness query failed. |
@@ -61,14 +59,7 @@ The route comes from Hono's registered route template. A route such as `/records
 
 ## Origins and browser access
 
-An origin is a scheme, hostname, and port, such as `http://127.0.0.1:3000`. Paths and trailing slashes are not part of an origin. Add these settings to the selected environment file:
-
-```dotenv
-API_ORIGIN=http://127.0.0.1:3000
-CORS_ORIGINS=
-```
-
-`API_ORIGIN` is required. Use the API's public origin; production requires HTTPS even when a deployment proxy talks to the API internally over HTTP. Local and test development need no certificates. Their usual origins are `http://127.0.0.1:3000` and `http://127.0.0.1:3002`.
+An origin is a scheme, hostname, and port, such as `http://127.0.0.1:3000`. Paths and trailing slashes are not part of an origin. Configure `API_ORIGIN` and the optional `CORS_ORIGINS` allowlist as described in [setup](setup.md#configuration).
 
 Every POST, PUT, PATCH, or DELETE request must include an `Origin` exactly matching `API_ORIGIN` or an explicitly allowed browser origin. Missing values, `null`, and unlisted values return `403 ORIGIN_REJECTED`. GET and HEAD need no Origin.
 
@@ -78,24 +69,40 @@ To allow a separate browser frontend, set an explicit list, for example `CORS_OR
 
 A browser preflight is an OPTIONS request with `Access-Control-Request-Method`. When CORS is enabled, Hono returns `204` and includes `Access-Control-Allow-Origin` only for an allowed origin. Without that header, the browser denies access. When CORS is disabled, OPTIONS follows ordinary route and method handling. A successful preflight does not guarantee that the requested endpoint or method exists.
 
-## Shared request handling
+## Middleware order
+
+`src/app.ts` calls `installHttp` in `src/http.ts` before registering routes. Each middleware can return a response immediately or call `await next()` to continue. Code after `await next()` runs when the remaining middleware and handler return. See [Hono's middleware execution order](https://hono.dev/docs/guides/middleware#execution-order).
 
 ```mermaid
-flowchart LR
-    Client[Requestly] --> Shared[Set request ID and response headers]
-    Shared --> Limit[Check the URL length]
-    Limit --> Origin[Check write origins and optional browser access]
-    Origin --> Accept[Check that JSON responses are acceptable]
-    Accept --> Route[Run the health handler]
-    Route --> Success[Return health JSON]
-    Limit --> Error[Return the common JSON error]
-    Origin --> Error
-    Accept --> Error
-    Route --> Error
-    Success --> Log[Log request metadata]
-    Error --> Log
+sequenceDiagram
+    participant Client as Requestly
+    participant Shared as Shared middleware
+    participant Handler as Route handler
+    Client->>Shared: Request
+    Shared->>Shared: Set request ID and check the request
+    Shared->>Handler: await next()
+    Handler-->>Shared: Response
+    Shared->>Shared: Finish logging and response headers
+    Shared-->>Client: Response
 ```
 
-`src/app.ts` installs the common HTTP behavior from `src/http.ts` before registering routes. Hono identifies unsupported methods and adds the allowed-method list. Successful health responses keep their simple status body.
+The following order matches `installHttp`:
 
-Hono's body-limit middleware enforces the 64 KiB request limit before handlers run, including streamed bodies without a `Content-Length` header. `readJson` in `src/http.ts` checks for `Content-Type: application/json`, allowing a charset parameter, then calls `c.req.json()` with a safe error for malformed JSON. Each feature will validate its own fields with Valibot. Tests use a test-only POST route; the running application still has only health routes.
+| Order | Middleware | Purpose |
+| --- | --- | --- |
+| 1 | Hono `secureHeaders` | Adds browser security headers, including `nosniff` to prevent content-type guessing and `SAMEORIGIN` to restrict framing. Strict-Transport-Security is disabled for local HTTP. |
+| 2 | Request ID, no-store, and logging | Generates a fresh ID and sets `X-Request-Id` and `Cache-Control: no-store`. After `await next()`, writes the final status and elapsed handling time to the log. Client-supplied request IDs are ignored. |
+| 3 | URL limit | Rejects a full URL over 8 KiB with `414` before query parsing. |
+| 4 | Write-origin check | Requires an allowed Origin for methods other than GET, HEAD, and OPTIONS. Rejects missing or unapproved values with `403`. |
+| 5 | Hono `cors`, when configured | Adds browser access headers and handles preflights. This middleware is not registered when the browser allowlist is empty. |
+| 6 | JSON response negotiation | Uses Hono's Accept parser to decide whether the client allows JSON. Returns `406` otherwise. |
+| 7 | Hono `bodyLimit` | Caps request bodies at 64 KiB before a route parses them. Returns the common `413` error when oversized. |
+| 8 | Hono `methodNotAllowed` | Lets routing run, then turns a missing-method result for a known URL into `405` and supplies its `Allow` header. Unknown URLs remain `404`. |
+
+Origin checking and CORS have separate jobs. The origin check rejects unapproved writes on the server; CORS tells browsers whether they may read a response. Neither authenticates a caller.
+
+### Error handlers and JSON helper
+
+`app.notFound` and `app.onError` are handlers, not middleware entries. The former produces the common `404`; the latter preserves explicit safe `ApiError` responses and turns unexpected exceptions into a generic `500`.
+
+`readJson` is a helper called explicitly by a JSON route. It checks `Content-Type: application/json`, allowing a charset parameter, then calls `c.req.json()` with a safe parsing error. Feature handlers will validate their own fields with Valibot. Only the test POST route uses this helper today; the running app still exposes health routes only.
