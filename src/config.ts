@@ -1,14 +1,22 @@
 import * as v from 'valibot';
 
+const portSchema = v.pipe(
+  v.string(),
+  v.regex(/^[1-9]\d{0,4}$/),
+  v.transform(Number),
+  v.minValue(1),
+  v.maxValue(65535),
+);
+const requiredString = v.pipe(v.string(), v.regex(/\S/));
+
 const configSchema = v.object({
   APP_ENV: v.picklist(['local', 'test', 'production']),
-  API_PORT: v.pipe(
-    v.string(),
-    v.regex(/^[1-9]\d{0,4}$/),
-    v.transform(Number),
-    v.minValue(1),
-    v.maxValue(65535),
-  ),
+  API_PORT: portSchema,
+  POSTGRES_HOST: requiredString,
+  POSTGRES_PORT: portSchema,
+  POSTGRES_USER: requiredString,
+  POSTGRES_DB: requiredString,
+  POSTGRES_PASSWORD: requiredString,
 });
 
 export function readConfig(source: Record<string, unknown>) {

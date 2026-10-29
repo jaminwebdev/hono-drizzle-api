@@ -18,10 +18,11 @@ bun install --frozen-lockfile
 
 Bun 1.3.14's package manager automatically reads default environment files despite `env = false`. For an existing checkout, keep those files outside the checkout during dependency installation and restore them afterward. [Project notes](docs/discoveries.md#environment-files) explain this limitation. Application and check commands respect the setting.
 
-Create `.env.local` if it does not already exist, then start the development server:
+Create `.env.local` if it does not already exist and choose a database password. Start PostgreSQL, then the development server:
 
 ```sh
 test -f .env.local || cp .env.example .env.local
+bun run db:up
 bun run dev
 ```
 
@@ -39,33 +40,41 @@ The response has status `200` and this JSON body:
 {"status":"ok"}
 ```
 
-In Requestly desktop, create a `GET` request with that same URL and select **Send**. A successful response means Bun and Hono can handle a request. It does not check a database connection.
+In Requestly desktop, create a `GET` request with that same URL and select **Send**. A successful response means Bun and Hono can handle a request. This route makes no database query. Startup checks the connection once; a readiness endpoint will follow in the next step.
 
 See [the setup guide](docs/setup.md) for the separate PostgreSQL commands and environment identities.
 
 ## Understand startup settings
 
-[src/config.ts](src/config.ts) has a small Valibot schema for the values supplied by Bun. Startup requires two settings:
+[src/config.ts](src/config.ts) has a small Valibot schema for the values supplied by Bun. Startup requires these settings:
 
 | Settings | Accepted values |
 | --- | --- |
 | `APP_ENV` | `local`, `test`, or `production`. |
 | `API_PORT` | A decimal port number from `1` to `65535`, without leading zeros. The schema converts the string into a number. |
+| `POSTGRES_PORT` | Uses the same port validation. The local host port is `5433`. |
+| `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_DB`, `POSTGRES_PASSWORD` | Required nonblank strings. The connection receives them directly, preserving password characters. |
 
-Invalid settings stop startup before the server listens. Error messages name the affected fields without printing submitted values. Configuration does not read files. Database and browser-origin settings will be validated when those features use them; the scaffold ignores them.
+Invalid settings stop startup before the server listens. Error messages name the affected fields without printing submitted values. Configuration does not read files or guess a database target. Browser-origin validation will arrive with request middleware.
+
+[src/db/client.ts](src/db/client.ts) creates the Drizzle database object using Bun's SQL driver. A connection pool reuses open database connections and permits at most five at once. New connection attempts have a five-second timeout, and PostgreSQL cancels queries that run longer than five seconds. Idle connections close after 30 seconds. These limits are explicit options in the client file.
+
+`src/server.ts` opens a connection before starting the HTTP server. If PostgreSQL is unavailable or rejects the credentials, startup exits with a safe error. This step adds no application tables and runs no schema pushes. The stable Drizzle 0.45.4 package includes the [Bun SQL adapter](https://orm.drizzle.team/docs/connect-bun-sql); the project uses an explicitly supplied client.
 
 ## Follow a request through the code
 
 ```mermaid
 flowchart LR
-    Bun["Bun loads the explicitly selected environment file"] --> Config["src/config.ts: validate APP_ENV and API_PORT"]
-    Config --> Server
+    Bun["Bun loads the explicitly selected environment file"] --> Config["src/config.ts: validate supplied settings"]
+    Config --> Database["src/db/client.ts: create the connection pool"]
+    Database --> Connect["src/server.ts: connect to PostgreSQL"]
+    Connect --> Server
     Client[Requestly or curl] --> Server["src/server.ts: Bun receives the request"]
     Server --> App["src/app.ts: Hono matches GET /health/live"]
     App --> Response["JSON response with status ok"]
 ```
 
-[src/server.ts](src/server.ts) validates settings before starting the HTTP server. Local and test modes use the loopback address, which makes the API reachable from this machine. Production mode listens on all network interfaces so an API container can receive requests. The server passes requests to the Hono application in [src/app.ts](src/app.ts). The route there returns the JSON response. Importing `app.ts` alone does not start a server.
+[src/server.ts](src/server.ts) validates settings and connects to PostgreSQL before starting the HTTP server. Local and test modes use the loopback address, which makes the API reachable from this machine. Production mode listens on all network interfaces so an API container can receive requests. The server passes requests to the Hono application in [src/app.ts](src/app.ts). The route there returns the JSON response. Importing `app.ts` or `db/client.ts` alone starts no server and opens no connection.
 
 ## Check and build
 

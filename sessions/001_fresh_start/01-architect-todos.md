@@ -1,6 +1,6 @@
 # Finance tracker architecture and implementation todos
 
-This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases 1, 2, and 3A are complete. Later phases remain subject to their individual approval gates.
+This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases 1, 2, 3A, and 3B are complete. Later phases remain subject to their individual approval gates.
 
 ## Spec summary
 
@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. The user approved phases 1, 2, and the next scaffold step. Phase 3 was split before implementation to keep configuration in 3A and connection lifecycle in 3B within the file limit. Completed work is recorded below; 3B and subsequent phases need separate approval.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. The user approved phases 1, 2, 3A, and 3B. Phase 3 was split before implementation into settings in 3A, the connection in 3B, and readiness/shutdown in 3C to keep each review small. Completed work is recorded below; 3C retains its separate approval gate.
 
 ### Build one feature at a time
 
@@ -22,7 +22,7 @@ The schema diagram and full API contract below describe the intended finished ap
 
 | Work | Phases | Schema introduced in these phases |
 | --- | --- | --- |
-| Scaffold | 1–3B | No application tables. Establish Bun, fresh PostgreSQL storage, validated settings, and connection lifecycle. |
+| Scaffold | 1–3C | No application tables. Establish Bun, fresh PostgreSQL storage, validated settings, and connection lifecycle. |
 | Authentication | 4–14 | Add HTTPS and request checks, then `users`, registration, `sessions`, login, middleware, CSRF, logout, password change, and session cleanup. Review the Requestly and browser flows before finance work. |
 | Accounts | 15–19 | Add only owned `accounts`, then create/detail, list/search, edit/archive, and deletion in separate commits. |
 | Transactions | 20–27 | Add owned transactions and history without tag/category fields, then creation, corrections, deletion, search, balances, summaries, and seeds. |
@@ -321,7 +321,7 @@ Use one error response shape, including router, parsing, validation, and databas
 }
 ```
 
-Generate a server request ID and return it in the response header and error body. Error details contain field paths and safe messages, never submitted values. Use `400` for invalid input, `404` for missing resources, `409` for duplicate names or reference conflicts, `413` for oversized bodies, `415` for unsupported body types, and `500` for unexpected failures. Apply the version statuses from S4. Handle non-JSON `Accept` requests with `406`, while accepting absent `Accept` and `*/*`. Reject unsupported methods on known resources with `405` and an `Allow` header. Expected database conflicts need narrow PostgreSQL-code mapping, including Drizzle's wrapped error cause when applicable; all unknown failures remain generic.
+Generate a server request ID and return it in the response header and error body. Error details contain field paths and safe messages, never submitted values. Use `400` for invalid input, `404` for missing resources, `409` for duplicate names or reference conflicts, `413` for oversized bodies, `415` for unsupported body types, and `500` for unexpected failures. Apply the version statuses from S4. Handle non-JSON `Accept` requests with `406`, while accepting absent `Accept` and `*/*`. Reject unsupported methods on known resources with `405` and an `Allow` header. Expected database conflicts need narrow PostgreSQL-code mapping, including Drizzle's wrapped error cause when applicable; all unknown failures remain generic. On Bun 1.3.14, the PostgreSQL SQLSTATE identifier is in the driver's `errno`, reached through `cause` when Drizzle wraps it. The driver's `code` instead names the Bun error type. The 3B timeout smoke check confirmed this distinction.
 
 Limit JSON bodies to 64 KiB before parsing, including chunked requests. Require `application/json` for JSON writes, allowing its charset parameter. Limit the full URL to 8 KiB before query decoding. Use parameterized queries and allowlisted orderings. Bound database pool size, connection acquisition, query duration, and readiness checks. Start with a pool maximum of 5, a 5-second query timeout, and a 2-second readiness deadline, then verify the actual driver semantics. Readiness must release its connection after timeout or failure.
 
@@ -497,7 +497,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-Phases 1, 2, and 3A are complete. Phase 3A awaits review; phase 3B follows only after approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1, 2, 3A, and 3B are complete. Phase 3B awaits review; phase 3C follows only after approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests and guide edits, not permission to create an absent file early. The scaffold has eight planned files; later phases target two to seven and may reach nine with dependency/configuration work. Before implementation, split any phase that would reach ten files or mix separate behaviors. Split within the same feature and update phase references before proceeding.
 
@@ -549,7 +549,7 @@ Expected files, 9: `package.json`, `bun.lock`, `src/config.ts`, `src/server.ts`,
 - [x] Add Bun configuration tests and include those tests in TypeScript checks.
 - [x] Document environment selection and current startup commands.
 
-Acceptance: S1–S2, S6; PROJECT_MAP R1–R4, R6–R10. Missing or invalid `APP_ENV` and `API_PORT` fail without echoing supplied values. Keep database validation, connections, and readiness for 3B; origin validation arrives with HTTP middleware. This split keeps type-checking and current documentation inside a nine-file review.
+Acceptance: S1–S2, S6; PROJECT_MAP R1–R4, R6–R10. Missing or invalid `APP_ENV` and `API_PORT` fail without echoing supplied values. Keep database validation and connections for 3B, and readiness for 3C; origin validation arrives with HTTP middleware. This split keeps type-checking and current documentation inside a nine-file review.
 
 Validation: a clean frozen-lockfile installation passed with Valibot 1.5.0 on Bun 1.3.14. After the user requested a smaller schema, type checking, ESLint, all 16 remaining tests, and the build passed. The built entry point rejected invalid `APP_ENV` with exit code 1 before listening. Tests use invented settings and need no database. No development API or database container was started during this step.
 
@@ -557,18 +557,34 @@ Suggested commit: `feat: validate supplied application settings`
 
 PAUSE — user must approve before continuing to next batch.
 
-### Phase 3B. Add the pooled database and request lifecycle
+### Phase 3B. Connect the scaffold to PostgreSQL
 
-Re-estimate and split this batch before implementation. With database validation deferred from 3A, the expected files are now 10: `package.json`, `bun.lock`, `src/config.ts`, `src/db/client.ts`, `src/app.ts`, `src/server.ts`, `tests/unit/lifecycle.test.ts`, `docs/setup.md`, `PROJECT_MAP.md`, and this plan. Each resulting review must stay within nine files.
+Expected files, 9: `package.json`, `bun.lock`, `src/config.ts`, `src/db/client.ts`, `src/server.ts`, `tests/unit/config.test.ts`, `README.md`, `PROJECT_MAP.md`, and this plan.
 
-- [ ] Add basic required database settings and port validation, verify and install compatible stable Drizzle dependencies, and open one bounded client explicitly at startup.
-- [ ] Pass the database into the app and add bounded readiness while keeping liveness independent of database availability.
+- [x] Add basic required database fields and reuse the existing port validation, without custom hostname or password rules.
+- [x] Verify and install stable Drizzle with Bun's PostgreSQL pool, limited to five connections with connection and query timeouts.
+- [x] Explicitly open the connection during server startup and fail safely before listening when PostgreSQL is unavailable.
+- [x] Test configuration failures, smoke-check the driver against the isolated test database, and document the startup flow without adding tables.
+
+Acceptance: S1–S2, S6; PROJECT_MAP R1–R4, R6–R10. Use Bun 1.3.14 and a compatible stable Drizzle release. Importing modules starts no server and opens no connection. Preserve the user-controlled API and existing database volumes. Keep readiness and graceful shutdown for 3C.
+
+Validation: stable Drizzle 0.45.4 installed with a consistent frozen lockfile on Bun 1.3.14. Type checking, ESLint, all 22 configuration tests, and the build passed. The adapter connected to the allowlisted test database with the expected user and five-connection limit. PostgreSQL cancelled a slow query after five seconds, and the pool remained usable. Incorrect credentials failed both direct connection and API startup; startup printed only the safe message and exited before listening. Imports completed without startup. The test schema remains empty. The verification stopped its test container and preserved its named volume; no development API was started.
+
+Suggested commit: `feat: connect the API scaffold to PostgreSQL`
+
+PAUSE — user must approve before continuing to next batch.
+
+### Phase 3C. Add readiness and graceful shutdown
+
+Expected files, 7: `src/db/client.ts`, `src/app.ts`, `src/server.ts`, `tests/unit/lifecycle.test.ts`, `docs/setup.md`, `PROJECT_MAP.md`, and this plan.
+
+- [ ] Pass the database into the app and add a bounded readiness check while keeping liveness independent of database availability.
 - [ ] Add one bounded signal/fatal-error shutdown path that drains the server and closes its pool.
-- [ ] Test readiness failures and cleanup, document the connection flow, and run an isolated database smoke check.
+- [ ] Test readiness failures and cleanup, document the request and connection lifecycle, and run an isolated database smoke check.
 
-Acceptance: S1–S2, S6; PROJECT_MAP R1–R4, R6–R10. Verify the selected driver on Bun 1.3.14. Importing modules opens no connection and starts no server. No users, sessions, finance tables, or extra application layers. Keep the user's development server under their control. Split again before implementation if the actual diff exceeds nine files.
+Acceptance: S1–S2, S6; PROJECT_MAP R1–R4, R6–R10. Readiness releases its connection after timeout or failure. Importing modules opens no connection and starts no server. No application tables or extra layers. Keep the user's development server under their control and keep each review within nine files.
 
-Suggested commit: `feat: manage the database connection and readiness lifecycle`
+Suggested commit: `feat: add readiness and graceful database shutdown`
 
 PAUSE — user must approve before continuing to next batch.
 
@@ -1126,12 +1142,12 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Were broad original phases reduced? | Yes. Account list/search, editing/archival, and deletion now have separate commits. Transaction corrections and deletion are separate; category assignment and filtering are separate; image build, stack checks, and CI are separate. |
 | Do tests and middleware use current features only? | Yes. Test setup checks the selected database before writes. Session-cleanup tests use only users/sessions. Finance endpoint phases include ownership checks and foreign-user failure tests; schema-only phases inspect current constraints without testing future routes. No delayed global ownership retrofit. |
 | Does Requestly grow with the API? | Yes. The first collection request accompanies registration, then the collection grows with endpoints. Cookie reuse and a separate CSRF variable replace manual session-credential extraction. Real-browser tests check browser behavior separately. |
-| Is each review bounded? | Each implemented review stays within nine tracked files, including tests and guides. After simplifying 3A, 3B has an estimated ten files and must be split before implementation. Other phases retain their estimates, acceptance blocks, suggested commits, and approval gates. Adding request examples must stay inside the nine-file ceiling. |
+| Is each review bounded? | Each implemented review stays within nine tracked files, including tests and guides. The connection in 3B and readiness/shutdown in 3C have separate reviews of nine and seven expected files. Other phases retain their estimates, acceptance blocks, suggested commits, and approval gates. Adding request examples must stay inside the nine-file ceiling. |
 | Are repetitive catalogs still reviewable? | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small. |
 | Is push-only schema management preserved? | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset. |
-| Is approval preserved? | Yes. The 41 numbered phases retain their gates, with phase 3 split into 3A/3B for 42 review gates. Phases 1, 2, and 3A are complete; 3B and phases 4–41 require their own approval. |
+| Is approval preserved? | Yes. The 41 numbered phases retain their gates, with phase 3 split into 3A/3B/3C for 43 review gates. Phases 1, 2, 3A, and 3B are complete; 3C and phases 4–41 require their own approval. |
 
-Structural checks confirmed consecutive phase numbers, matching feature order, 42 approval gates after splitting phase 3, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phase 3A configuration tests, type checks, lint, and build passed within a nine-file diff. Connection, feature, and browser checks belong to their future implementation phases.
+Structural checks confirmed consecutive phase numbers, matching feature order, 43 approval gates after splitting phase 3, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Readiness, shutdown, feature, and browser checks belong to their future implementation phases.
 
 Before each implementation gate, re-estimate the actual diff. Split a phase if it would exceed nine tracked files, introduce a second independent behavior, or require too much new code to explain in one request walkthrough. This rule applies even when a phase has only three todos.
 
@@ -1141,12 +1157,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 3A complete and awaiting user review. Phase 3B is pending approval.
+Status: Phase 3B complete and awaiting user review. Phase 3C is pending approval.
 
-Handoff note: Review the simplified configuration change and let the user make its suggested commit. Bun selects the environment file; the schema validates only `APP_ENV` and `API_PORT`. The user controls the API in their terminal and prefers Requestly checks. Before implementing 3B, split its enlarged scope into reviews of at most nine files. Add database settings with the connection, without application tables.
+Handoff note: Review the nine-file connection change and let the user make its suggested commit. The schema adds only basic database fields; server startup opens the explicitly configured connection before listening. The test container used for verification is stopped and its volume remains. The user controls the API in their terminal and prefers Requestly checks. Start local PostgreSQL before running the API. After 3C is approved, add readiness and graceful shutdown without application tables.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing CSRF/origin checks for desktop clients; weakening Secure cookies for HTTP; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review phase 3A, make its commit, and approve phase 3B when ready. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review phase 3B, make its commit, and approve phase 3C when ready. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the architect skill. "Implement only phase 3B of `sessions/001_fresh_start/01-architect-todos.md`. Add the pooled database, readiness, and bounded shutdown; preserve the user-controlled development server, explain the request flow, suggest the commit, and stop at the approval gate."
+Suggested next specialist and prompt: Continue with the architect skill. "Implement only phase 3C of `sessions/001_fresh_start/01-architect-todos.md`. Add readiness and bounded shutdown using the existing pool, preserve the user-controlled development server, explain the request flow, suggest the commit, and stop at the approval gate."

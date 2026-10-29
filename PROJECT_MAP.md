@@ -2,15 +2,17 @@
 
 ## Current state
 
-The application runs on Bun 1.3.14 with Hono. `src/config.ts` uses a small Valibot schema to validate `APP_ENV` and convert `API_PORT` into a number. Invalid values stop startup with errors that omit submitted values. Configuration does not read files. Database and browser-origin validation arrive when those features need them.
+The application runs on Bun 1.3.14 with Hono. `src/config.ts` uses a small Valibot schema to validate the mode, required database strings, and API/database ports. Invalid values stop startup with errors that omit submitted values. Configuration does not read files or guess a database target. Browser-origin validation arrives with request middleware.
 
-`src/server.ts` uses the validated `API_PORT` and forwards requests to `src/app.ts`. Local and test modes listen on loopback; production mode listens on all interfaces. The local template uses `127.0.0.1:3000`. `GET /health/live` returns `200` with `{ "status": "ok" }`. Importing the app does not start a server.
+`src/server.ts` opens the database connection before listening, then forwards requests to `src/app.ts`. Start PostgreSQL with `bun run db:up` before `bun run dev`. Local and test modes listen on loopback; production mode listens on all interfaces. The local template uses `127.0.0.1:3000`. `GET /health/live` returns `200` with `{ "status": "ok" }` without querying PostgreSQL. Importing the app does not start a server.
+
+`src/db/client.ts` builds one Drizzle 0.45.4 database object backed by Bun's SQL pool. Explicit settings choose the target; credentials are passed as options. The pool permits five connections, times out connection attempts after five seconds, applies PostgreSQL's five-second statement timeout, and closes idle connections after 30 seconds. Importing the module opens no connection. No application tables exist yet.
 
 `bun run check` runs type checking, ESLint, Bun unit tests, and the Bun build. Test files are included in type checking. The bundle is `dist/server.js`. `bunfig.toml` disables automatic environment loading for application commands; `dev` explicitly selects `.env.local`. `start` requires caller-supplied settings. Both commands use `APP_ENV` for the mode. See the [README](README.md) for commands and [project notes](docs/discoveries.md) for the Bun package-manager exception.
 
 PostgreSQL runs separately through `bun run db:up` and `bun run db:down`. Test commands use the `db:test:*` namespace. Local and test Compose files contain only PostgreSQL and retain their named volumes on shutdown. The [setup guide](docs/setup.md) lists environment identities and operating commands.
 
-The current API is a liveness scaffold with no database queries. Database connection code, authentication, and finance features follow in the [approval-gated implementation plan](sessions/001_fresh_start/01-architect-todos.md).
+The current API checks its database connection at startup and serves liveness without database queries. Readiness and graceful shutdown are the next review; authentication and finance features follow in the [approval-gated implementation plan](sessions/001_fresh_start/01-architect-todos.md).
 
 ## Confirmed project rules
 

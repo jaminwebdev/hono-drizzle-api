@@ -23,6 +23,7 @@
     "test": "bun --no-env-file test tests/unit"
   },
   "dependencies": {
+    "drizzle-orm": "0.45.4",
     "hono": "4.13.14",
     "valibot": "1.5.0"
   },

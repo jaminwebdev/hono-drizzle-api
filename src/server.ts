@@ -1,11 +1,22 @@
 import app from './app';
 import { readConfig } from './config';
+import { createDatabase } from './db/client';
 
 let config;
 try {
   config = readConfig(process.env);
 } catch (error) {
   console.error(error instanceof Error ? error.message : 'Invalid application configuration.');
+  process.exit(1);
+}
+
+let database;
+try {
+  database = createDatabase(config);
+  await database.$client.connect();
+} catch {
+  console.error('Unable to connect to PostgreSQL. Check its settings and whether it is running.');
+  await database?.$client.close({ timeout: 0 });
   process.exit(1);
 }
 
