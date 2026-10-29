@@ -1,6 +1,6 @@
 # Finance tracker API
 
-A Bun 1.3.14 and Hono application for learning how to build an API in small steps. The current scaffold serves one liveness endpoint at `http://127.0.0.1:3000/health/live`.
+A Bun 1.3.14 and Hono application for learning how to build an API in small steps. The scaffold provides liveness and database-readiness checks at `http://127.0.0.1:3000/health/live` and `/health/ready`.
 
 ## Install and run
 
@@ -40,7 +40,7 @@ The response has status `200` and this JSON body:
 {"status":"ok"}
 ```
 
-In Requestly desktop, create a `GET` request with that same URL and select **Send**. A successful response means Bun and Hono can handle a request. This route makes no database query. Startup checks the connection once; a readiness endpoint will follow in the next step.
+In Requestly desktop, create a `GET` request with that same URL and select **Send**. Liveness makes no database query. Send `GET http://127.0.0.1:3000/health/ready` to check PostgreSQL too. Readiness runs `SELECT 1` through Drizzle, returning `200` with `{"status":"ok"}` or `503` with `{"status":"unavailable"}`. It uses the existing database timeouts without a separate readiness deadline.
 
 See [the setup guide](docs/setup.md) for the separate PostgreSQL commands and environment identities.
 
@@ -68,13 +68,17 @@ flowchart LR
     Bun["Bun loads the explicitly selected environment file"] --> Config["src/config.ts: validate supplied settings"]
     Config --> Database["src/db/client.ts: create the connection pool"]
     Database --> Connect["src/server.ts: connect to PostgreSQL"]
-    Connect --> Server
+    Connect --> App["createApp(database): share the database with Hono"]
+    App --> Server
     Client[Requestly or curl] --> Server["src/server.ts: Bun receives the request"]
-    Server --> App["src/app.ts: Hono matches GET /health/live"]
-    App --> Response["JSON response with status ok"]
+    Server --> Routes["src/app.ts: Hono matches the health route"]
+    Routes --> Live["Liveness: return status ok"]
+    Routes --> Ready["Readiness: query PostgreSQL and return 200 or 503"]
 ```
 
-[src/server.ts](src/server.ts) validates settings and connects to PostgreSQL before starting the HTTP server. Local and test modes use the loopback address, which makes the API reachable from this machine. Production mode listens on all network interfaces so an API container can receive requests. The server passes requests to the Hono application in [src/app.ts](src/app.ts). The route there returns the JSON response. Importing `app.ts` or `db/client.ts` alone starts no server and opens no connection.
+[src/server.ts](src/server.ts) validates settings, connects to PostgreSQL, and passes that database object to `createApp(database)` in [src/app.ts](src/app.ts). Route handlers share its pool. Local and test modes listen on loopback; production mode listens on all interfaces so a container can receive requests. Importing either `app.ts` or `db/client.ts` alone starts no server and opens no connection.
+
+On `Ctrl+C` or a termination signal, the server stops accepting connections, lets active requests finish, and closes the pool. Shutdown has a five-second limit before forcing exit. Fatal process errors use the same cleanup path with a nonzero exit status. See [the setup guide](docs/setup.md) for the flow.
 
 ## Check and build
 

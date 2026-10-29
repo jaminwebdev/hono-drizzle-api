@@ -4,7 +4,9 @@
 
 The application runs on Bun 1.3.14 with Hono. `src/config.ts` uses a small Valibot schema to validate the mode, required database strings, and API/database ports. Invalid values stop startup with errors that omit submitted values. Configuration does not read files or guess a database target. Browser-origin validation arrives with request middleware.
 
-`src/server.ts` opens the database connection before listening, then forwards requests to `src/app.ts`. Start PostgreSQL with `bun run db:up` before `bun run dev`. Local and test modes listen on loopback; production mode listens on all interfaces. The local template uses `127.0.0.1:3000`. `GET /health/live` returns `200` with `{ "status": "ok" }` without querying PostgreSQL. Importing the app does not start a server.
+`src/server.ts` opens the database connection and passes the same object to `createApp(database)` in `src/app.ts` before listening. Start PostgreSQL with `bun run db:up` before `bun run dev`. Local and test modes listen on loopback; production mode listens on all interfaces. The local template uses `127.0.0.1:3000`. Importing or constructing the app starts no server and opens no connection.
+
+`GET /health/live` returns `200` with `{ "status": "ok" }` without querying PostgreSQL. `GET /health/ready` runs `SELECT 1` through Drizzle and returns `200` with the same body or a safe `503` with `{ "status": "unavailable" }`. Readiness uses the existing database timeouts; it adds no separate deadline or connection-reservation logic.
 
 `src/db/client.ts` builds one Drizzle 0.45.4 database object backed by Bun's SQL pool. Explicit settings choose the target; credentials are passed as options. The pool permits five connections, times out connection attempts after five seconds, applies PostgreSQL's five-second statement timeout, and closes idle connections after 30 seconds. Importing the module opens no connection. No application tables exist yet.
 
@@ -12,7 +14,9 @@ The application runs on Bun 1.3.14 with Hono. `src/config.ts` uses a small Valib
 
 PostgreSQL runs separately through `bun run db:up` and `bun run db:down`. Test commands use the `db:test:*` namespace. Local and test Compose files contain only PostgreSQL and retain their named volumes on shutdown. The [setup guide](docs/setup.md) lists environment identities and operating commands.
 
-The current API checks its database connection at startup and serves liveness without database queries. Readiness and graceful shutdown are the next review; authentication and finance features follow in the [approval-gated implementation plan](sessions/001_fresh_start/01-architect-todos.md).
+SIGINT, SIGTERM, uncaught exceptions, and unhandled promise rejections use one shutdown path. It stops accepting connections, drains requests, then closes the pool. A five-second deadline forces exit if cleanup stalls. Fatal errors and failed cleanup exit nonzero without logging raw error details.
+
+The scaffold provides health checks and shutdown. HTTPS, authentication, and finance features follow in the [approval-gated implementation plan](sessions/001_fresh_start/01-architect-todos.md).
 
 ## Confirmed project rules
 

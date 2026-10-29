@@ -18,3 +18,5 @@ export function createDatabase(config: ReturnType<typeof readConfig>) {
 
   return drizzle({ client });
 }
+
+export type Database = ReturnType<typeof createDatabase>;

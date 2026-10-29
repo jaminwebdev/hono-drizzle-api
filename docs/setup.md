@@ -1,16 +1,36 @@
 # Run the API and PostgreSQL locally
 
-Run Bun 1.3.14 on the host. Docker provides PostgreSQL separately. The current liveness endpoint runs independently of the database.
+Run Bun 1.3.14 on the host. Docker provides PostgreSQL separately. Startup requires PostgreSQL; the liveness endpoint itself makes no database query.
 
 ## Start and stop the API
 
-In your terminal:
+Start PostgreSQL first, then run the API in your terminal:
 
 ```sh
+bun run db:up
 bun run dev
 ```
 
-Keep that terminal open while using the API. Press `Ctrl+C` there to stop it. In Requestly desktop, send `GET http://127.0.0.1:3000/health/live` to check the running API.
+Keep that terminal open while using the API. Press `Ctrl+C` there to stop it. The API stops accepting connections, lets active requests finish, then closes the database pool. It forces exit if shutdown exceeds five seconds. Stopping the API leaves PostgreSQL running.
+
+In Requestly desktop:
+
+| Request | Behavior |
+| --- | --- |
+| `GET http://127.0.0.1:3000/health/live` | Returns `200` with `{"status":"ok"}` without querying PostgreSQL. |
+| `GET http://127.0.0.1:3000/health/ready` | Runs `SELECT 1` through Drizzle. Returns `200` with `{"status":"ok"}` on success or `503` with `{"status":"unavailable"}` on failure. |
+
+Readiness uses the pool's existing five-second connection and statement timeouts. It has no separate deadline for waiting for a pool slot. Database errors do not appear in its response.
+
+```mermaid
+flowchart LR
+    Signal[Ctrl+C or termination signal] --> Stop[Stop accepting connections]
+    Stop --> Finish[Let active requests finish]
+    Finish --> Pool[Close the database pool]
+    Pool --> Exit[Exit the API process]
+```
+
+Fatal process errors use this same cleanup path with a nonzero exit status. PostgreSQL has a separate lifecycle, so it remains available for another API start.
 
 ## Choose the database environment
 
@@ -64,6 +84,8 @@ flowchart LR
     Requestly[Requestly desktop] --> API
     Terminal --> Command["bun run db:up"]
     Command --> Docker["PostgreSQL in Docker on host port 5433"]
+    API --> Pool["Shared Drizzle database and Bun pool"]
+    Pool --> Docker
     Docker --> Volume[Named volume retains database files]
 ```
 
