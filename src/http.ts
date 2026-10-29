@@ -63,7 +63,7 @@ export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
       origin: settings.CORS_ORIGINS,
       credentials: true,
       allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
-      allowHeaders: ['Content-Type', 'X-CSRF-Token', 'If-Match'],
+      allowHeaders: ['Content-Type', 'If-Match'],
       exposeHeaders: ['ETag', 'Location', 'X-Request-Id'],
     }));
   }

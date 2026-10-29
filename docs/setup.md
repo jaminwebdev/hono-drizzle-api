@@ -95,10 +95,11 @@ Pressing `Ctrl+C` during `db:logs` only stops following the logs. For the separa
 
 ## Schema and database tools
 
-`src/db/schema.ts` defines the current database structure. It contains only `users`, used by [registration](api.md#register-a-user). Sessions and finance records come later.
+`src/db/schema.ts` defines the current database structure. It contains `users`, used by [registration](api.md#register-a-user), and `sessions`, ready for the later login feature. Finance tables come later.
 
 ```mermaid
 erDiagram
+    users ||--o{ sessions : "can have"
     users {
         uuid id PK
         varchar email UK
@@ -106,9 +107,23 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at
     }
+    sessions {
+        uuid id PK
+        text token_hash UK
+        uuid user_id FK
+        timestamptz created_at
+        timestamptz last_seen_at
+        timestamptz expires_at
+    }
 ```
 
 Each user has a generated UUID, a unique email of at most 254 characters, a password hash, and timestamps that include a time zone. Every field is required. The database rejects empty emails and emails with uppercase letters or surrounding spaces. Registration trims and lowercases email, validates its format, and hashes the password before insertion. The timestamps default to the insertion time; future update handlers must set `updated_at` explicitly.
+
+One user can have several sessions, such as separate logins on two devices. Each session has its own generated UUID and a unique credential hash. The foreign key requires an existing user. Deleting a user directly from the database also deletes that user's sessions; there is no user-deletion API.
+
+`token_hash` is for the SHA-256 hash of the session credential that the later login endpoint will put in an HttpOnly cookie. The raw credential must never be stored here. Login will generate the credential; this schema change does not create sessions or cookies. Writes require an approved Origin, with an explicit browser allowlist and SameSite cookies, as explained in the [API guide](api.md#origins-and-browser-access).
+
+`created_at` records session creation, `last_seen_at` records the latest accepted use, and `expires_at` is the absolute expiry time. The first two default to insertion time; login must supply the absolute deadline. Later session validation will enforce idle and absolute expiry and update `last_seen_at`. Timestamps alone do not enforce expiry or delete rows. The unique credential index supports session lookup, while separate indexes on `user_id`, `last_seen_at`, and `expires_at` support revoking a user's sessions and cleaning up idle or expired rows.
 
 | Command | Purpose |
 | --- | --- |

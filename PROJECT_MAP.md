@@ -2,14 +2,14 @@
 
 ## Code map
 
-The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks, shared HTTP handling, and email/password registration backed by the users table. Login, sessions, and finance tables are not implemented yet.
+The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks, shared HTTP handling, and email/password registration. The users and sessions tables are defined. Login, session validation, and finance tables are not implemented yet.
 
 | File | Responsibility |
 | --- | --- |
 | [src/server.ts](src/server.ts) | Validate settings, create the database, start Bun, and own shutdown. |
 | [src/config.ts](src/config.ts) | Validate supplied values without reading environment files. |
 | [src/db/client.ts](src/db/client.ts) | Create one Drizzle database object backed by Bun's connection pool. |
-| [src/db/schema.ts](src/db/schema.ts) | Define the users table and its required fields, email rules, and timestamps. |
+| [src/db/schema.ts](src/db/schema.ts) | Define users and sessions, including email/token uniqueness, user references, timestamps, and session lookup/expiry indexes. |
 | [drizzle.config.ts](drizzle.config.ts) | Guard local/test targets before schema pushes or Studio connect. |
 | [tests/integration/setup.ts](tests/integration/setup.ts) | Create test database objects only for the isolated test target. |
 | [src/app.ts](src/app.ts) | Build Hono routes with the explicitly supplied database and HTTP settings. |
@@ -36,8 +36,8 @@ Use [setup](docs/setup.md) for settings, commands, database identities, storage,
 | R8. Documentation | Active docs describe current behavior and decision reasons in beginner-friendly language, with useful examples and Mermaid diagrams. Apply `unslop` and preserve exact commands, paths, fields, and syntax. Keep history in session artifacts or the archive. Active docs must stand alone and contain no links to archived briefs. |
 | R9. Schema changes | Use `drizzle-kit push` for all database schema changes, including local development, integration tests, and production checks. Do not generate or apply database migration files. |
 | R10. Learning sequence | Scaffold first, then authentication, accounts, transactions, tags, and categories. Add each feature's schema, endpoints, middleware, validation, tests, and examples in small steps before moving to the next feature. Extend the schema with pushes as needed. Do not create the whole schema or future feature files in advance. Each review should explain the current request flow and how it changed. |
-| R11. Authentication | Use email/password login and server-side sessions with an opaque session credential in an HttpOnly cookie. Local/test HTTP cookies omit Secure; production requires HTTPS and Secure cookies. Keep SameSite=Lax, host-only cookies, origin checks, and CSRF protection. Build authentication after the scaffold and enforce user ownership as each finance feature is introduced. Passkeys and external login providers are deferred. |
-| R12. Manual API testing | The user controls the development API in their own terminal and prefers manual checks in Requestly desktop. Agents may probe an existing instance when necessary. Use Requestly's cookie jar for the session and a separate CSRF token for writes. Do not require copying the session credential into collection or environment variables. |
+| R11. Authentication | Use email/password login and server-side sessions with an opaque session credential in an HttpOnly cookie. Local/test HTTP cookies omit Secure; production requires HTTPS and Secure cookies. Keep SameSite=Lax, host-only cookies, required exact Origin checks on writes, strict JSON parsing, and an explicit CORS allowlist. Use no separate CSRF token or retrieval endpoint. Safe HTTP methods must never perform business mutations. Build authentication after the scaffold and enforce user ownership as each finance feature is introduced. Passkeys and external login providers are deferred. |
+| R12. Manual API testing | The user controls the development API in their own terminal and prefers manual checks in Requestly desktop. Agents may probe an existing instance when necessary. Use Requestly's cookie jar for the session and an approved Origin on writes. Do not require copying the session credential into collection or environment variables. |
 
 ## Boundaries
 

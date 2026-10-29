@@ -1,6 +1,6 @@
 # Finance tracker architecture and implementation todos
 
-This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, and 5C are complete. Later phases remain subject to their individual approval gates.
+This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases through 8 are complete. Later phases remain subject to their individual approval gates.
 
 ## Spec summary
 
@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 7 are complete, including the requested simplicity retrospective and removal of strict Accept checks. Phase 8 requires approval. Local development uses HTTP, following the user's removal of the local HTTPS phase.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 8 are complete, including the requested simplicity retrospective and uniform error-handling cleanup. Phase 9 requires approval. Local development uses HTTP, following the user's removal of the local HTTPS phase.
 
 ### Build one feature at a time
 
@@ -23,7 +23,7 @@ The schema diagram and full API contract below describe the intended finished ap
 | Work | Phases | Schema introduced in these phases |
 | --- | --- | --- |
 | Scaffold | 1–3C | No application tables. Establish Bun, fresh PostgreSQL storage, validated settings, and connection lifecycle. |
-| Authentication | 5A–14 | Add request checks, then `users`, registration, `sessions`, login, middleware, CSRF, logout, password change, and session cleanup. Review the Requestly and browser flows before finance work. |
+| Authentication | 5A–14 | Add request checks, then `users`, registration, `sessions`, login, middleware, logout, password change, and session cleanup. Review the Requestly and browser flows before finance work. |
 | Accounts | 15–19 | Add only owned `accounts`, then create/detail, list/search, edit/archive, and deletion in separate commits. |
 | Transactions | 20–27 | Add owned transactions and history without tag/category fields, then creation, corrections, deletion, search, balances, summaries, and seeds. |
 | Tags | 28–32 | Add the owned tag catalog, then its account and transaction relationships and filters. |
@@ -273,7 +273,6 @@ Example create request:
 POST /api/v1/transactions
 Content-Type: application/json
 Origin: http://127.0.0.1:3000
-X-CSRF-Token: <value from the authenticated CSRF endpoint>
 
 {
   "accountId": "62a9b052-bb8a-49f8-935e-76f56b02e2db",
@@ -325,11 +324,11 @@ Generate a server request ID and return it in the response header and error body
 
 Limit JSON bodies to 64 KiB before parsing, including chunked requests. Require `application/json` for JSON writes, allowing its charset parameter. Limit the full URL to 8 KiB before query decoding. Use parameterized queries and allowlisted orderings. Limit the database pool to five connections and use five-second connection and statement timeouts. Readiness runs a simple `SELECT 1` through Drizzle and returns 200 or 503. At the user's request, do not add a separate readiness deadline, reservation handling, cancellation, or queue tracking. The existing timeouts do not impose a deadline while waiting for a pool slot.
 
-Bind the local API to `127.0.0.1` and use HTTP for local development. Require HTTPS before public deployment. S8 defines cookie, origin, and CSRF checks. Disable CORS by default; Requestly desktop does not need browser CORS permissions. If a separate browser origin is configured later, use exact origins with credentials enabled, explicit methods/headers, and exposed `ETag`/`Location` headers. Never use a wildcard origin with credentials. CORS is a browser sharing policy and does not authenticate a caller. Every unsafe request, including from Requestly, supplies an allowed `Origin`; authenticated writes also supply the CSRF header. Test missing and rejected origins and preflights.
+Bind the local API to `127.0.0.1` and use HTTP for local development. Require HTTPS before public deployment. S8 defines cookie and origin checks. Disable CORS by default; Requestly desktop does not need browser CORS permissions. If a separate browser origin is configured later, use exact origins with credentials enabled, explicit methods/headers, and exposed `ETag`/`Location` headers. Never use a wildcard origin with credentials. CORS is a browser sharing policy and does not authenticate a caller. Every unsafe request, including from Requestly, supplies an allowed `Origin`. Test missing and rejected origins and preflights.
 
 Treat API descriptions and names as plain data. Any future UI must escape them when rendering. Add Hono's secure headers. Use `Cache-Control: no-store` for financial and history responses. Do not trust forwarded client IP headers until a trusted reverse proxy is configured. Host commands and Docker published ports remain loopback-only. Production containers may listen on `0.0.0.0` internally while their host port stays loopback-only.
 
-Log request ID, method, route template, response status, and elapsed time. Do not log request or response bodies, database credentials, raw SQL parameters, full query strings, or `Authorization`, `Cookie`, `Set-Cookie`, and `X-CSRF-Token` values. Redact driver error details before logging; financial descriptions and submitted values can appear in raw database errors. Do not expose raw error messages or stacks to clients in any environment.
+Log request ID, method, route template, response status, and elapsed time. Do not log request or response bodies, database credentials, raw SQL parameters, full query strings, or `Authorization`, `Cookie`, and `Set-Cookie` values. Redact driver error details before logging; financial descriptions and submitted values can appear in raw database errors. Do not expose raw error messages or stacks to clients in any environment.
 
 Use a single shutdown path for SIGINT, SIGTERM, and fatal process errors. Stop accepting new work, allow a bounded drain, close the pool, and exit nonzero for a fatal error. Keep liveness independent of database availability. Do not retry writes automatically or run schema pushes on every API startup.
 
@@ -351,7 +350,7 @@ The seed command requires local mode and the configured local database name. It 
 
 Start seeds with accounts and transactions once those features work. Require an explicit existing `SEED_USER_ID` and attach every fixture to that user; never create or overwrite login passwords or live sessions in the finance seed. Use two real test users in isolation tests. Add tag fixtures with tag assignment and category fixtures with category assignment. Tests and cleanup setup must refer only to tables already implemented. Add guide sections, request examples, and relevant diagrams in each feature phase; the final documentation phase verifies those guides rather than writing the first explanation of earlier work.
 
-The README will link short guides for setup, authentication, API use, the data model, tests, and operations. Explain exact money, deletion/history, archive behavior, search examples, schema pushes, seed reruns, and environment selection beside runnable commands. Include a request-flow diagram, an entity diagram, and a setup diagram. Add one complete create-account/create-category/create-tag/create-transaction/search/balance/history walkthrough. Describe `.env.production` as a local deployment check, not permission to publish. Begin manual examples with Requestly login, cookie reuse, and CSRF acquisition.
+The README will link short guides for setup, authentication, API use, the data model, tests, and operations. Explain exact money, deletion/history, archive behavior, search examples, schema pushes, seed reruns, and environment selection beside runnable commands. Include a request-flow diagram, an entity diagram, and a setup diagram. Add one complete create-account/create-category/create-tag/create-transaction/search/balance/history walkthrough. Describe `.env.production` as a local deployment check, not permission to publish. Begin manual examples with Requestly login and cookie reuse.
 
 ## S8. Email/password sessions and Requestly
 
@@ -359,9 +358,9 @@ The README will link short guides for setup, authentication, API use, the data m
 
 Use the same PostgreSQL database for users, sessions, and finance data. Authentication identifies the caller; ownership checks decide which records that caller may use. All normal users have the same capabilities over their own records. No administrator role or shared household is needed.
 
-Keep credential schemas, route handlers, and auth queries in `src/features/auth.ts`. Introduce `src/session.ts` when session validation is needed across routes. It contains the concrete session and CSRF middleware used by auth and finance features. This is shared request behavior permitted by PROJECT_MAP R3, not a controller/service/repository chain.
+Keep credential schemas, route handlers, and auth queries in `src/features/auth.ts`. Introduce `src/session.ts` when session validation is needed across routes. It contains the concrete session middleware used by auth and finance features. This is shared request behavior permitted by PROJECT_MAP R3, not a controller/service/repository chain.
 
-Use `Bun.password`, Web Crypto, Node's constant-time comparison where needed, and Hono's cookie helpers. Keep the session lifecycle explicit for this learning exercise. Do not implement password hashing, random-number generation, encryption, JWT signing, or cookie parsing from scratch. This small session design has no access/refresh-token protocol. Broader identity-provider functionality is deferred.
+Use `Bun.password`, Web Crypto and Hono's cookie helpers. Keep the session lifecycle explicit for this learning exercise. Do not implement password hashing, random-number generation, encryption, JWT signing, or cookie parsing from scratch. This small session design has no access/refresh-token protocol. Broader identity-provider functionality is deferred.
 
 ### Tables and lookups
 
@@ -370,9 +369,9 @@ Add the tables in separate auth schema commits. No finance tables exist yet.
 | Table | Fields and constraints |
 | --- | --- |
 | `users` | UUID `id`, normalized `email`, `password_hash`, `created_at`, and `updated_at`. Email is unique. There is no public endpoint for reading another user's identity or deleting a user. |
-| `sessions` | UUID `id`, unique `token_hash`, `user_id` referencing users, independent `csrf_token`, `created_at`, `last_seen_at`, and `expires_at`. Index user lookup and expiry cleanup. A user deletion through later administrative tooling cascades to sessions, while finance references restrict deletion. |
+| `sessions` | UUID `id`, unique `token_hash`, `user_id` referencing users, `created_at`, `last_seen_at`, and `expires_at`. Index user lookup and expiry cleanup. A user deletion through later administrative tooling cascades to sessions, while finance references restrict deletion. |
 
-The client receives a 32-byte cryptographically random session credential, encoded as base64url. Store only its SHA-256 hash for lookup, never the raw credential. The CSRF value is a separate random token, stored with the session so an authenticated client can fetch it again. A CSRF token alone cannot authenticate a request. Do not log either value or return the session credential in JSON.
+The client receives a 32-byte cryptographically random session credential, encoded as base64url. Store only its SHA-256 hash for lookup, never the raw credential. Do not log the credential or return it in JSON.
 
 Store email after trimming and lowercasing for this application's login policy. Bound it to 254 characters and validate its format. Do not apply provider-specific transformations such as removing dots or `+` suffixes. Names and email uniqueness do not imply verified email ownership.
 
@@ -398,7 +397,7 @@ Use the cookie name `session` in all environments. For local/test HTTP:
 Set-Cookie: session=<opaque credential>; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800
 ```
 
-Production adds `Secure` and requires an HTTPS `API_ORIGIN`. Derive the Secure option from the validated application mode, without an independent switch that can disable it in production. Keep HttpOnly, SameSite, origin checks, and CSRF protection in every environment. Do not use the `__Host-` prefix for the local HTTP cookie because that prefix requires Secure.
+Production adds `Secure` and requires an HTTPS `API_ORIGIN`. Derive the Secure option from the validated application mode, without an independent switch that can disable it in production. Keep HttpOnly, SameSite, and required exact Origin checks in every environment. Do not use the `__Host-` prefix for the local HTTP cookie because that prefix requires Secure.
 
 Omit `Domain`. Clear the same cookie with matching attributes and `Max-Age=0`. Proposed server deadlines are a 30-minute idle timeout and a 7-day absolute lifetime. Cookie persistence never extends the server deadline. Reject expired or revoked sessions before a handler runs. For this small application, update `last_seen_at` through a conditional database operation on successful validation; no session cache is needed. A failed or unavailable session store fails closed. Already authorized requests may finish after a concurrent logout; revocation applies to subsequent validation.
 
@@ -410,15 +409,15 @@ Local development and browser tests use HTTP on loopback, without certificates o
 
 Session references: [OWASP session storage and lifecycle](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html) and [Hono cookie options and prefix rules](https://hono.dev/docs/helpers/cookie).
 
-### Origin and CSRF rules
+### Origin and cookie rules
 
-CSRF means cross-site request forgery, where another website tries to make a browser use its existing login for an unwanted action. Require a valid synchronizer token in `X-CSRF-Token` for every authenticated `POST`, `PATCH`, `PUT`, and `DELETE`, including logout and password change. Compare it against the current session's independent CSRF value with a constant-time comparison after checking lengths. Missing or mismatched tokens return `403 CSRF_REJECTED`.
+Protection against cross-site request forgery uses the HttpOnly session cookie, required exact Origin checks on writes, strict JSON content types where bodies are expected, an explicit CORS allowlist, and SameSite=Lax. HttpOnly protects cookie access from JavaScript; the Origin and request checks protect browser writes. There is no separate anti-forgery token, retrieval endpoint, or per-write token header.
 
-Every unsafe request also supplies an `Origin` exactly matching `API_ORIGIN` or an explicitly configured trusted browser origin. Missing, malformed, `null`, and unapproved origins return `403 ORIGIN_REJECTED`. Registration and login have no authenticated session yet; protect them with that required origin check, strict JSON content type, and auth throttling. Do not bypass origin checks for missing headers or a client claiming to be Requestly. Requestly can explicitly send the configured Origin. Origin checks never substitute for credentials or ownership checks.
+Every unsafe request supplies an `Origin` exactly matching `API_ORIGIN` or an explicitly configured trusted browser origin. Missing, malformed, `null`, and unapproved origins return `403 ORIGIN_REJECTED`. Registration and login have no authenticated session yet; protect them with that required origin check, strict JSON content type, and auth throttling. Do not bypass origin checks for missing headers or a client claiming to be Requestly. Requestly can explicitly send the configured Origin. Origin checks never substitute for credentials or ownership checks.
 
-`GET /auth/csrf` requires a valid session and returns `{ "data": { "csrfToken": "..." } }` in a no-store JSON response. A later browser can read that token to send in a header while its session cookie remains HttpOnly. `SameSite=Lax` adds protection, but does not replace the server token check. Public health checks and preflight `OPTIONS` do not require a session; they perform no finance writes. Check session ownership before returning resource-specific version errors.
+GET, HEAD, and OPTIONS must never perform business mutations. Public health checks and preflight OPTIONS do not require a session. Later session validation may update its own last-seen metadata while serving an authenticated read. Check session ownership before returning resource-specific version errors. Authenticated requests use the cookie jar without a token-fetch request or a token variable.
 
-Reference: [OWASP synchronizer-token and origin guidance](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html). Begin with a same-origin browser deployment model; a separate browser frontend would need explicit credentialed CORS settings from S6.
+Reference: [OWASP origin verification guidance](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#using-standard-headers-to-verify-origin). Begin with a same-origin browser deployment model; a separate browser frontend needs explicit credentialed CORS settings from S6.
 
 ### Auth endpoints and middleware order
 
@@ -429,11 +428,10 @@ All routes below use `/api/v1`. Credential routes accept strict JSON and reject 
 | `POST /auth/register` | Validate email/password, apply origin/throttle checks, hash the password, and create the user. No automatic session. |
 | `POST /auth/login` | Verify credentials and issue the cookie. Return the signed-in user's ID/email. |
 | `GET /auth/me` | Validate the cookie session and return only that user's public identity. Missing, invalid, or expired sessions return `401 UNAUTHENTICATED` and clear an unusable cookie. |
-| `GET /auth/csrf` | Return the CSRF value for the valid session. |
-| `POST /auth/logout` | Require session, origin, and CSRF checks; delete the current session, clear its cookie, and return `204`. |
-| `POST /auth/password` | Require session, origin, CSRF, and current password; update the password, revoke all sessions, clear the cookie, and return `204`. |
+| `POST /auth/logout` | Require session and origin checks; delete the current session, clear its cookie, and return `204`. |
+| `POST /auth/password` | Require session, origin, and current password; update the password, revoke all sessions, clear the cookie, and return `204`. |
 
-Apply cross-cutting checks in this order: safe request IDs/logging and limits, allowed-origin/preflight handling, session validation for protected routes, CSRF checks for authenticated writes, then feature input/ownership checks and SQL. Register public health and register/login paths explicitly so mounting finance middleware cannot accidentally make public auth routes unusable. Unsupported methods do not create a route around authentication.
+Apply cross-cutting checks in this order: safe request IDs/logging and limits, allowed-origin/preflight handling, session validation for protected routes, then feature input/ownership checks and SQL. Register public health and register/login paths explicitly so mounting finance middleware cannot accidentally make public auth routes unusable. Unsupported methods do not create a route around authentication.
 
 ```mermaid
 sequenceDiagram
@@ -443,29 +441,20 @@ sequenceDiagram
     Client->>API: Login with email, password, and allowed Origin
     API->>DB: Verify user and create hashed session record
     API-->>Client: Set HttpOnly session cookie
-    Client->>API: GET auth/csrf with stored cookie
-    API-->>Client: Separate CSRF token
-    Client->>API: Write with cookie, Origin, and CSRF header
+    Client->>API: Write with cookie and allowed Origin
     API->>DB: Validate session and operate on owned records
     API-->>Client: Safe response
 ```
 
 ### Requestly and auth acceptance
 
-Use Requestly desktop as the manual client. Keep the session in its cookie jar. A post-response script may store the separate CSRF token and harmless resource IDs, but the walkthrough must not depend on copying the session credential to collection/environment variables. Use the Cookies panel and actual network headers to verify handling in the installed build. Documentation describes desktop cookie capture, but exact UI and SameSite behavior must be checked rather than inferred from another client. See [Requestly cookie inspection](https://requestly.com/features/devtools/) and [post-response scripts](https://requestly.com/features/pre-post-request-scripts/).
+Use Requestly desktop as the manual client. Keep the session in its cookie jar. The walkthrough must not depend on copying the session credential to collection/environment variables. Use the Cookies panel and actual network headers to verify handling in the installed build. Documentation describes desktop cookie capture, but exact UI and SameSite behavior must be checked rather than inferred from another client. See [Requestly cookie inspection](https://requestly.com/features/devtools/).
 
-Add a secret-free Requestly collection under `requests/` incrementally. Auth examples use `baseUrl`, a matching `Origin`, and user-entered local test credentials. Store no real passwords, cookies, CSRF values, or user data in tracked collection/environment files. Follow Requestly's current export format rather than inventing a schema.
+Add a secret-free Requestly collection under `requests/` incrementally. Auth examples use `baseUrl`, a matching `Origin`, and user-entered local test credentials. Store no real passwords, cookies, or user data in tracked collection/environment files. Follow Requestly's current export format rather than inventing a schema.
 
-After the CSRF endpoint exists, its Requestly post-response script can capture the separate value:
+Unsafe requests use `Origin: {{baseUrl}}`, with `baseUrl` equal to the configured API origin and containing no path. The cookie jar adds the session cookie after login. No additional request or post-response script is needed to prepare authenticated writes.
 
-```js
-const body = rq.response.json();
-rq.environment.set("csrfToken", body.data.csrfToken);
-```
-
-Subsequent unsafe requests use `X-CSRF-Token: {{csrfToken}}` and `Origin: {{apiOrigin}}`. The cookie jar adds the session cookie. Keep `apiOrigin` equal to the configured API origin for this same-origin walkthrough. Registration/login need the Origin header but no session-bound CSRF value yet.
-
-Every auth phase includes its own tests. Before accounts begin, verify registration, generic login failures, cookie flags, idle/absolute expiry, CSRF rejection, current-session logout, password-change revocation, concurrent old-password login, and redaction. Confirm a second user's session survives another user's logout/password change. Run real-browser cookie/CSRF checks with a test-only page and Bun's runner using browser automation as a library; Requestly tests alone cannot prove browser cookie enforcement. No product frontend is added.
+Every auth phase includes its own tests. Before accounts begin, verify registration, generic login failures, cookie flags, idle/absolute expiry, rejected write origins, current-session logout, password-change revocation, concurrent old-password login, and redaction. Confirm a second user's session survives another user's logout/password change. Run real-browser cookie/origin checks with a test-only page and Bun's runner using browser automation as a library; Requestly tests alone cannot prove browser cookie enforcement. No product frontend is added.
 
 Password recovery, email verification, passkeys, and external providers can extend this design later. Do not add their tables, nullable fields, fake mail delivery, or unfinished endpoints now.
 
@@ -489,7 +478,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 | Are there legal retention or regulatory requirements?                         | Deferred. This is a local personal tracker. No regulatory scope was supplied. Review retention and privacy obligations before offering it as a service.                                                                                                                                                                                                |
 | What states, transitions, guards, or timeouts exist? | Relevant. Sessions become valid after login, expire by idle/absolute deadlines, and are revoked on logout or password change. Account archival blocks new transactions. Corrections/deletions retain history. There are no pending payments or background retries. |
 | Who owns records, and who can read or write fields? | Relevant. Each signed-in user owns their finance data. Require a valid session and scope every operation to that user, including history and aggregates. Same-owner foreign keys protect links. No shared ownership, roles, or ownership transfer is included. |
-| What input, derived data, encryption, and rate limits matter? | Relevant. Use HTTPS for credentials/cookies, hashed passwords and session credentials, explicit expiry, bounded auth attempts, origin checks, CSRF protection, and redacted logs. Cross-user references return 404. Public deployment roles and distributed throttling remain a separate operational review. |
+| What input, derived data, encryption, and rate limits matter? | Relevant. Use HTTPS for credentials/cookies, hashed passwords and session credentials, explicit expiry, bounded auth attempts, required Origin checks, explicit CORS settings, SameSite cookies, and redacted logs. Cross-user references return 404. Public deployment roles and distributed throttling remain a separate operational review. |
 | Are caching, denormalization, lazy loading, jobs, or latency targets needed?  | Relevant. Use PostgreSQL as the source of truth and bounded lists. Calculate balances rather than cache them. No worker or cache is justified by the stated use. Measure query plans and representative timings without inventing response-time guarantees.                                                                                            |
 | What integrations, failure modes, consistency, and synchronization exist? | Relevant. PostgreSQL is the only runtime external dependency. Bun and Hono supply maintained password and cookie primitives. No email provider, bank connection, external identity provider, event bus, or automatic write retry is required. Requestly desktop is the manual client. |
 | What frontend source of truth, live state, forms, and offline behavior exist? | Not relevant. No frontend is requested. The API exposes pagination, versions, and recoverable errors for a later client; it does not prescribe a UI store or optimistic update library.                                                                                                                                                                |
@@ -497,7 +486,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, and 7 are complete. Phase 4 was removed at the user's request. Phase 7 is awaiting review; phase 8 requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, and 8 are complete. Phase 4 was removed at the user's request. Phase 8 is awaiting review; phase 9 requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests and guide edits, not permission to create an absent file early. The scaffold has eight planned files; later phases target two to seven and may reach nine with dependency/configuration work. Before implementation, split a phase that would reach ten files or mix separate behaviors. Phase 5B is the documented exception for short settings call-site, test, and current-guide updates; it contains only the origin/CORS policy. Split within the same feature and update phase references before proceeding.
 
@@ -702,15 +691,19 @@ Suggested commit: `refactor: centralize HTTP error handling`
 
 ### Phase 8. Define server-side sessions
 
-Expected files, 2: `src/db/schema.ts`, `docs/data-model.md`.
+Review files, 5: `src/db/schema.ts`, `docs/setup.md`, `docs/api.md`, `PROJECT_MAP.md`, and this plan. Extend the existing setup diagram and schema notes instead of creating a separate data-model guide. Update the API introduction to distinguish the session schema from cookies that are not implemented yet.
 
-- [ ] Add only the sessions table and S8 lookup/expiry indexes, including a hashed session credential and separate CSRF value.
-- [ ] Push the extension to local/test databases while preserving registered users.
-- [ ] Explain the user/session relationship, deadline fields, and distinction between a session credential and CSRF token.
+- [x] Add only the sessions table and S8 lookup/expiry indexes, including a hashed session credential.
+- [x] Push the extension to local/test databases while preserving registered users.
+- [x] Explain the user/session relationship, deadline fields, and distinction between the raw session credential and its stored hash.
 
-Acceptance: S3, S8; PROJECT_MAP R3, R8–R11. Only users and sessions exist. No finance tables or refresh-token system. The CSRF value is generated with session creation in the next phase, not a placeholder for a future auth model.
+Acceptance: S3, S8; PROJECT_MAP R3, R8–R11. Only users and sessions exist. No finance tables or refresh-token system. The session credential is generated with session creation in the next phase.
+
+Validation: type checking, ESLint, all 70 unit tests, all 22 registration tests, and the build passed on Bun 1.3.14. Local/test pushes succeeded. Private before/after fingerprints confirmed that existing users were unchanged without printing their values. Setup checks verified required columns, timestamp defaults, credential uniqueness, user/idle/absolute-expiry indexes, rejected orphan sessions, and deletion of only the deleted user's sessions. Temporary test fixtures were removed. The test database was stopped with its volume preserved; the existing local database stayed running. No API process, dependencies, login handlers, or session middleware were added.
 
 Suggested commit: `feat: define hashed server-side sessions`
+
+The user then simplified browser request protection to the session cookie, required exact Origin checks, strict JSON content types, explicit CORS allowlists, and SameSite=Lax. The separate token column, retrieval endpoint, Requestly scripts, and per-write token checks are removed from the implementation and all later phases. Both schema pushes succeeded, preserving users, remaining session data, and indexes. Type checking, lint, build, all 70 unit tests, and all 22 registration tests passed after the removal. The test database was stopped with its volume preserved; the existing local database stayed running.
 
 PAUSE — user must approve before continuing to next batch.
 
@@ -747,13 +740,13 @@ PAUSE — user must approve before continuing to next batch.
 
 Expected files, 4: `src/session.ts`, `src/features/auth.ts`, `tests/integration/session.test.ts`, `docs/auth.md`.
 
-- [ ] Add GET /auth/csrf for the current session's independent token and require constant-time CSRF checks on authenticated writes.
-- [ ] Add POST /auth/logout with required Origin/CSRF/session checks, current-session deletion, and matching cookie removal.
-- [ ] Test missing/wrong CSRF, cross-session token reuse, rejected origins, revoked-cookie replay, and another session remaining valid.
+- [ ] Verify that the existing required Origin check runs before session validation for logout and future authenticated writes.
+- [ ] Add POST /auth/logout with required Origin/session checks, current-session deletion, and matching cookie removal.
+- [ ] Test missing/null/unapproved write origins, unauthenticated writes, revoked-cookie replay, and another session remaining valid.
 
-Acceptance: S6–S8; PROJECT_MAP R3, R6–R8, R10–R12. Logout is the first protected write and cannot be mounted before its CSRF check. The session credential stays HttpOnly. No missing-Origin exemption is added for Requestly.
+Acceptance: S6–S8; PROJECT_MAP R3, R6–R8, R10–R12. Logout is the first protected write and requires an approved Origin and valid session. The session credential stays HttpOnly. No missing-Origin exemption is added for Requestly.
 
-Suggested commit: `feat: enforce CSRF checks and revoke the current session`
+Suggested commit: `feat: log out and revoke the current session`
 
 PAUSE — user must approve before continuing to next batch.
 
@@ -761,7 +754,7 @@ PAUSE — user must approve before continuing to next batch.
 
 Expected files, 3: `src/features/auth.ts`, `tests/integration/auth.test.ts`, `docs/auth.md`.
 
-- [ ] Add POST /auth/password with current-password verification, normal password limits, origin/CSRF checks, and bounded attempts.
+- [ ] Add POST /auth/password with current-password verification, normal password limits, origin checks, and bounded attempts.
 - [ ] Update the password and revoke every session for that user atomically, with user-row locking and hash rechecks shared with the existing login transaction.
 - [ ] Test wrong current password, all-device revocation, another user remaining signed in, and old-password login racing with the change.
 
@@ -789,8 +782,8 @@ PAUSE — user must approve before continuing to next batch.
 
 Expected files, 6: `requests/auth.json`, `requests/environment.example.json`, `docs/auth.md`, `tests/browser/auth.test.ts`, `package.json`, `bun.lock`.
 
-- [ ] Verify the Requestly collection built with each auth endpoint now covers register, login, me, CSRF, logout, and password change in the current export format.
-- [ ] Document the local HTTP base URL, explicit Origin, cookie jar, and a script for the separate CSRF token; verify actual outgoing Cookie headers in the installed desktop build.
+- [ ] Verify the Requestly collection built with each auth endpoint now covers register, login, me, logout, and password change in the current export format.
+- [ ] Document the local HTTP base URL, explicit Origin and cookie jar; verify actual outgoing Cookie headers in the installed desktop build.
 - [ ] Add Bun-run browser checks with browser automation as a library for HttpOnly cookie behavior and rejected cross-site writes; verify production Secure attributes in the endpoint tests.
 - [ ] Run the auth acceptance flow with two users and reconcile the guide with actual cookie/expiry behavior.
 
@@ -818,9 +811,9 @@ PAUSE — user must approve before continuing to next batch.
 
 Expected files, 5: `src/features/accounts.ts`, `src/app.ts`, `tests/unit/accounts.test.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`.
 
-- [ ] Add strict account-create/detail schemas, handlers, and queries together, applying existing session/CSRF middleware.
+- [ ] Add strict account-create/detail schemas, handlers, and queries together, applying existing session middleware and required Origin checks.
 - [ ] Set ownership from the authenticated context and return 404 for another user's account.
-- [ ] Test exact opening balances, currency/type rules, rejected owner fields, unauthenticated access, missing CSRF, and cross-user detail access.
+- [ ] Test exact opening balances, currency/type rules, rejected owner fields, unauthenticated access, rejected write origins, and cross-user detail access.
 - [ ] Add a Requestly-authenticated create/detail example and trace its actual middleware/query path.
 
 Acceptance: S1, S3, S5, S8; PROJECT_MAP R3, R5–R8, R10–R12. Reuse auth/HTTP code already reviewed. No account list, editing, tags, or categories yet. A valid session is necessary but never sufficient to access another user's ID.
@@ -849,7 +842,7 @@ Expected files, 3: `src/features/accounts.ts`, `tests/integration/accounts.test.
 
 - [ ] Add name/archive patches with strict empty-patch and immutable money/currency/owner rejection.
 - [ ] Apply the owned-row lock/update path that later transaction creation will coordinate with.
-- [ ] Test archive/unarchive, cross-user writes, missing CSRF, protected fields, and safe errors; extend the lifecycle examples.
+- [ ] Test archive/unarchive, cross-user writes, rejected write origins, protected fields, and safe errors; extend the lifecycle examples.
 
 Acceptance: S3–S4, S8; PROJECT_MAP R3, R5–R8, R10–R11. No transaction lookup is added before that table exists. Account metadata uses last accepted write, and ownership stays immutable.
 
@@ -861,7 +854,7 @@ PAUSE — user must approve before continuing to next batch.
 
 Expected files, 3: `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`.
 
-- [ ] Add account deletion for the current accounts-only finance schema using the existing owner/session/CSRF checks.
+- [ ] Add account deletion for the current accounts-only finance schema using the existing owner/session/origin checks.
 - [ ] Test owned deletion, repeated/missing IDs, and another user's account remaining intact.
 - [ ] Document the current deletion behavior and the reference restrictions that will arrive with transactions.
 
@@ -890,7 +883,7 @@ PAUSE — user must approve before continuing to next batch.
 
 Expected files, 5: `src/features/transactions.ts`, `src/app.ts`, `tests/unit/transactions.test.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`.
 
-- [ ] Add transaction-create/detail schemas and routes with the existing session/CSRF middleware.
+- [ ] Add transaction-create/detail schemas and routes with the existing session middleware and required Origin checks.
 - [ ] Lock the owned active account and atomically insert the transaction plus initial history with the authenticated owner.
 - [ ] Test signed amounts, timestamps, archived/missing/foreign accounts, rejected owner/tag/category fields, and snapshot-failure rollback.
 - [ ] Return version/ETag and document a current-field-only request, including the lack of automatic POST retries.
@@ -923,7 +916,7 @@ Expected files, 4: `src/features/transactions.ts`, `tests/integration/transactio
 - [ ] Keep history readable only by its owner after deletion and keep used-account deletion restricted.
 - [ ] Test patch/delete races, history-write rollback, cross-user deleted-history access, and transaction creation versus account archival.
 
-Acceptance: S3–S4, S7–S8; PROJECT_MAP R3, R5–R8, R10–R11. Deletion cannot erase audit snapshots or allow a foreign user to inspect them. Revoked sessions/CSRF failures cannot reach the mutation. Run focused transaction/account integration tests.
+Acceptance: S3–S4, S7–S8; PROJECT_MAP R3, R5–R8, R10–R11. Deletion cannot erase audit snapshots or allow a foreign user to inspect them. Revoked sessions and rejected origins cannot reach the mutation. Run focused transaction/account integration tests.
 
 Suggested commit: `feat: delete transactions and preserve owned history`
 
@@ -990,7 +983,7 @@ PAUSE — user must approve before continuing to next batch.
 Expected files, 6: `src/db/schema.ts`, `src/features/tags.ts`, `src/app.ts`, `tests/integration/tags.test.ts`, `docs/data-model.md`, `docs/api.md`.
 
 - [ ] Add only owned tags with per-user normalized name uniqueness and push without changing existing records.
-- [ ] Add authenticated/CSRF-protected tag create and owner-scoped detail routes.
+- [ ] Add authenticated tag-create and owner-scoped detail routes, keeping the required Origin check on creation.
 - [ ] Test normalization, same name across users, duplicate names within one user, foreign detail IDs, and rejected owner fields; document the catalog.
 
 Acceptance: S3, S5, S8; PROJECT_MAP R3, R5–R11. Four finance tables plus two auth tables. No tag links or account/transaction tag arrays yet. Schema and the first small tag request are one bounded feature step.
@@ -1060,7 +1053,7 @@ PAUSE — user must approve before continuing to next batch.
 Expected files, 6: `src/db/schema.ts`, `src/features/categories.ts`, `src/app.ts`, `tests/integration/categories.test.ts`, `docs/api.md`, `docs/data-model.md`.
 
 - [ ] Add only owned categories with stable income/expense kinds and per-user kind/name uniqueness, then push.
-- [ ] Add category create/detail routes with existing session/CSRF/ownership checks.
+- [ ] Add category create/detail routes with existing session/origin/ownership checks.
 - [ ] Test normalized duplicates, names reused by other users or kinds, missing/foreign IDs, and protected fields; document the current catalog.
 
 Acceptance: S3, S5, S8; PROJECT_MAP R3, R5–R11. Seven finance tables plus two auth tables now exist. Transactions still have no category_id. No global category records or foreign-owner defaults.
@@ -1116,8 +1109,8 @@ PAUSE — user must approve before continuing to next batch.
 
 Expected files, 9: `README.md`, `docs/setup.md`, `docs/auth.md`, `docs/api.md`, `docs/testing.md`, `docs/data-model.md`, `requests/auth.json`, `requests/finance.json`, `requests/environment.example.json`.
 
-- [ ] Replay registration/login/CSRF and the complete owned-finance walkthrough, correcting stale examples and commands.
-- [ ] Verify the existing Requestly exports contain no live credentials or cookies and demonstrate the explicit Origin and CSRF flow.
+- [ ] Replay registration/login and the complete owned-finance walkthrough, correcting stale examples and commands.
+- [ ] Verify the existing Requestly exports contain no live credentials or cookies and demonstrate the cookie reuse and explicit Origin flow.
 - [ ] Check diagram/link accuracy, current schema/push instructions, and two-user test instructions without adding future auth features.
 
 Acceptance: S1–S8; PROJECT_MAP R7–R12. Docs and collection requests were added during their owning phases; this is a consistency pass. If more than nine files need changes, split the review. Do not postpone first explanations until this phase.
@@ -1189,17 +1182,17 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Check | Result and correction |
 | --- | --- |
 | Does phase 1 stay a scaffold? | Yes. It contains eight expected setup files and only a liveness request. Auth/database feature files wait for their own phases. |
-| Does auth precede all finance features? | Yes. HTTP request checks precede registration; local HTTPS was removed at the user's request. Users arrive before registration; sessions before login; session middleware with the real current-user endpoint; CSRF middleware with logout, the first authenticated write. |
+| Does auth precede all finance features? | Yes. HTTP request checks precede registration; local HTTPS was removed at the user's request. Users arrive before registration; sessions before login; session middleware with the real current-user endpoint; the existing required Origin check protects logout, the first authenticated write. |
 | Are auth concerns separate commits? | Yes. Password change and expired-session cleanup are separate gates. Requestly/browser verification follows working auth, with route tests and examples already added earlier. |
 | Is schema growth feature-driven? | Yes. Users at 6, sessions at 8, accounts at 15, transactions/history at 20, tags at 28, account tag links at 30, transaction tag links at 31, categories at 33, and category assignment at 35. Composite reference keys arrive when their relationship first needs them. |
 | Do finance features finish in learning order? | Yes. Accounts finish at 19, transactions at 27, tags at 32, and categories at 36. Later features extend the existing endpoints and snapshots without resets or speculative fields. |
 | Were broad original phases reduced? | Yes. Account list/search, editing/archival, and deletion now have separate commits. Transaction corrections and deletion are separate; category assignment and filtering are separate; image build, stack checks, and CI are separate. |
 | Do tests and middleware use current features only? | Yes. Test setup checks the selected database before writes. Session-cleanup tests use only users/sessions. Finance endpoint phases include ownership checks and foreign-user failure tests; schema-only phases inspect current constraints without testing future routes. No delayed global ownership retrofit. |
-| Does Requestly grow with the API? | Yes. The first collection request accompanies registration, then the collection grows with endpoints. Cookie reuse and a separate CSRF variable replace manual session-credential extraction. Real-browser tests check browser behavior separately. |
+| Does Requestly grow with the API? | Yes. The first collection request accompanies registration, then the collection grows with endpoints. The cookie jar handles the session without token extraction or additional token requests. Real-browser tests check browser behavior separately. |
 | Is each review bounded? | Earlier reviews fit nine tracked files or fewer. Phase 5B is a documented 12-file exception for one origin/CORS policy, including short settings call-site changes, their tests, and accurate docs. Response negotiation and logging are separate in 5C. Other phases keep the nine-file target and their own gates. |
 | Are repetitive catalogs still reviewable? | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small. |
 | Is push-only schema management preserved? | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset. |
-| Is approval preserved? | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, and 7 are complete; phases 8–41 require their own approval. |
+| Is approval preserved? | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, and 8 are complete; phases 9–41 require their own approval. |
 
 Structural checks confirmed consecutive phase numbers, matching feature order, 44 approval gates after splitting phases 3 and 5 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Phase 5A passed common-error and JSON-reader tests, type checking, lint, and build. Phase 5B passed origin/CORS policy tests, configuration checks, type checking, lint, and build. Phase 5C passed negotiation and metadata-log tests, type checking, lint, and build. Feature and browser end-to-end checks remain for their own phases.
 
@@ -1211,12 +1204,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 7 is committed. The user-approved uniform error-handling cleanup is complete and awaiting review. Phase 8 remains unapproved. Local development remains on HTTP.
+Status: Phase 8 and the user-approved request-protection simplification are complete and awaiting review. The sessions schema is pushed to local/test databases, with existing users and remaining session data preserved. Phase 9 remains unapproved. Local development remains on HTTP.
 
-Handoff note: Expected HTTP failures now throw `ApiError` throughout the application. `errorResponse` is private and called only by `app.onError`. Keep this convention as features grow. Phase 8 adds the sessions table after approval; login remains a separate phase. Keep schema notes in setup and authentication behavior in the API guide while they remain small.
+Handoff note: Users and sessions are the only tables. Session credential hashes are unique; session rows reference users with cascading deletion and have user, last-seen, and expiry indexes. Writes rely on the required Origin check, JSON validation, CORS allowlist, and SameSite policy, without a separate token endpoint or per-write token. Login, cookie issuance, and session validation are still unimplemented. After approval, phase 9 adds login and generates the session credential. Keep expected HTTP failures as thrown `ApiError` values, schema notes in setup, and endpoint behavior in the API guide.
 
-Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing CSRF/origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
+Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing required Origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review the error-handling cleanup, then approve phase 8 when ready. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review phase 8 and the request-protection simplification, then approve phase 9 when ready. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the architect skill. "Implement phase 8 only after approval. Add only the session schema and its current constraints, preserve users during pushes, and keep the diagram in setup. Do not add login or session middleware yet."
+Suggested next specialist and prompt: Continue with the architect skill. "Implement phase 9 only after approval. Add bounded login, fresh random credentials, hash-only session storage, and environment-appropriate cookies. Reuse the auth feature and current guides. Keep session validation and protected routes for phase 10."

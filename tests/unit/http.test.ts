@@ -102,7 +102,6 @@ describe('safe request logging', () => {
       headers: {
         Origin: apiOrigin, 'Content-Type': 'application/json',
         Authorization: 'Bearer header-secret', Cookie: 'session=cookie-secret',
-        'X-CSRF-Token': 'csrf-secret',
       },
       body: '{"description":"body-secret"}',
     });
@@ -114,7 +113,7 @@ describe('safe request logging', () => {
       elapsedMs: expect.any(Number) as unknown,
     });
     for (const secret of ['private-record-id', 'query-secret', 'header-secret', 'cookie-secret',
-      'csrf-secret', 'body-secret', 'synthetic-session', 'never-log']) {
+      'body-secret', 'synthetic-session', 'never-log']) {
       expect(line).not.toContain(secret);
     }
   });
@@ -253,12 +252,12 @@ describe('request origins and CORS', () => {
     const response = await fixture([browserOrigin]).request('/json', { method: 'OPTIONS', headers: {
       Origin: browserOrigin,
       'Access-Control-Request-Method': 'POST',
-      'Access-Control-Request-Headers': 'Content-Type,X-CSRF-Token',
+      'Access-Control-Request-Headers': 'Content-Type,If-Match',
     } });
     expect(response.status).toBe(204);
     expect(await response.text()).toBe('');
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe(browserOrigin);
-    expect(response.headers.get('Access-Control-Allow-Headers')).toBe('Content-Type,X-CSRF-Token,If-Match');
+    expect(response.headers.get('Access-Control-Allow-Headers')).toBe('Content-Type,If-Match');
     expect(response.headers.get('Access-Control-Allow-Methods')).not.toContain('*');
   });
 
