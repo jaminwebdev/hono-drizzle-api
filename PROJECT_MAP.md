@@ -2,13 +2,16 @@
 
 ## Code map
 
-The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks and shared HTTP handling. Authentication and finance tables are not implemented yet.
+The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks, shared HTTP handling, and the users table. Authentication endpoints, sessions, and finance tables are not implemented yet.
 
 | File | Responsibility |
 | --- | --- |
 | [src/server.ts](src/server.ts) | Validate settings, create the database, start Bun, and own shutdown. |
 | [src/config.ts](src/config.ts) | Validate supplied values without reading environment files. |
 | [src/db/client.ts](src/db/client.ts) | Create one Drizzle database object backed by Bun's connection pool. |
+| [src/db/schema.ts](src/db/schema.ts) | Define the users table and its required fields, email rules, and timestamps. |
+| [drizzle.config.ts](drizzle.config.ts) | Guard local/test targets before schema pushes or Studio connect. |
+| [tests/integration/setup.ts](tests/integration/setup.ts) | Create test database objects only for the isolated test target. |
 | [src/app.ts](src/app.ts) | Build Hono routes with the explicitly supplied database and HTTP settings. |
 | [src/http.ts](src/http.ts) | Install shared middleware, common errors, and the small JSON parsing helper. |
 

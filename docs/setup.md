@@ -66,6 +66,7 @@ Start PostgreSQL, then the API:
 
 ```sh
 bun run db:up
+bun run db:push
 bun run dev
 ```
 
@@ -91,6 +92,48 @@ bun run db:down
 ```
 
 Pressing `Ctrl+C` during `db:logs` only stops following the logs. For the separate test database, use `bun run db:test:up`, `bun run db:test:logs`, and `bun run db:test:down`. Local and test databases can run together because their project names, volumes, and ports differ.
+
+## Schema and database tools
+
+`src/db/schema.ts` defines the current database structure. It contains only `users`; registration, sessions, and finance records come later.
+
+```mermaid
+erDiagram
+    users {
+        uuid id PK
+        varchar email UK
+        text password_hash
+        timestamptz created_at
+        timestamptz updated_at
+    }
+```
+
+Each user has a generated UUID, a unique email of at most 254 characters, a password hash, and timestamps that include a time zone. Every field is required. The database rejects empty emails and emails with uppercase letters or surrounding spaces, so callers must trim and lowercase them before insertion. Registration will add email-format checks and password hashing. The timestamps default to the insertion time; future update handlers must set `updated_at` explicitly.
+
+| Command | Purpose |
+| --- | --- |
+| `bun run db:push` | Compare the schema with the local database and apply changes. |
+| `bun run db:test:push` | Apply the same schema to the isolated test database. |
+| `bun run db:studio` | Open Drizzle's database editor, bound to `127.0.0.1`, using local settings. |
+
+Start the selected database before pushing. After editing the schema, run the matching push command again. Drizzle applies differences directly without generating migration files. Review any data-loss prompt before accepting it; these commands do not force destructive changes. See the [Drizzle push guide](https://orm.drizzle.team/docs/drizzle-kit-push).
+
+`drizzle.config.ts` uses the existing configuration validator and checks `DATABASE_TASK_MODE`, which each command sets explicitly. Local tasks require `APP_ENV=local`, `127.0.0.1:5433`, and `finance_tracker_local`. Test tasks require `APP_ENV=test`, `127.0.0.1:5435`, and `finance_tracker_test`. A mismatch stops the tool before connecting. Production tasks are not enabled yet. Credentials are passed as separate options, so passwords do not need URL encoding.
+
+Drizzle Kit 0.31.11 uses the development dependency `pg` for these tools. The API continues to use Drizzle with Bun SQL; it does not use a second connection pool or load Drizzle Kit.
+
+### Integration test setup
+
+`tests/integration/setup.ts` provides `createTestDatabase()`. It validates the supplied settings and requires the exact test mode, host, port, and database listed above before creating a database object. It never loads an environment file or falls back to local settings. Tests must use this helper before making writes or deleting their fixtures, and close the returned database's `$client` afterward.
+
+To prepare the database for future integration tests:
+
+```sh
+bun run db:test:up
+bun run db:test:push
+```
+
+There is no integration suite yet. The first endpoint will add it. Unit tests still run without private environment files or PostgreSQL. Integration tests will explicitly load `.env.test`, run serially when sharing tables, and remove only their own fixtures.
 
 ## Check and build
 

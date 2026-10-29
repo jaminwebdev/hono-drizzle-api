@@ -24,6 +24,7 @@
     ]
   },
   "include": [
+    "drizzle.config.ts",
     "src/**/*.ts",
     "tests/**/*.ts"
   ],

@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. The user approved phases 1, 2, 3A, 3B, and 3C. Phase 3 was split before implementation into settings in 3A, the connection in 3B, and readiness/shutdown in 3C to keep each review small. The user removed the local HTTPS phase before implementation. Completed work is recorded below; phase 5C is complete. The user requested a simplicity retrospective before the next feature; phase 6 still requires approval.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 6 are complete, including the requested simplicity retrospective and removal of strict Accept checks. Phase 7 requires approval. Local development uses HTTP, following the user's removal of the local HTTPS phase.
 
 ### Build one feature at a time
 
@@ -497,7 +497,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-Phases 1, 2, 3A, 3B, 3C, 5A, 5B, and 5C are complete. Phase 3C is approved. Phase 4 was removed at the user's request; phase 5C is complete and awaiting review. Discuss the requested simplicity retrospective before approving phase 6. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, and 6 are complete. Phase 4 was removed at the user's request. Phase 6 is awaiting review; phase 7 requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests and guide edits, not permission to create an absent file early. The scaffold has eight planned files; later phases target two to seven and may reach nine with dependency/configuration work. Before implementation, split a phase that would reach ten files or mix separate behaviors. Phase 5B is the documented exception for short settings call-site, test, and current-guide updates; it contains only the origin/CORS policy. Split within the same feature and update phase references before proceeding.
 
@@ -652,20 +652,22 @@ Validation: local Markdown links and anchors, documented package commands, and G
 
 Suggested commit: `docs: consolidate setup and API references`
 
-The user subsequently approved removing strict `Accept` checks. The API now returns JSON regardless of that header. The parser middleware and its rejection tests were removed, and one regression test confirms that `Accept: text/html` receives the usual JSON response. The URL limit remains in place. Phase 6 still requires separate approval.
+The user subsequently approved removing strict `Accept` checks. The API now returns JSON regardless of that header. The parser middleware and its rejection tests were removed, and one regression test confirms that `Accept: text/html` receives the usual JSON response. The URL limit remains in place. The user then approved phase 6.
 
 Validation: type checking, ESLint, all 69 Bun tests, the build, and Git whitespace checks passed on Bun 1.3.14. No API process or database container was started.
 
 ### Phase 6. Define only users and the push commands
 
-Expected files, 6: `src/db/schema.ts`, `drizzle.config.ts`, `package.json`, `tests/integration/setup.ts`, `docs/data-model.md`, `docs/testing.md`.
+Review files, 9: `src/db/schema.ts`, `drizzle.config.ts`, `package.json`, `bun.lock`, `tests/integration/setup.ts`, `tsconfig.json`, `docs/setup.md`, `PROJECT_MAP.md`, and this plan. Keep the current one-table diagram and testing notes in setup, following the approved documentation consolidation.
 
-- [ ] Add only the users table with normalized unique email and password-hash storage.
-- [ ] Add explicit local/test push and loopback Studio commands and guarded integration-test setup before any schema/test writes.
-- [ ] Push users to local/test databases, inspect constraints, and verify a repeat push preserves existing user fixtures.
-- [ ] Document the one-table diagram and test-target guard.
+- [x] Add only the users table with normalized unique email and password-hash storage.
+- [x] Add explicit local/test push and loopback Studio commands and guarded integration-test setup before any schema/test writes.
+- [x] Push users to local/test databases, inspect constraints, and verify a repeat push preserves existing user fixtures.
+- [x] Document the one-table diagram and test-target guard.
 
 Acceptance: S2, S7–S8; PROJECT_MAP R1–R4, R6, R8–R11. No sessions or finance tables. Use only drizzle-kit push, without migration files. Schema changes and cleanup cannot fall back to the local database during tests.
+
+Validation: type checking, ESLint, all 69 unit tests, and the build passed on Bun 1.3.14. Separate setup checks verified rejected database targets, secret-free guard errors, the users-only schema, required fields, timestamp types, primary/unique keys, and normalized-email constraints. Local and test pushes succeeded; repeat pushes reported no changes and preserved temporary user fixtures exactly. Only those fixtures were deleted afterward. Drizzle Kit 0.31.11 and its tooling driver pg 8.23.1 are development dependencies; the runtime database client is unchanged. No API was started. Both database containers started for these checks were stopped afterward, preserving their volumes.
 
 Suggested commit: `feat: define users with guarded Drizzle pushes`
 
@@ -1185,7 +1187,7 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Is each review bounded? | Earlier reviews fit nine tracked files or fewer. Phase 5B is a documented 12-file exception for one origin/CORS policy, including short settings call-site changes, their tests, and accurate docs. Response negotiation and logging are separate in 5C. Other phases keep the nine-file target and their own gates. |
 | Are repetitive catalogs still reviewable? | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small. |
 | Is push-only schema management preserved? | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset. |
-| Is approval preserved? | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, and 5C are complete; phases 6–41 require their own approval after the simplicity retrospective. |
+| Is approval preserved? | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, and 6 are complete; phases 7–41 require their own approval. |
 
 Structural checks confirmed consecutive phase numbers, matching feature order, 44 approval gates after splitting phases 3 and 5 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Phase 5A passed common-error and JSON-reader tests, type checking, lint, and build. Phase 5B passed origin/CORS policy tests, configuration checks, type checking, lint, and build. Phase 5C passed negotiation and metadata-log tests, type checking, lint, and build. Feature and browser end-to-end checks remain for their own phases.
 
@@ -1197,12 +1199,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 5C and documentation consolidation are committed. The approved removal of strict Accept checks is implemented. Phase 6 remains unapproved. Local development remains on HTTP.
+Status: Phase 6 is complete and awaiting review. The users schema and guarded local/test push commands are implemented. Local development remains on HTTP.
 
-Handoff note: Review the removal of strict Accept checks. The API always returns JSON; setup and the API guide remain the references for current behavior. Keep useful details in their owning guide and link to them from README and PROJECT_MAP. Phase 6 requires explicit approval before adding users.
+Handoff note: Review the users schema, Drizzle configuration, test-database helper, and setup guide. Only users exists, and there are no new API endpoints. Phase 7 adds registration, validation, password hashing, bounded auth attempts, and the first endpoint integration tests after approval. Keep schema and testing notes in setup while they remain small.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing CSRF/origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review the Accept-check removal, then choose any remaining retrospective cleanup or approve phase 6. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review phase 6, then approve phase 7 when ready. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the architect skill. "Review any remaining simplifications, or implement phase 6 only after explicit approval. Keep shared HTTP code simple and documentation in its owning guide."
+Suggested next specialist and prompt: Continue with the architect skill. "Implement phase 7 only after approval. Keep registration validation, handlers, queries, and the small limiter in one auth feature file. Use the guarded test connection and keep the review small."
