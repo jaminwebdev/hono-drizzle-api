@@ -1,7 +1,9 @@
 import type { Context, Hono } from 'hono';
+import { accepts } from 'hono/accepts';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
 import { methodNotAllowed } from 'hono/method-not-allowed';
+import { routePath } from 'hono/route';
 import { secureHeaders } from 'hono/secure-headers';
 import type { ClientErrorStatusCode, ServerErrorStatusCode } from 'hono/utils/http-status';
 import type { Config } from './config';
@@ -30,6 +32,17 @@ export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
     c.set('requestId', requestId);
     c.header('X-Request-Id', requestId);
     c.header('Cache-Control', 'no-store');
+    const started = performance.now();
+    await next();
+    console.log(JSON.stringify({
+      requestId,
+      method: c.req.method,
+      route: routePath(c, -1) || null,
+      status: c.res.status,
+      elapsedMs: Math.round(performance.now() - started),
+    }));
+  });
+  app.use(async (c, next) => {
     if (new TextEncoder().encode(c.req.url).byteLength > 8192) {
       return errorResponse(c, 414, 'URI_TOO_LONG', 'The request URL must be at most 8 KiB.');
     }
@@ -52,6 +65,23 @@ export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
       exposeHeaders: ['ETag', 'Location', 'X-Request-Id'],
     }));
   }
+  app.use(async (c, next) => {
+    const responseType = accepts(c, {
+      header: 'Accept',
+      supports: ['application/json'],
+      default: 'application/json',
+      match: (ranges) => {
+        const preference = ranges.find((range) => range.type.toLowerCase() === 'application/json')
+          ?? ranges.find((range) => range.type.toLowerCase() === 'application/*')
+          ?? ranges.find((range) => range.type === '*/*');
+        return preference && preference.q > 0 ? 'application/json' : '';
+      },
+    });
+    if (!responseType) {
+      return errorResponse(c, 406, 'NOT_ACCEPTABLE', 'This API returns application/json.');
+    }
+    await next();
+  });
   app.use(bodyLimit({
     maxSize: 64 * 1024,
     onError: () => {

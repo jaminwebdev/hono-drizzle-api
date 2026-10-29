@@ -10,7 +10,9 @@ The application runs on Bun 1.3.14 with Hono. `src/config.ts` uses Valibot to va
 
 `src/http.ts` installs server-generated request IDs, no-store responses, browser security headers, an 8 KiB URL limit, method errors, and a common JSON error shape. Unexpected errors omit raw exception details. Hono's body-limit middleware enforces a 64 KiB request limit. The small JSON helper checks content type and calls `c.req.json()` with a safe parsing error. Feature fields remain the responsibility of each feature.
 
-Unsafe requests require an exact allowed `Origin`; failures return `403 ORIGIN_REJECTED`. GET and HEAD health requests need no Origin. Hono handles credentialed CORS and preflights only when browser origins are configured. Requestly needs the write-request Origin header but no CORS configuration. See [the API guide](docs/api.md) for examples. Content negotiation and safe request logging remain in their own review.
+Unsafe requests require an exact allowed `Origin`; failures return `403 ORIGIN_REJECTED`. GET and HEAD health requests need no Origin. Hono handles credentialed CORS and preflights only when browser origins are configured. Requestly needs the write-request Origin header but no CORS configuration. See [the API guide](docs/api.md) for examples.
+
+Hono parses Accept headers for JSON response negotiation; unsupported response types return `406 NOT_ACCEPTABLE`. Request logs contain only the server-generated request ID, method, registered route template, status, and elapsed milliseconds. They omit concrete resource IDs, query strings, headers, bodies, and raw errors.
 
 `src/db/client.ts` builds one Drizzle 0.45.4 database object backed by Bun's SQL pool. Explicit settings choose the target; credentials are passed as options. The pool permits five connections, times out connection attempts after five seconds, applies PostgreSQL's five-second statement timeout, and closes idle connections after 30 seconds. Importing the module opens no connection. No application tables exist yet.
 

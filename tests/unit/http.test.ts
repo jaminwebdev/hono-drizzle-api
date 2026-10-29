@@ -1,9 +1,13 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { Hono } from 'hono';
 import { ApiError, installHttp, readJson, type HttpEnv } from '../../src/http';
 
 const apiOrigin = 'http://127.0.0.1:3000';
 const browserOrigin = 'http://localhost:5173';
+let log: ReturnType<typeof spyOn<typeof console, 'log'>>;
+
+beforeEach(() => { log = spyOn(console, 'log').mockImplementation(() => {}); });
+afterEach(() => { log.mockRestore(); });
 
 function fixture(corsOrigins: string[] = []) {
   const app = new Hono<HttpEnv>();
@@ -12,6 +16,11 @@ function fixture(corsOrigins: string[] = []) {
   app.post('/json', async (c) => c.json({ data: await readJson(c) }));
   app.get('/unexpected', () => { throw new Error('synthetic-secret-never-log'); });
   app.get('/expected', () => { throw new ApiError(400, 'INVALID_INPUT', 'A field is invalid.'); });
+  app.post('/records/:id', async (c) => {
+    await readJson(c);
+    c.header('Set-Cookie', 'synthetic-session=never-log');
+    return c.json({ status: 'ok' });
+  });
   return app;
 }
 
@@ -63,6 +72,80 @@ describe('common HTTP responses', () => {
     const app = fixture();
     expect((await app.request(allowed)).status).toBe(200);
     await expectError(await app.request(allowed + 'a'), 414, 'URI_TOO_LONG');
+  });
+});
+
+describe('JSON response negotiation', () => {
+  test.each(['', '*/*', 'application/*', 'application/json', 'APPLICATION/JSON',
+    'text/html, application/json;q=0.5', 'application/json;q=0.5, */*;q=0'])(
+    'accepts a request allowing JSON: %s', async (accept) => {
+      const response = await fixture().request('/status', { headers: { Accept: accept } });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Content-Type')).toContain('application/json');
+    },
+  );
+
+  test.each(['text/html', 'application/xml', 'application/json;q=0', '*/*;q=0',
+    'application/json;q=0, */*;q=1', 'application/*;q=0, */*;q=1'])(
+    'returns a safe 406 when JSON is not acceptable: %s', async (accept) => {
+      await expectError(await fixture().request('/status', { headers: { Accept: accept } }),
+        406, 'NOT_ACCEPTABLE');
+    },
+  );
+
+  test('leaves CORS preflight handling to Hono', async () => {
+    const response = await fixture([browserOrigin]).request('/json', { method: 'OPTIONS', headers: {
+      Origin: browserOrigin, 'Access-Control-Request-Method': 'POST', Accept: 'text/html',
+    } });
+    expect(response.status).toBe(204);
+  });
+});
+
+describe('safe request logging', () => {
+  test('logs only metadata and the route template', async () => {
+    const response = await fixture().request('/records/private-record-id?secret=query-secret', {
+      method: 'POST',
+      headers: {
+        Origin: apiOrigin, 'Content-Type': 'application/json',
+        Authorization: 'Bearer header-secret', Cookie: 'session=cookie-secret',
+        'X-CSRF-Token': 'csrf-secret',
+      },
+      body: '{"description":"body-secret"}',
+    });
+    expect(response.status).toBe(200);
+    expect(log).toHaveBeenCalledTimes(1);
+    const line = String(log.mock.calls[0]?.[0]);
+    expect(JSON.parse(line) as unknown).toEqual({
+      requestId: response.headers.get('X-Request-Id'), method: 'POST', route: '/records/:id', status: 200,
+      elapsedMs: expect.any(Number) as unknown,
+    });
+    for (const secret of ['private-record-id', 'query-secret', 'header-secret', 'cookie-secret',
+      'csrf-secret', 'body-secret', 'synthetic-session', 'never-log']) {
+      expect(line).not.toContain(secret);
+    }
+  });
+
+  test('logs the final status for early and unexpected failures without request details', async () => {
+    const app = fixture();
+    const requests = [
+      { url: '/json', init: { method: 'POST' }, status: 403 },
+      { url: '/status', init: { method: 'POST', headers: { Origin: apiOrigin } }, status: 405 },
+      { url: '/status', init: { headers: { Accept: 'text/html' } }, status: 406 },
+      { url: '/status?' + 'x'.repeat(8192), init: {}, status: 414 },
+      { url: '/unexpected', init: {}, status: 500 },
+      { url: '/missing/private-missing-id?secret=hidden', init: {}, status: 404 },
+    ];
+    for (const request of requests) {
+      log.mockClear();
+      const response = await app.request(request.url, request.init);
+      expect(response.status).toBe(request.status);
+      expect(log).toHaveBeenCalledTimes(1);
+      const line = String(log.mock.calls[0]?.[0]);
+      expect(JSON.parse(line) as unknown).toMatchObject({ status: request.status });
+      expect(line).not.toContain('private-missing-id');
+      expect(line).not.toContain('hidden');
+      expect(line).not.toContain('synthetic-secret-never-log');
+    }
   });
 });
 

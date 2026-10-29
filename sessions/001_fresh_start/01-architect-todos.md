@@ -1,6 +1,6 @@
 # Finance tracker architecture and implementation todos
 
-This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases 1, 2, 3A, 3B, 3C, 5A, and 5B are complete. Later phases remain subject to their individual approval gates.
+This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, and 5C are complete. Later phases remain subject to their individual approval gates.
 
 ## Spec summary
 
@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. The user approved phases 1, 2, 3A, 3B, and 3C. Phase 3 was split before implementation into settings in 3A, the connection in 3B, and readiness/shutdown in 3C to keep each review small. The user removed the local HTTPS phase before implementation. Completed work is recorded below; phase 5B is complete, with 5C retaining a separate approval gate.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. The user approved phases 1, 2, 3A, 3B, and 3C. Phase 3 was split before implementation into settings in 3A, the connection in 3B, and readiness/shutdown in 3C to keep each review small. The user removed the local HTTPS phase before implementation. Completed work is recorded below; phase 5C is complete. The user requested a simplicity retrospective before the next feature; phase 6 still requires approval.
 
 ### Build one feature at a time
 
@@ -497,7 +497,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-Phases 1, 2, 3A, 3B, 3C, 5A, and 5B are complete. Phase 3C is approved. Phase 4 was removed at the user's request; phase 5B is complete and awaiting review; 5C requires its own approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1, 2, 3A, 3B, 3C, 5A, 5B, and 5C are complete. Phase 3C is approved. Phase 4 was removed at the user's request; phase 5C is complete and awaiting review. Discuss the requested simplicity retrospective before approving phase 6. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests and guide edits, not permission to create an absent file early. The scaffold has eight planned files; later phases target two to seven and may reach nine with dependency/configuration work. Before implementation, split a phase that would reach ten files or mix separate behaviors. Phase 5B is the documented exception for short settings call-site, test, and current-guide updates; it contains only the origin/CORS policy. Split within the same feature and update phase references before proceeding.
 
@@ -630,17 +630,23 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 5C. Add JSON response negotiation and safe request logging
 
-Expected files, 5: `src/http.ts`, `tests/unit/http.test.ts`, `docs/api.md`, `PROJECT_MAP.md`, and this plan.
+Expected files, 6: `src/http.ts`, `tests/unit/http.test.ts`, `docs/api.md`, `PROJECT_MAP.md`, this plan, and the requested `02-architecture-retro.md` review.
 
-- [ ] Add JSON content negotiation while accepting absent Accept and wildcard requests.
-- [ ] Log only the request ID, method, registered route template, status, and elapsed time.
-- [ ] Test unsupported response types and confirm that headers, bodies, concrete IDs, and query strings do not enter logs; update the HTTP guide.
+- [x] Add JSON content negotiation while accepting absent Accept and wildcard requests.
+- [x] Log only the request ID, method, registered route template, status, and elapsed time.
+- [x] Test unsupported response types and confirm that headers, bodies, concrete IDs, and query strings do not enter logs; update the HTTP guide.
 
 Acceptance: S5–S6, S8; PROJECT_MAP R3, R6–R8, R11–R12. Reuse Hono helpers and the common error response. No auth endpoints, schema, origin-setting changes, or custom protocol parser.
+
+Validation: type checking, ESLint, all 82 Bun tests, and the build passed. Tests cover missing/wildcard/weighted Accept headers, safe 406 responses, unchanged Hono preflights, final logged statuses, and route templates without concrete IDs, query strings, bodies, or sensitive headers. No API process or database container was started. The requested retrospective is recorded after completing this phase, with proposed simplifications left for discussion.
 
 Suggested commit: `feat: negotiate JSON responses and log safe request metadata`
 
 PAUSE — user must approve before continuing to next batch.
+
+### Simplicity retrospective before phase 6
+
+The user requested a review after 5C before more implementation. Findings are in [02-architecture-retro.md](02-architecture-retro.md). Discuss strict Accept negotiation, documentation duplication, and helpers added before their first real handler. Keep any approved cleanup as its own small commit; do not automatically begin the users schema or apply the review's proposals.
 
 ### Phase 6. Define only users and the push commands
 
@@ -1171,9 +1177,9 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Is each review bounded? | Earlier reviews fit nine tracked files or fewer. Phase 5B is a documented 12-file exception for one origin/CORS policy, including short settings call-site changes, their tests, and accurate docs. Response negotiation and logging are separate in 5C. Other phases keep the nine-file target and their own gates. |
 | Are repetitive catalogs still reviewable? | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small. |
 | Is push-only schema management preserved? | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset. |
-| Is approval preserved? | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, and 5B are complete; 5C and phases 6–41 require their own approval. |
+| Is approval preserved? | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, and 5C are complete; phases 6–41 require their own approval after the simplicity retrospective. |
 
-Structural checks confirmed consecutive phase numbers, matching feature order, 44 approval gates after splitting phases 3 and 5 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Phase 5A passed common-error and JSON-reader tests, type checking, lint, and build. Phase 5B passed origin/CORS policy tests, configuration checks, type checking, lint, and build. Response negotiation, logging, feature, and browser end-to-end checks remain for their own phases.
+Structural checks confirmed consecutive phase numbers, matching feature order, 44 approval gates after splitting phases 3 and 5 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Phase 5A passed common-error and JSON-reader tests, type checking, lint, and build. Phase 5B passed origin/CORS policy tests, configuration checks, type checking, lint, and build. Phase 5C passed negotiation and metadata-log tests, type checking, lint, and build. Feature and browser end-to-end checks remain for their own phases.
 
 Before each implementation gate, re-estimate the actual diff. Except for the documented settings-wiring exception in 5B, split a phase if it would exceed nine tracked files, introduce a second independent behavior, or require too much new code to explain in one request walkthrough. This rule applies even when a phase has only three todos.
 
@@ -1183,12 +1189,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 5B is complete and awaiting review. Phase 5C is pending approval. Local development remains on HTTP.
+Status: Phase 5C is complete and awaiting review. The requested simplicity retrospective is ready for discussion. Phase 6 remains unapproved. Local development remains on HTTP.
 
-Handoff note: Review the origin/CORS policy and let the user make the suggested commit. Startup now requires an exact API_ORIGIN; local/test private files have it, and CORS remains disabled by default. Requestly write requests need the explicit Origin header. No API process or database container was started. The next step is only JSON response negotiation and safe request logging in 5C; keep the readiness query and body handling simple.
+Handoff note: Review 5C and the short simplicity retrospective before starting another feature. Hono parses Accept headers and supplies route templates for a five-field JSON request log. No services were started. The review recommends discussing optional strict Accept handling and consolidating repeated documentation. It also notes that JSON reading has no real caller until registration. No retrospective cleanup has been applied; agree on any small cleanup commit or approve phase 6 explicitly before proceeding.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing CSRF/origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review phase 5B, make its suggested commit, and approve 5C when ready. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review phase 5C, make its suggested commit, and discuss the retrospective before choosing cleanup or phase 6. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the architect skill. "Implement only phase 5C of `sessions/001_fresh_start/01-architect-todos.md`. Add JSON response negotiation and safe request metadata logging using Hono helpers, preserve the user-controlled development server, explain the request flow, suggest the commit, and stop at the approval gate."
+Suggested next specialist and prompt: Continue with the architect skill. "Discuss `sessions/001_fresh_start/02-architecture-retro.md` and agree on the smallest useful cleanup before more feature work. Do not implement unapproved cleanup or start phase 6 automatically."

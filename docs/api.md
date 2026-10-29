@@ -38,6 +38,7 @@ The request ID matches the response header. The timestamp uses UTC. Unexpected f
 | `403` | `ORIGIN_REJECTED` | A write has a missing or unapproved Origin. |
 | `404` | `NOT_FOUND` | No resource matches the URL. |
 | `405` | `METHOD_NOT_ALLOWED` | The URL exists but does not support that method. `Allow` lists supported methods. |
+| `406` | `NOT_ACCEPTABLE` | The Accept header does not permit a JSON response. |
 | `413` | `PAYLOAD_TOO_LARGE` | A request body exceeds 65,536 bytes, or 64 KiB. |
 | `414` | `URI_TOO_LONG` | The full request URL exceeds 8,192 bytes, or 8 KiB. |
 | `415` | `UNSUPPORTED_MEDIA_TYPE` | A JSON reader received a content type other than `application/json`. |
@@ -45,6 +46,18 @@ The request ID matches the response header. The timestamp uses UTC. Unexpected f
 | `503` | `DATABASE_UNAVAILABLE` | The readiness query failed. |
 
 In Requestly, send `GET /missing` to see a `404`. To see a `405`, send `POST /health/live` with `Origin: http://127.0.0.1:3000`; that method is unsupported even with an allowed origin. Neither request needs a body. Inspect `X-Request-Id` and, for the method error, `Allow` in the response headers.
+
+## JSON responses and request logs
+
+The API returns JSON. Omit `Accept` or use `Accept: application/json`, `application/*`, or `*/*`. An unsupported value such as `text/html` returns `406 NOT_ACCEPTABLE`. Hono parses the header; the most specific matching range decides whether JSON is allowed. A quality value of zero rejects that range, so `application/json;q=0, */*;q=1` still rejects JSON. CORS preflights remain Hono's responsibility and do not need to accept JSON.
+
+Each completed request writes one JSON log entry to the terminal:
+
+```json
+{"requestId":"4d598d39-dc7a-4ca5-aab6-509ad69080d1","method":"GET","route":"/health/live","status":200,"elapsedMs":1}
+```
+
+The route comes from Hono's registered route template. A route such as `/records/:id` logs that template rather than a concrete record ID. Unmatched requests can log `*`; the requested URL is never the fallback. Logs contain only the five fields shown above. Headers, bodies, query strings, SQL, and raw exceptions are omitted.
 
 ## Origins and browser access
 
@@ -72,11 +85,15 @@ flowchart LR
     Client[Requestly] --> Shared[Set request ID and response headers]
     Shared --> Limit[Check the URL length]
     Limit --> Origin[Check write origins and optional browser access]
-    Origin --> Route[Run the health handler]
+    Origin --> Accept[Check that JSON responses are acceptable]
+    Accept --> Route[Run the health handler]
     Route --> Success[Return health JSON]
     Limit --> Error[Return the common JSON error]
     Origin --> Error
+    Accept --> Error
     Route --> Error
+    Success --> Log[Log request metadata]
+    Error --> Log
 ```
 
 `src/app.ts` installs the common HTTP behavior from `src/http.ts` before registering routes. Hono identifies unsupported methods and adds the allowed-method list. Successful health responses keep their simple status body.
