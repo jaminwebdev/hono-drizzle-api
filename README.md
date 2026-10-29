@@ -40,7 +40,9 @@ The response has status `200` and this JSON body:
 {"status":"ok"}
 ```
 
-In Requestly desktop, create a `GET` request with that same URL and select **Send**. Liveness makes no database query. Send `GET http://127.0.0.1:3000/health/ready` to check PostgreSQL too. Readiness runs `SELECT 1` through Drizzle, returning `200` with `{"status":"ok"}` or `503` with `{"status":"unavailable"}`. It uses the existing database timeouts without a separate readiness deadline.
+In Requestly desktop, create a `GET` request with that same URL and select **Send**. Liveness makes no database query. Send `GET http://127.0.0.1:3000/health/ready` to check PostgreSQL too. Readiness runs `SELECT 1` through Drizzle, returning `200` with `{"status":"ok"}` or a common `503` error with code `DATABASE_UNAVAILABLE`. It uses the existing database timeouts without a separate readiness deadline.
+
+The [API guide](docs/api.md) explains error responses, request IDs, and input limits. Try `GET /missing` or `POST /health/live` in Requestly to inspect the current error behavior.
 
 See [the setup guide](docs/setup.md) for the separate PostgreSQL commands and environment identities.
 
@@ -71,7 +73,8 @@ flowchart LR
     Connect --> App["createApp(database): share the database with Hono"]
     App --> Server
     Client[Requestly or curl] --> Server["src/server.ts: Bun receives the request"]
-    Server --> Routes["src/app.ts: Hono matches the health route"]
+    Server --> HTTP["src/http.ts: request ID, headers, and URL limit"]
+    HTTP --> Routes["src/app.ts: Hono matches the health route"]
     Routes --> Live["Liveness: return status ok"]
     Routes --> Ready["Readiness: query PostgreSQL and return 200 or 503"]
 ```

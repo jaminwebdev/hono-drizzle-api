@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import { sql } from 'drizzle-orm';
 import type { Database } from './db/client';
+import { errorResponse, installHttp, type HttpEnv } from './http';
 
 export function createApp(database: Database) {
-  const app = new Hono();
+  const app = new Hono<HttpEnv>();
+  installHttp(app);
 
   app.get('/health/live', (c) => {
     return c.json({ status: 'ok' });
@@ -14,7 +16,7 @@ export function createApp(database: Database) {
       await database.execute(sql`select 1`);
       return c.json({ status: 'ok' });
     } catch {
-      return c.json({ status: 'unavailable' }, 503);
+      return errorResponse(c, 503, 'DATABASE_UNAVAILABLE', 'The database is unavailable.');
     }
   });
 

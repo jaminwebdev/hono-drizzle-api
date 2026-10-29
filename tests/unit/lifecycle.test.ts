@@ -30,7 +30,9 @@ describe('health routes', () => {
     const { app } = appWith(() => Promise.reject(new Error('synthetic secret in a driver error')));
     const response = await app.request('/health/ready');
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ status: 'unavailable' });
+    expect(await response.json()).toMatchObject({
+      error: { code: 'DATABASE_UNAVAILABLE', status: 503, requestId: response.headers.get('X-Request-Id') },
+    });
     expect((await app.request('/health/live')).status).toBe(200);
   });
 });

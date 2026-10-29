@@ -1,6 +1,6 @@
 # Finance tracker architecture and implementation todos
 
-This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases 1, 2, 3A, 3B, and 3C are complete. Later phases remain subject to their individual approval gates.
+This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases 1, 2, 3A, 3B, 3C, and 5A are complete. Later phases remain subject to their individual approval gates.
 
 ## Spec summary
 
@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. The user approved phases 1, 2, 3A, 3B, and 3C. Phase 3 was split before implementation into settings in 3A, the connection in 3B, and readiness/shutdown in 3C to keep each review small. The user removed the local HTTPS phase before implementation. Completed work is recorded below; phase 5 is the next implementation gate.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Details such as exact expiry times and endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. The user approved phases 1, 2, 3A, 3B, and 3C. Phase 3 was split before implementation into settings in 3A, the connection in 3B, and readiness/shutdown in 3C to keep each review small. The user removed the local HTTPS phase before implementation. Completed work is recorded below; phase 5A is complete, with 5B retaining a separate approval gate.
 
 ### Build one feature at a time
 
@@ -23,7 +23,7 @@ The schema diagram and full API contract below describe the intended finished ap
 | Work | Phases | Schema introduced in these phases |
 | --- | --- | --- |
 | Scaffold | 1–3C | No application tables. Establish Bun, fresh PostgreSQL storage, validated settings, and connection lifecycle. |
-| Authentication | 5–14 | Add request checks, then `users`, registration, `sessions`, login, middleware, CSRF, logout, password change, and session cleanup. Review the Requestly and browser flows before finance work. |
+| Authentication | 5A–14 | Add request checks, then `users`, registration, `sessions`, login, middleware, CSRF, logout, password change, and session cleanup. Review the Requestly and browser flows before finance work. |
 | Accounts | 15–19 | Add only owned `accounts`, then create/detail, list/search, edit/archive, and deletion in separate commits. |
 | Transactions | 20–27 | Add owned transactions and history without tag/category fields, then creation, corrections, deletion, search, balances, summaries, and seeds. |
 | Tags | 28–32 | Add the owned tag catalog, then its account and transaction relationships and filters. |
@@ -497,7 +497,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-Phases 1, 2, 3A, 3B, and 3C are complete. Phase 3C is approved. Phase 4 was removed at the user's request; phase 5 is the next approval gate. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1, 2, 3A, 3B, 3C, and 5A are complete. Phase 3C is approved. Phase 4 was removed at the user's request; phase 5A is complete and awaiting review; 5B requires its own approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests and guide edits, not permission to create an absent file early. The scaffold has eight planned files; later phases target two to seven and may reach nine with dependency/configuration work. Before implementation, split any phase that would reach ten files or mix separate behaviors. Split within the same feature and update phase references before proceeding.
 
@@ -594,18 +594,35 @@ PAUSE — user must approve before continuing to next batch.
 
 The user removed this phase before implementation. Local development stays on HTTP with no local certificates. Keep later phase numbers unchanged so existing references remain useful. The environment-specific cookie policy is in S8.
 
-### Phase 5. Add request checks for the upcoming auth endpoints
+### Phase 5A. Add common errors and JSON request handling
 
-Expected files, 9: `src/config.ts`, `.env.example`, `src/http.ts`, `src/app.ts`, `tests/unit/config.test.ts`, `tests/unit/http.test.ts`, `docs/api.md`, `PROJECT_MAP.md`, and this plan.
+Expected files, 9: `src/http.ts`, `src/app.ts`, `tests/unit/http.test.ts`, `tests/unit/lifecycle.test.ts`, `docs/api.md`, `README.md`, `docs/setup.md`, `PROJECT_MAP.md`, and this plan.
 
-- [ ] Add explicit API_ORIGIN and browser-origin validation when the origin checks first need them; local/test use HTTP on loopback, and production requires HTTPS.
-- [ ] Add bounded JSON parsing and a consistent safe error shape with server request IDs.
-- [ ] Validate exact configured browser origins when adding the S6 origin, preflight, content negotiation, secure-header, no-store, and redacted logging rules.
-- [ ] Test malformed/chunked/oversized bodies, unsupported types/methods, rejected origins, preflights, and secret-free errors; document the shared contract.
+- [x] Add one safe error shape for router, readiness, parsing, and unexpected failures, with server-generated request IDs.
+- [x] Use Hono's body-limit middleware for the 64 KiB request limit and `c.req.json()` with small content-type/parsing error handling. Do not add a custom stream reader.
+- [x] Add the current API's URL limit, method errors, secure headers, and no-store responses without adding auth routes.
+- [x] Test malformed and oversized input, method/router failures, redacted errors, and unchanged successful health checks; explain the request flow.
 
-Acceptance: S5–S6, S8; PROJECT_MAP R3–R4, R6–R8, R11. Public health still works and no credential endpoint exists. Origin checks for unsafe requests reject missing/null/unapproved values. This is concrete shared HTTP behavior, with no route factory or session placeholder.
+Acceptance: S5–S6, S8; PROJECT_MAP R3, R6–R8, R11. No schema, credentials, origins, or auth placeholders are introduced. Keep the readiness query simple. Origin settings, CORS/preflight, content negotiation, and request logging follow in 5B. Use shared code for concrete HTTP behavior rather than controller/service layers.
 
-Suggested commit: `feat: add safe HTTP handling for auth requests`
+Validation: type checking, ESLint, all 40 Bun tests, and build passed on Bun 1.3.14. The user requested framework helpers, so the custom reader was replaced with Hono's body-limit middleware and `c.req.json()`. Tests cover server-generated IDs, router/method errors, safe unexpected errors, URL and body limits, declared and streamed input, malformed JSON, and unchanged successful health responses. Tests use Hono directly; no API process or database container was started. The review contains nine files, including current docs and this plan.
+
+Suggested commit: `feat: add common API errors and JSON request handling`
+
+PAUSE — user must approve before continuing to next batch.
+
+### Phase 5B. Add origin checks and browser request policy
+
+Expected files, 9: `src/config.ts`, `.env.example`, `src/http.ts`, `src/app.ts`, `src/server.ts`, `tests/unit/config.test.ts`, `tests/unit/http.test.ts`, `docs/api.md`, and this plan. Re-estimate before implementation if ledger updates require another file.
+
+- [ ] Add explicit API_ORIGIN and browser-origin validation when the checks first need them; local/test use HTTP on loopback, and production requires HTTPS.
+- [ ] Apply exact origin checks for unsafe requests and credentialed CORS/preflight rules, with CORS disabled by default.
+- [ ] Add JSON content negotiation and request logging limited to request ID, method, route template, status, and elapsed time.
+- [ ] Test missing/null/rejected origins, preflights, unsupported response types, and secret-free logs; update the shared contract.
+
+Acceptance: S5–S6, S8; PROJECT_MAP R3–R4, R6–R8, R11–R12. Public health still works and no credential endpoint exists. No route factory, session placeholder, local certificates, or development-server lifecycle changes. Preserve a review of at most nine files, splitting before implementation if needed.
+
+Suggested commit: `feat: enforce request origins and browser access policy`
 
 PAUSE — user must approve before continuing to next batch.
 
@@ -1135,12 +1152,12 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Were broad original phases reduced? | Yes. Account list/search, editing/archival, and deletion now have separate commits. Transaction corrections and deletion are separate; category assignment and filtering are separate; image build, stack checks, and CI are separate. |
 | Do tests and middleware use current features only? | Yes. Test setup checks the selected database before writes. Session-cleanup tests use only users/sessions. Finance endpoint phases include ownership checks and foreign-user failure tests; schema-only phases inspect current constraints without testing future routes. No delayed global ownership retrofit. |
 | Does Requestly grow with the API? | Yes. The first collection request accompanies registration, then the collection grows with endpoints. Cookie reuse and a separate CSRF variable replace manual session-credential extraction. Real-browser tests check browser behavior separately. |
-| Is each review bounded? | Each implemented review stays within nine tracked files, including tests and guides. The connection in 3B and readiness/shutdown in 3C have separate reviews of nine and eight expected files. Other phases retain their estimates, acceptance blocks, suggested commits, and approval gates. Adding request examples must stay inside the nine-file ceiling. |
+| Is each review bounded? | Each implemented review stays within nine tracked files, including tests and guides. The connection in 3B and readiness/shutdown in 3C have separate reviews of nine and eight expected files. Phase 5A fits nine files; origin/browser policy remains in 5B. Other phases retain their estimates, acceptance blocks, suggested commits, and approval gates. Adding request examples must stay inside the nine-file ceiling. |
 | Are repetitive catalogs still reviewable? | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small. |
 | Is push-only schema management preserved? | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset. |
-| Is approval preserved? | Yes. Phase 3 is split into 3A/3B/3C and phase 4 is removed, leaving 42 review gates. Phases 1, 2, 3A, 3B, and 3C are complete; phases 5–41 require their own approval. |
+| Is approval preserved? | Yes. Phase 3 is split into 3A/3B/3C and phase 4 is removed, and phase 5 is split into 5A/5B, leaving 43 review gates. Phases 1, 2, 3A, 3B, 3C, and 5A are complete; 5B and phases 6–41 require their own approval. |
 
-Structural checks confirmed consecutive phase numbers, matching feature order, 42 approval gates after splitting phase 3 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Feature and browser checks belong to their future implementation phases.
+Structural checks confirmed consecutive phase numbers, matching feature order, 43 approval gates after splitting phases 3 and 5 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Phase 5A passed common-error and JSON-reader tests, type checking, lint, and build. Origin, feature, and browser checks belong to their future implementation phases.
 
 Before each implementation gate, re-estimate the actual diff. Split a phase if it would exceed nine tracked files, introduce a second independent behavior, or require too much new code to explain in one request walkthrough. This rule applies even when a phase has only three todos.
 
@@ -1150,12 +1167,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 3C is approved. Local HTTPS was removed before implementation. Phase 5 is the next approval gate.
+Status: Phase 5A is complete and awaiting review. Phase 5B is pending approval. Local development remains on HTTP.
 
-Handoff note: Keep local HTTP and the simple readiness query. No TLS code, certificate files, or trust-store changes were introduced. Local/test session cookies will be HttpOnly without Secure; production still requires HTTPS and Secure cookies. The next implementation is phase 5, which introduces shared request checks and API_ORIGIN when they have a real use.
+Handoff note: Review the common HTTP errors, JSON reader, and current API guide, then let the user make the suggested commit. `src/http.ts` holds concrete shared behavior; successful health bodies are unchanged, and failures use a common JSON error. No API or database container was started. Do not add local HTTPS or restore readiness deadline machinery. After 5B is approved, add origin settings, CORS/preflight, content negotiation, and redacted request logging. Re-estimate its real diff before implementation.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing CSRF/origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review this plan correction and approve phase 5 when ready. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review phase 5A, make its suggested commit, and approve 5B when ready. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the architect skill. "Implement only phase 5 of `sessions/001_fresh_start/01-architect-todos.md`. Add the shared request checks and origin settings on local HTTP, preserve the user-controlled development server, explain the request flow, suggest the commit, and stop at the approval gate."
+Suggested next specialist and prompt: Continue with the architect skill. "Implement only phase 5B of `sessions/001_fresh_start/01-architect-todos.md`. Add origin settings and browser access policy using the existing common HTTP handling, preserve the user-controlled development server, explain the request flow, suggest the commit, and stop at the approval gate."

@@ -18,9 +18,11 @@ In Requestly desktop:
 | Request | Behavior |
 | --- | --- |
 | `GET http://127.0.0.1:3000/health/live` | Returns `200` with `{"status":"ok"}` without querying PostgreSQL. |
-| `GET http://127.0.0.1:3000/health/ready` | Runs `SELECT 1` through Drizzle. Returns `200` with `{"status":"ok"}` on success or `503` with `{"status":"unavailable"}` on failure. |
+| `GET http://127.0.0.1:3000/health/ready` | Runs `SELECT 1` through Drizzle. Returns `200` with `{"status":"ok"}` or a common `503` error with code `DATABASE_UNAVAILABLE`. |
 
 Readiness uses the pool's existing five-second connection and statement timeouts. It has no separate deadline for waiting for a pool slot. Database errors do not appear in its response.
+
+See [the API guide](api.md) for the error shape, response headers, and Requestly examples for missing URLs and unsupported methods.
 
 ```mermaid
 flowchart LR

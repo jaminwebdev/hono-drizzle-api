@@ -6,7 +6,9 @@ The application runs on Bun 1.3.14 with Hono. `src/config.ts` uses a small Valib
 
 `src/server.ts` opens the database connection and passes the same object to `createApp(database)` in `src/app.ts` before listening. Start PostgreSQL with `bun run db:up` before `bun run dev`. Local and test modes listen on loopback; production mode listens on all interfaces. The local template uses `127.0.0.1:3000`. Importing or constructing the app starts no server and opens no connection.
 
-`GET /health/live` returns `200` with `{ "status": "ok" }` without querying PostgreSQL. `GET /health/ready` runs `SELECT 1` through Drizzle and returns `200` with the same body or a safe `503` with `{ "status": "unavailable" }`. Readiness uses the existing database timeouts; it adds no separate deadline or connection-reservation logic.
+`GET /health/live` returns `200` with `{ "status": "ok" }` without querying PostgreSQL. `GET /health/ready` runs `SELECT 1` through Drizzle and returns `200` with the same body or a common `503` error with code `DATABASE_UNAVAILABLE`. Readiness uses the existing database timeouts; it adds no separate deadline or connection-reservation logic.
+
+`src/http.ts` installs server-generated request IDs, no-store responses, browser security headers, an 8 KiB URL limit, method errors, and a common JSON error shape. Unexpected errors omit raw exception details. Hono's body-limit middleware enforces a 64 KiB request limit. The small JSON helper checks content type and calls `c.req.json()` with a safe parsing error. Feature fields remain the responsibility of each feature. See [the API guide](docs/api.md) for current behavior. Origin/CORS checks, content negotiation, and request logging follow in their own review.
 
 `src/db/client.ts` builds one Drizzle 0.45.4 database object backed by Bun's SQL pool. Explicit settings choose the target; credentials are passed as options. The pool permits five connections, times out connection attempts after five seconds, applies PostgreSQL's five-second statement timeout, and closes idle connections after 30 seconds. Importing the module opens no connection. No application tables exist yet.
 
@@ -24,7 +26,7 @@ Local development uses HTTP on loopback with no certificate setup. The scaffold 
 | --- | --- |
 | R1. Stack | Use Bun 1.3.14, TypeScript, Hono, PostgreSQL, Drizzle, and Valibot. Use Bun for package commands and tests. Include `bun.lock` with dependency changes. |
 | R2. Development | Run the API, checks, seeds, schema pushes, and Drizzle Studio on the host. Only PostgreSQL runs in Docker during development and integration testing. Keep a production API image for deployment and continuous integration checks. |
-| R3. Code layout | Keep a feature's validation, handlers, and database queries in one readable feature file. Share concrete behavior such as JSON parsing and error responses. Do not add controller, service, or repository layers. |
+| R3. Code layout | Keep a feature's validation, handlers, and database queries in one readable feature file. Share concrete behavior such as JSON parsing and error responses. Prefer framework helpers when they meet the current need. Do not add controller, service, or repository layers. |
 | R4. Configuration | Put commands directly in `package.json`. Disable automatic environment-file loading. Local commands explicitly select their environment file. Configuration validates supplied values without reading files or guessing the database target. |
 | R5. Features | Support email/password authentication, accounts, transactions, categories, and tags. Tags must attach to both accounts and transactions and support search. Provide development seed data. |
 | R6. Tests | Use Bun's built-in test runner. Test business decisions and failure behavior. Do not write tests that only prove Drizzle or PostgreSQL can insert and retrieve rows. |
