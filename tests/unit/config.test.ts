@@ -4,6 +4,7 @@ import { readConfig } from '../../src/config';
 const settings = {
   APP_ENV: 'local',
   API_PORT: '3000',
+  API_ORIGIN: 'http://127.0.0.1:3000',
   POSTGRES_HOST: '127.0.0.1',
   POSTGRES_PORT: '5433',
   POSTGRES_USER: 'finance',
@@ -13,12 +14,13 @@ const settings = {
 
 describe('startup settings', () => {
   test('converts ports, preserves credentials, and ignores unused settings', () => {
-    const config = readConfig({ ...settings, CORS_ORIGINS: 'unused' });
-    expect(config).toEqual({ ...settings, API_PORT: 3000, POSTGRES_PORT: 5433 });
+    const config = readConfig({ ...settings, UNUSED_SETTING: 'unused' });
+    expect(config).toEqual({ ...settings, API_PORT: 3000, POSTGRES_PORT: 5433, CORS_ORIGINS: [] });
   });
 
   test.each(['local', 'test', 'production'])('accepts APP_ENV=%s', (mode) => {
-    expect(readConfig({ ...settings, APP_ENV: mode }).APP_ENV).toBe(mode);
+    const origin = mode === 'production' ? 'https://api.example.com' : settings.API_ORIGIN;
+    expect(readConfig({ ...settings, APP_ENV: mode, API_ORIGIN: origin }).APP_ENV).toBe(mode);
   });
 
   test.each([undefined, '', 'development'])('rejects a missing or invalid APP_ENV: %s', (mode) => {
@@ -53,5 +55,24 @@ describe('startup settings', () => {
     const secret = 'synthetic-secret-never-log';
     expect(() => readConfig({ ...settings, APP_ENV: secret, API_PORT: secret }))
       .toThrow('Invalid configuration fields: APP_ENV, API_PORT.');
+  });
+
+  test.each([undefined, '', '*', 'null', 'example.com', 'http://example.com/', 'http://example.com/path',
+    'http://example.com?secret=value', 'http://user:secret@example.com', 'ftp://example.com'])(
+    'requires an exact HTTP or HTTPS API_ORIGIN: %s', (origin) => {
+      expect(() => readConfig({ ...settings, API_ORIGIN: origin })).toThrow('API_ORIGIN');
+    },
+  );
+
+  test('requires HTTPS for the production API origin', () => {
+    expect(() => readConfig({ ...settings, APP_ENV: 'production' })).toThrow('API_ORIGIN must use HTTPS');
+  });
+
+  test('accepts an empty CORS setting and parses an explicit browser allowlist', () => {
+    expect(readConfig({ ...settings, CORS_ORIGINS: '' }).CORS_ORIGINS).toEqual([]);
+    expect(readConfig({ ...settings, CORS_ORIGINS: 'http://localhost:5173, https://ui.example.com' }).CORS_ORIGINS)
+      .toEqual(['http://localhost:5173', 'https://ui.example.com']);
+    expect(() => readConfig({ ...settings, CORS_ORIGINS: '*' })).toThrow('CORS_ORIGINS');
+    expect(() => readConfig({ ...settings, CORS_ORIGINS: 'http://localhost:5173,' })).toThrow('CORS_ORIGINS');
   });
 });

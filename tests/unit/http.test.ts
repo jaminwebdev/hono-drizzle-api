@@ -2,9 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import { Hono } from 'hono';
 import { ApiError, installHttp, readJson, type HttpEnv } from '../../src/http';
 
-function fixture() {
+const apiOrigin = 'http://127.0.0.1:3000';
+const browserOrigin = 'http://localhost:5173';
+
+function fixture(corsOrigins: string[] = []) {
   const app = new Hono<HttpEnv>();
-  installHttp(app);
+  installHttp(app, { API_ORIGIN: apiOrigin, CORS_ORIGINS: corsOrigins });
   app.get('/status', (c) => c.json({ status: 'ok' }));
   app.post('/json', async (c) => c.json({ data: await readJson(c) }));
   app.get('/unexpected', () => { throw new Error('synthetic-secret-never-log'); });
@@ -37,10 +40,10 @@ describe('common HTTP responses', () => {
 
   test('distinguishes an unsupported method from a missing URL', async () => {
     const app = fixture();
-    const response = await app.request('/status', { method: 'POST' });
+    const response = await app.request('/status', { method: 'POST', headers: { Origin: apiOrigin } });
     await expectError(response, 405, 'METHOD_NOT_ALLOWED');
     expect(response.headers.get('Allow')).toBe('GET, HEAD');
-    await expectError(await app.request('/missing', { method: 'POST' }), 404, 'NOT_FOUND');
+    await expectError(await app.request('/missing', { method: 'POST', headers: { Origin: apiOrigin } }), 404, 'NOT_FOUND');
     const head = await app.request('/status', { method: 'HEAD' });
     expect(head.status).toBe(200);
     expect(await head.text()).toBe('');
@@ -67,7 +70,7 @@ describe('JSON request parsing', () => {
   test.each(['application/json', 'application/json; charset=UTF-8'])(
     'accepts %s', async (contentType) => {
       const response = await fixture().request('/json', {
-        method: 'POST', headers: { 'Content-Type': contentType }, body: '{"name":"example"}',
+        method: 'POST', headers: { 'Content-Type': contentType, Origin: apiOrigin }, body: '{"name":"example"}',
       });
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ data: { name: 'example' } });
@@ -77,7 +80,7 @@ describe('JSON request parsing', () => {
   test.each(['', '{"password":"synthetic-secret",', 'not JSON'])(
     'rejects malformed or empty JSON without returning submitted data', async (body) => {
       const response = await fixture().request('/json', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+        method: 'POST', headers: { 'Content-Type': 'application/json', Origin: apiOrigin }, body,
       });
       expect(await response.clone().text()).not.toContain('synthetic-secret');
       await expectError(response, 400, 'INVALID_INPUT');
@@ -87,7 +90,7 @@ describe('JSON request parsing', () => {
   test.each(['text/plain', 'application/x-www-form-urlencoded'])(
     'rejects an unsupported content type: %s', async (contentType) => {
       await expectError(await fixture().request('/json', {
-        method: 'POST', headers: { 'Content-Type': contentType }, body: '{}',
+        method: 'POST', headers: { 'Content-Type': contentType, Origin: apiOrigin }, body: '{}',
       }), 415, 'UNSUPPORTED_MEDIA_TYPE');
     },
   );
@@ -95,7 +98,7 @@ describe('JSON request parsing', () => {
   test('accepts exactly 64 KiB and rejects a declared oversized body', async () => {
     const app = fixture();
     const body = '"' + 'a'.repeat(65534) + '"';
-    const headers = { 'Content-Type': 'application/json' };
+    const headers = { 'Content-Type': 'application/json', Origin: apiOrigin };
     expect((await app.request('/json', { method: 'POST', headers, body })).status).toBe(200);
     await expectError(await app.request('/json', {
       method: 'POST', headers: { ...headers, 'Content-Length': '65537' }, body: body + ' ',
@@ -104,7 +107,7 @@ describe('JSON request parsing', () => {
 
   test('counts UTF-8 bytes rather than characters', async () => {
     await expectError(await fixture().request('/json', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '"' + 'é'.repeat(32768) + '"',
+      method: 'POST', headers: { 'Content-Type': 'application/json', Origin: apiOrigin }, body: '"' + 'é'.repeat(32768) + '"',
     }), 413, 'PAYLOAD_TOO_LARGE');
   });
 
@@ -117,7 +120,86 @@ describe('JSON request parsing', () => {
       },
     });
     await expectError(await fixture().request('/json', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+      method: 'POST', headers: { 'Content-Type': 'application/json', Origin: apiOrigin }, body,
     }), 413, 'PAYLOAD_TOO_LARGE');
+  });
+});
+
+describe('request origins and CORS', () => {
+  test.each([undefined, 'null', 'http://untrusted.example', apiOrigin + '/', apiOrigin + '.untrusted.example'])(
+    'rejects a missing or unapproved write origin: %s', async (origin) => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (origin !== undefined) headers.Origin = origin;
+      await expectError(await fixture().request('/json', { method: 'POST', headers, body: '{}' }),
+        403, 'ORIGIN_REJECTED');
+    },
+  );
+
+  test.each(['PUT', 'PATCH', 'DELETE'])('checks origins for %s too', async (method) => {
+    await expectError(await fixture().request('/json', { method }), 403, 'ORIGIN_REJECTED');
+  });
+
+  test('health-like GET and HEAD requests need no Origin and CORS is off by default', async () => {
+    const app = fixture();
+    const response = await app.request('/status', { headers: { Origin: browserOrigin } });
+    expect(response.status).toBe(200);
+    expect(response.headers.has('Access-Control-Allow-Origin')).toBe(false);
+    expect(response.headers.has('Access-Control-Allow-Credentials')).toBe(false);
+    expect((await app.request('/status', { method: 'HEAD' })).status).toBe(200);
+  });
+
+  test('uses the explicit browser origin with credentials and exposes response metadata', async () => {
+    const response = await fixture([browserOrigin]).request('/json', {
+      method: 'POST', headers: { Origin: browserOrigin, 'Content-Type': 'application/json' }, body: '{}',
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(browserOrigin);
+    expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+    expect(response.headers.get('Access-Control-Expose-Headers')).toBe('ETag,Location,X-Request-Id');
+    expect(response.headers.get('Vary')).toContain('Origin');
+  });
+
+  test('allowed browsers can read safe error responses too', async () => {
+    const response = await fixture([browserOrigin]).request('/json', {
+      method: 'POST', headers: { Origin: browserOrigin, 'Content-Type': 'application/json' }, body: '{',
+    });
+    await expectError(response, 400, 'INVALID_INPUT');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(browserOrigin);
+  });
+
+  test('does not grant browser access to an unlisted origin', async () => {
+    const response = await fixture([browserOrigin]).request('/status', { headers: { Origin: 'http://other.example' } });
+    expect(response.status).toBe(200);
+    expect(response.headers.has('Access-Control-Allow-Origin')).toBe(false);
+  });
+
+  test('answers an allowed browser preflight using explicit methods and headers', async () => {
+    const response = await fixture([browserOrigin]).request('/json', { method: 'OPTIONS', headers: {
+      Origin: browserOrigin,
+      'Access-Control-Request-Method': 'POST',
+      'Access-Control-Request-Headers': 'Content-Type,X-CSRF-Token',
+    } });
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(browserOrigin);
+    expect(response.headers.get('Access-Control-Allow-Headers')).toBe('Content-Type,X-CSRF-Token,If-Match');
+    expect(response.headers.get('Access-Control-Allow-Methods')).not.toContain('*');
+  });
+
+  test('leaves preflight handling to Hono without granting unlisted origins access', async () => {
+    const disabled = await fixture().request('/json', { method: 'OPTIONS', headers: {
+      Origin: apiOrigin, 'Access-Control-Request-Method': 'POST',
+    } });
+    await expectError(disabled, 405, 'METHOD_NOT_ALLOWED');
+    expect(disabled.headers.has('Access-Control-Allow-Origin')).toBe(false);
+
+    const app = fixture([browserOrigin]);
+    for (const origin of [undefined, 'null', 'http://untrusted.example']) {
+      const headers: Record<string, string> = { 'Access-Control-Request-Method': 'POST' };
+      if (origin !== undefined) headers.Origin = origin;
+      const response = await app.request('/json', { method: 'OPTIONS', headers });
+      expect(response.status).toBe(204);
+      expect(response.headers.has('Access-Control-Allow-Origin')).toBe(false);
+    }
   });
 });

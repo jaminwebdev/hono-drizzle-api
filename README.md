@@ -54,10 +54,12 @@ See [the setup guide](docs/setup.md) for the separate PostgreSQL commands and en
 | --- | --- |
 | `APP_ENV` | `local`, `test`, or `production`. |
 | `API_PORT` | A decimal port number from `1` to `65535`, without leading zeros. The schema converts the string into a number. |
+| `API_ORIGIN` | The API's exact public origin, such as `http://127.0.0.1:3000`. Production requires HTTPS. |
+| `CORS_ORIGINS` | An optional comma-separated list of allowed browser origins. Empty disables CORS. |
 | `POSTGRES_PORT` | Uses the same port validation. The local host port is `5433`. |
 | `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_DB`, `POSTGRES_PASSWORD` | Required nonblank strings. The connection receives them directly, preserving password characters. |
 
-Invalid settings stop startup before the server listens. Error messages name the affected fields without printing submitted values. Configuration does not read files or guess a database target. Browser-origin validation will arrive with request middleware.
+Invalid settings stop startup before the server listens. Error messages name the affected fields without printing submitted values. Configuration does not read files or guess a database target. In Requestly, write requests need an `Origin` matching `API_ORIGIN`; see [the API guide](docs/api.md#origins-and-browser-access).
 
 [src/db/client.ts](src/db/client.ts) creates the Drizzle database object using Bun's SQL driver. A connection pool reuses open database connections and permits at most five at once. New connection attempts have a five-second timeout, and PostgreSQL cancels queries that run longer than five seconds. Idle connections close after 30 seconds. These limits are explicit options in the client file.
 
@@ -70,7 +72,7 @@ flowchart LR
     Bun["Bun loads the explicitly selected environment file"] --> Config["src/config.ts: validate supplied settings"]
     Config --> Database["src/db/client.ts: create the connection pool"]
     Database --> Connect["src/server.ts: connect to PostgreSQL"]
-    Connect --> App["createApp(database): share the database with Hono"]
+    Connect --> App["createApp(database, settings): share the database and HTTP settings"]
     App --> Server
     Client[Requestly or curl] --> Server["src/server.ts: Bun receives the request"]
     Server --> HTTP["src/http.ts: request ID, headers, and URL limit"]
@@ -79,7 +81,7 @@ flowchart LR
     Routes --> Ready["Readiness: query PostgreSQL and return 200 or 503"]
 ```
 
-[src/server.ts](src/server.ts) validates settings, connects to PostgreSQL, and passes that database object to `createApp(database)` in [src/app.ts](src/app.ts). Route handlers share its pool. Local and test modes listen on loopback; production mode listens on all interfaces so a container can receive requests. Importing either `app.ts` or `db/client.ts` alone starts no server and opens no connection.
+[src/server.ts](src/server.ts) validates settings, connects to PostgreSQL, and passes the database and HTTP settings to `createApp(database, settings)` in [src/app.ts](src/app.ts). Route handlers share its pool. Local and test modes listen on loopback; production mode listens on all interfaces so a container can receive requests. Importing either `app.ts` or `db/client.ts` alone starts no server and opens no connection.
 
 On `Ctrl+C` or a termination signal, the server stops accepting connections, lets active requests finish, and closes the pool. Shutdown has a five-second limit before forcing exit. Fatal process errors use the same cleanup path with a nonzero exit status. See [the setup guide](docs/setup.md) for the flow.
 

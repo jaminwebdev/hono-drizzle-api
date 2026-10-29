@@ -21,7 +21,7 @@ try {
 }
 
 const pool = database.$client;
-const app = createApp(database);
+const app = createApp(database, config);
 const server = Bun.serve({
   hostname: config.APP_ENV === 'production' ? '0.0.0.0' : '127.0.0.1',
   port: config.API_PORT,

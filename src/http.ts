@@ -1,10 +1,13 @@
 import type { Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { cors } from 'hono/cors';
 import { methodNotAllowed } from 'hono/method-not-allowed';
 import { secureHeaders } from 'hono/secure-headers';
 import type { ClientErrorStatusCode, ServerErrorStatusCode } from 'hono/utils/http-status';
+import type { Config } from './config';
 
 export type HttpEnv = { Variables: { requestId: string } };
+export type HttpSettings = Pick<Config, 'API_ORIGIN' | 'CORS_ORIGINS'>;
 type ErrorStatus = ClientErrorStatusCode | ServerErrorStatusCode;
 
 export class ApiError extends Error {
@@ -19,7 +22,8 @@ export function errorResponse(c: Context<HttpEnv>, status: ErrorStatus, code: st
   }, status);
 }
 
-export function installHttp(app: Hono<HttpEnv>) {
+export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
+  const allowedOrigins = [settings.API_ORIGIN, ...settings.CORS_ORIGINS];
   app.use(secureHeaders({ strictTransportSecurity: false }));
   app.use(async (c, next) => {
     const requestId = crypto.randomUUID();
@@ -31,6 +35,23 @@ export function installHttp(app: Hono<HttpEnv>) {
     }
     await next();
   });
+  app.use(async (c, next) => {
+    const origin = c.req.header('Origin');
+    const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes(c.req.method);
+    if (unsafe && (!origin || !allowedOrigins.includes(origin))) {
+      return errorResponse(c, 403, 'ORIGIN_REJECTED', 'The request origin is not allowed.');
+    }
+    await next();
+  });
+  if (settings.CORS_ORIGINS.length > 0) {
+    app.use(cors({
+      origin: settings.CORS_ORIGINS,
+      credentials: true,
+      allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+      allowHeaders: ['Content-Type', 'X-CSRF-Token', 'If-Match'],
+      exposeHeaders: ['ETag', 'Location', 'X-Request-Id'],
+    }));
+  }
   app.use(bodyLimit({
     maxSize: 64 * 1024,
     onError: () => {

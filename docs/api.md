@@ -35,6 +35,7 @@ The request ID matches the response header. The timestamp uses UTC. Unexpected f
 | Status | Code | Meaning |
 | --- | --- | --- |
 | `400` | `INVALID_INPUT` | The JSON body is empty or malformed. |
+| `403` | `ORIGIN_REJECTED` | A write has a missing or unapproved Origin. |
 | `404` | `NOT_FOUND` | No resource matches the URL. |
 | `405` | `METHOD_NOT_ALLOWED` | The URL exists but does not support that method. `Allow` lists supported methods. |
 | `413` | `PAYLOAD_TOO_LARGE` | A request body exceeds 65,536 bytes, or 64 KiB. |
@@ -43,7 +44,26 @@ The request ID matches the response header. The timestamp uses UTC. Unexpected f
 | `500` | `INTERNAL_ERROR` | An unexpected application failure occurred. |
 | `503` | `DATABASE_UNAVAILABLE` | The readiness query failed. |
 
-In Requestly, send `GET /missing` to see a `404`, or `POST /health/live` to see a `405`. Neither request needs a body. Inspect `X-Request-Id` and, for the method error, `Allow` in the response headers.
+In Requestly, send `GET /missing` to see a `404`. To see a `405`, send `POST /health/live` with `Origin: http://127.0.0.1:3000`; that method is unsupported even with an allowed origin. Neither request needs a body. Inspect `X-Request-Id` and, for the method error, `Allow` in the response headers.
+
+## Origins and browser access
+
+An origin is a scheme, hostname, and port, such as `http://127.0.0.1:3000`. Paths and trailing slashes are not part of an origin. Add these settings to the selected environment file:
+
+```dotenv
+API_ORIGIN=http://127.0.0.1:3000
+CORS_ORIGINS=
+```
+
+`API_ORIGIN` is required. Use the API's public origin; production requires HTTPS even when a deployment proxy talks to the API internally over HTTP. Local and test development need no certificates. Their usual origins are `http://127.0.0.1:3000` and `http://127.0.0.1:3002`.
+
+Every POST, PUT, PATCH, or DELETE request must include an `Origin` exactly matching `API_ORIGIN` or an explicitly allowed browser origin. Missing values, `null`, and unlisted values return `403 ORIGIN_REJECTED`. GET and HEAD need no Origin.
+
+For Requestly, leave `CORS_ORIGINS` empty and add the `Origin` header to write requests. CORS means cross-origin resource sharing; browsers use it to decide whether a page may read another origin's responses. Requestly desktop does not need browser CORS permission. Origin checks do not authenticate a caller; session authentication and CSRF checks arrive with their own endpoints.
+
+To allow a separate browser frontend, set an explicit list, for example `CORS_ORIGINS=http://127.0.0.1:5173`. Keep the same hostname when using local session cookies. Hono's CORS middleware allows credentials only for listed origins and exposes `ETag`, `Location`, and `X-Request-Id`. It allows GET, HEAD, POST, PUT, PATCH, and DELETE with `Content-Type`, `X-CSRF-Token`, and `If-Match` request headers. Wildcard origins are rejected.
+
+A browser preflight is an OPTIONS request with `Access-Control-Request-Method`. When CORS is enabled, Hono returns `204` and includes `Access-Control-Allow-Origin` only for an allowed origin. Without that header, the browser denies access. When CORS is disabled, OPTIONS follows ordinary route and method handling. A successful preflight does not guarantee that the requested endpoint or method exists.
 
 ## Shared request handling
 
@@ -51,9 +71,11 @@ In Requestly, send `GET /missing` to see a `404`, or `POST /health/live` to see 
 flowchart LR
     Client[Requestly] --> Shared[Set request ID and response headers]
     Shared --> Limit[Check the URL length]
-    Limit --> Route[Run the health handler]
+    Limit --> Origin[Check write origins and optional browser access]
+    Origin --> Route[Run the health handler]
     Route --> Success[Return health JSON]
     Limit --> Error[Return the common JSON error]
+    Origin --> Error
     Route --> Error
 ```
 
