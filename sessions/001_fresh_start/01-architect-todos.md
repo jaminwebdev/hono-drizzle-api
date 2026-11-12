@@ -60,7 +60,7 @@ The user approved the listed sections of the two large project guides for this p
 
 ## S1. Runtime and code boundaries
 
-Use one Hono application and one PostgreSQL database per environment. Use Drizzle's Bun SQL adapter with Bun's connection pool if a stable package release supports Bun 1.3.14. Check that compatibility during initial setup. If a different driver or prerelease is necessary, present the concrete compatibility issue before changing this choice.
+Use one Hono application and one PostgreSQL database per environment. Use Drizzle's Bun SQL PostgreSQL adapter with Bun's connection pool on Bun 1.3.14. Drizzle ORM and Drizzle Kit are pinned to the user-approved `1.0.0-rc.5` for the built-in Valibot integration. Verify runtime and tooling compatibility when updating them.
 
 Keep configuration separate from startup. `src/config.ts` receives values and validates them with Valibot. `src/app.ts` assembles Hono routes using an explicitly supplied database connection. `src/server.ts` loads the validated settings, opens the connection, starts Bun, and handles shutdown. Importing a feature or constructing the application must not start a server, connect to PostgreSQL, or read environment files.
 
@@ -286,7 +286,7 @@ Origin: http://127.0.0.1:3000
 
 Reject unknown body and query fields, empty patches, client-supplied protected fields, invalid IDs, duplicate singleton query parameters, and malformed query values. Use Valibot `strictObject` schemas. Parse only explicit `true` and `false` for booleans. Never rely on JavaScript truthiness for the string `"false"`. `null` clears the optional category or description; omitting a property leaves it unchanged. An empty `tagIds` array removes all current tag links.
 
-As each feature is implemented, derive matching stored-field validators from its Drizzle table, explicitly pick allowed fields, and build strict endpoint schemas with the remaining API rules. Keep derivation in the feature file and use route-level `sValidator` with `ApiError` hooks. Resolve the adapter dependency in the first feature that needs it; pinned Drizzle 0.45.4 has no `drizzle-orm/valibot` export. Follow the [schema derivation decision](../../docs/api.md#derive-validation-from-drizzle). Preserve the schema-then-endpoint sequence for each feature instead of generating all validators at once.
+As each feature is implemented, derive matching stored-field validators from its Drizzle table through `drizzle-orm/valibot`, explicitly pick allowed fields, and build strict endpoint schemas with the remaining API rules. Keep derivation in the feature file and use route-level `sValidator` with `ApiError` hooks. Follow the [schema derivation decision](../../docs/api.md#derive-validation-from-drizzle). Preserve the schema-then-endpoint sequence for each feature instead of generating all validators at once.
 
 | Resource            | Supported query fields                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------------------------ |
@@ -727,6 +727,8 @@ Login checks a nonempty password up to 128 Unicode code points without reapplyin
 Suggested commit: `feat: log in with secure cookie sessions`
 
 Route-validation follow-up: Registration and login now declare `sValidator` middleware with their Valibot schemas. Validation hooks throw `ApiError`; handlers read `c.req.valid('json')`. IP throttling runs first. The `requireJson` guard preserves the content-type rule, Hono parses JSON, and the central error handler maps Hono's `400` parsing errors to the common format. The separate `readJson` helper was removed. Added `@hono/standard-validator` 0.4.1 with the matching lockfile. Type checking, lint, all 70 unit tests, the build, and four targeted auth validation tests passed. The full integration suite could not connect to the isolated PostgreSQL database; Docker was unavailable in this WSL session. No API or database process was started. Phase 10 remains unapproved.
+
+Drizzle RC follow-up: The user approved upgrading ORM and Kit to `1.0.0-rc.5`. The database client now imports `drizzle-orm/bun-sql/postgres`, and the existing guarded config explicitly limits pushes to `public`. The lockfile passes a frozen offline install. Type checking, lint, all 70 unit tests, all 44 auth integration tests, and the build passed on Bun 1.3.14. Offline schema export and built-in Valibot generators worked with the existing tables. The test push and local read-only push preview reported no changes; mismatched task settings were refused. No table definitions or migration files changed, and no API was started. The test container was stopped with its volume preserved; the local database stayed running. Phase 10 remains unapproved. Suggested commit: `chore: upgrade Drizzle ORM and Kit to v1 RC`.
 
 PAUSE — user must approve before continuing to next batch.
 

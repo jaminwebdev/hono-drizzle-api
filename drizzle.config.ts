@@ -17,6 +17,7 @@ if (!target || config.APP_ENV !== mode || config.POSTGRES_HOST !== '127.0.0.1'
 export default defineConfig({
   dialect: 'postgresql',
   schema: './src/db/schema.ts',
+  schemaFilter: ['public'],
   dbCredentials: {
     host: config.POSTGRES_HOST,
     port: config.POSTGRES_PORT,

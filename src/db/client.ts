@@ -1,5 +1,5 @@
 import { SQL } from 'bun';
-import { drizzle } from 'drizzle-orm/bun-sql';
+import { drizzle } from 'drizzle-orm/bun-sql/postgres';
 import type { readConfig } from '../config';
 
 export function createDatabase(config: ReturnType<typeof readConfig>) {

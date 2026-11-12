@@ -133,9 +133,9 @@ One user can have several sessions, such as separate logins on two devices. Each
 
 Start the selected database before pushing. After editing the schema, run the matching push command again. Drizzle applies differences directly without generating migration files. Review any data-loss prompt before accepting it; these commands do not force destructive changes. See the [Drizzle push guide](https://orm.drizzle.team/docs/drizzle-kit-push).
 
-`drizzle.config.ts` uses the existing configuration validator and checks `DATABASE_TASK_MODE`, which each command sets explicitly. Local tasks require `APP_ENV=local`, `127.0.0.1:5433`, and `finance_tracker_local`. Test tasks require `APP_ENV=test`, `127.0.0.1:5435`, and `finance_tracker_test`. A mismatch stops the tool before connecting. Production tasks are not enabled yet. Credentials are passed as separate options, so passwords do not need URL encoding.
+`drizzle.config.ts` uses the existing configuration validator and checks `DATABASE_TASK_MODE`, which each command sets explicitly. Local tasks require `APP_ENV=local`, `127.0.0.1:5433`, and `finance_tracker_local`. Test tasks require `APP_ENV=test`, `127.0.0.1:5435`, and `finance_tracker_test`. A mismatch stops the tool before connecting. `schemaFilter: ['public']` limits pushes to the PostgreSQL schema containing our tables. Production tasks are not enabled yet. Credentials are passed as separate options, so passwords do not need URL encoding.
 
-Drizzle Kit 0.31.11 uses the development dependency `pg` for these tools. The API continues to use Drizzle with Bun SQL; it does not use a second connection pool or load Drizzle Kit.
+Drizzle ORM and Drizzle Kit are both pinned to `1.0.0-rc.5`, a release candidate chosen for the built-in Valibot integration. Keep their versions compatible when upgrading. The development dependency `pg` is available to the database tools. The API uses `drizzle-orm/bun-sql/postgres` with its existing Bun SQL pool; it does not load Drizzle Kit. The PostgreSQL-specific import avoids bundling the MySQL and SQLite adapters.
 
 ### Integration test setup
 
