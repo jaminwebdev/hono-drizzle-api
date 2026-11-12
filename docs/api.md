@@ -200,3 +200,15 @@ Registration and login declare `sValidator('json', schema, hook)` in their route
 The order is IP throttling, the `requireJson` content-type guard, schema validation, then the handler. `createIpAttemptLimit` in `auth.ts` builds each route's IP middleware. It gets the connection address from Bun, checks that it exists, and applies the counter before continuing. Both routes use that middleware directly.
 
 `requireJson` requires `application/json` and allows a charset parameter. Hono parses the body. Malformed JSON raises Hono's `HTTPException` with status `400` before the schema hook runs, so `app.onError` maps that error to the common `400 INVALID_INPUT` response. There is no separate JSON-reading helper.
+
+### Derive validation from Drizzle
+
+For future endpoints, derive Valibot field schemas from Drizzle table definitions where the API uses stored fields. This reuses column rules such as types, maximum lengths, and nullability. Keep these schemas in the feature file beside its routes and queries, and introduce them one feature at a time.
+
+Use `createInsertSchema` for creation inputs, `createUpdateSchema` for updates, and `createSelectSchema` when a response schema is needed. Explicitly pick allowed fields, then build a `v.strictObject` from those entries to reject unknown input. A list of allowed fields prevents a new table column from becoming writable or public by accident. Keep server-generated IDs, ownership fields, hashes, and server-managed timestamps out of public write schemas. References such as `accountId` remain valid inputs where the endpoint allows them. Select response fields explicitly too.
+
+Add normalization and API rules through refinements or explicit fields. Generated schemas validate values at runtime, but do not reproduce every database rule. Email format, password policy, ownership, cross-field checks, uniqueness, and foreign-key existence still need validation or database enforcement. Database defaults can make generated insert fields optional; require them explicitly when the endpoint needs them. For patches, optional fields must not make an empty object valid. Preserve the difference between an omitted field and an allowed `null`.
+
+Auth's password validation stays explicit because the request contains `password` while storage contains `passwordHash`. Money and timestamp fields also need deliberate JSON formats; a database schema alone does not define their serialized form. Feed the final endpoint schema into the existing `sValidator` pattern with its `ApiError` hook.
+
+Compatibility: the pinned Drizzle `0.45.4` package has no `drizzle-orm/valibot` export. That path is part of [Drizzle's v1 consolidation](https://orm.drizzle.team/docs/v0-v1-changes). The current version needs a compatible standalone `drizzle-valibot` adapter unless Drizzle is upgraded separately. Choose and verify that dependency when derivation is first implemented. No adapter is installed yet. See [Drizzle's schema generators](https://orm.drizzle.team/docs/valibot) and [Valibot's strict objects](https://valibot.dev/api/strictObject/).

@@ -286,6 +286,8 @@ Origin: http://127.0.0.1:3000
 
 Reject unknown body and query fields, empty patches, client-supplied protected fields, invalid IDs, duplicate singleton query parameters, and malformed query values. Use Valibot `strictObject` schemas. Parse only explicit `true` and `false` for booleans. Never rely on JavaScript truthiness for the string `"false"`. `null` clears the optional category or description; omitting a property leaves it unchanged. An empty `tagIds` array removes all current tag links.
 
+As each feature is implemented, derive matching stored-field validators from its Drizzle table, explicitly pick allowed fields, and build strict endpoint schemas with the remaining API rules. Keep derivation in the feature file and use route-level `sValidator` with `ApiError` hooks. Resolve the adapter dependency in the first feature that needs it; pinned Drizzle 0.45.4 has no `drizzle-orm/valibot` export. Follow the [schema derivation decision](../../docs/api.md#derive-validation-from-drizzle). Preserve the schema-then-endpoint sequence for each feature instead of generating all validators at once.
+
 | Resource            | Supported query fields                                                                                       |
 | ------------------- | ------------------------------------------------------------------------------------------------------------ |
 | Accounts            | `q`, repeated `tagId`, `archived`, `page`, `limit`.                                                          |
