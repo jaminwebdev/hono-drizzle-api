@@ -1,13 +1,15 @@
 import { SQL } from 'bun';
+import { sValidator } from '@hono/standard-validator';
 import { DrizzleQueryError, eq } from 'drizzle-orm';
 import { Hono, type Context } from 'hono';
 import { getConnInfo } from 'hono/bun';
 import { setCookie } from 'hono/cookie';
+import { createMiddleware } from 'hono/factory';
 import * as v from 'valibot';
 import type { Config } from '../config';
 import type { Database } from '../db/client';
 import { sessions, users } from '../db/schema';
-import { ApiError, readJson, type HttpEnv } from '../http';
+import { ApiError, requireJson, type HttpEnv } from '../http';
 
 const commonPasswords = new Set([
   'passwordpassword', 'password123456789', '123456789012345',
@@ -52,94 +54,107 @@ function createAttemptLimit(maxAttempts: number, windowMs: number) {
   };
 }
 
+function createIpAttemptLimit(maxAttempts: number, windowMs: number) {
+  const limit = createAttemptLimit(maxAttempts, windowMs);
+  return createMiddleware<HttpEnv>(async (c, next) => {
+    const peer = getConnInfo(c).remote.address;
+    if (!peer) throw new ApiError(503, 'SERVICE_UNAVAILABLE', 'Connection information is unavailable.');
+    limit(c, peer);
+    await next();
+  });
+}
+
 export function createAuthRoutes(database: Database, mode: Config['APP_ENV']) {
   const auth = new Hono<HttpEnv>();
-  const limitRegistrationIp = createAttemptLimit(5, 3_600_000);
-  const limitLoginIp = createAttemptLimit(30, 900_000);
+  const limitRegistrationIp = createIpAttemptLimit(5, 3_600_000);
+  const limitLoginIp = createIpAttemptLimit(30, 900_000);
   const limitLoginEmail = createAttemptLimit(10, 900_000);
   let activePasswordWork = 0;
 
-  auth.post('/register', async (c) => {
-    const peer = getConnInfo(c).remote.address;
-    if (!peer) throw new ApiError(503, 'SERVICE_UNAVAILABLE', 'Connection information is unavailable.');
-
-    limitRegistrationIp(c, peer);
-
-    const result = v.safeParse(registrationSchema, await readJson(c));
-    if (!result.success) {
-      throw new ApiError(400, 'INVALID_INPUT', 'Provide only a valid email and a password of 15–128 characters that is not commonly used.');
-    }
-    if (activePasswordWork >= 2) {
-      c.header('Retry-After', '1');
-      throw new ApiError(429, 'RATE_LIMITED', 'Password processing is temporarily full.');
-    }
-
-    activePasswordWork++;
-    try {
-      const passwordHash = await Bun.password.hash(result.output.password, {
-        algorithm: 'argon2id', memoryCost: 19456, timeCost: 2,
-      });
-      const [user] = await database.insert(users)
-        .values({ email: result.output.email, passwordHash })
-        .returning({ id: users.id, email: users.email });
-      if (!user) throw new Error('Registration returned no user.');
-      return c.json({ data: user }, 201);
-    } catch (error) {
-      const cause = error instanceof DrizzleQueryError ? error.cause : error;
-      if (cause instanceof SQL.PostgresError && cause.errno === '23505'
-        && cause.constraint === 'users_email_unique') {
-        throw new ApiError(409, 'ACCOUNT_NOT_AVAILABLE', 'That account is unavailable.');
+  auth.post(
+    '/register',
+    limitRegistrationIp,
+    requireJson,
+    sValidator('json', registrationSchema, (result) => {
+      if (!result.success) {
+        throw new ApiError(400, 'INVALID_INPUT', 'Provide only a valid email and a password of 15–128 characters that is not commonly used.');
       }
-      throw error;
-    } finally {
-      activePasswordWork--;
-    }
-  });
+    }),
+    async (c) => {
+      const { email, password } = c.req.valid('json');
+      if (activePasswordWork >= 2) {
+        c.header('Retry-After', '1');
+        throw new ApiError(429, 'RATE_LIMITED', 'Password processing is temporarily full.');
+      }
 
-  auth.post('/login', async (c) => {
-    const peer = getConnInfo(c).remote.address;
-    if (!peer) throw new ApiError(503, 'SERVICE_UNAVAILABLE', 'Connection information is unavailable.');
-
-    limitLoginIp(c, peer);
-
-    const result = v.safeParse(loginSchema, await readJson(c));
-    if (!result.success) throw new ApiError(400, 'INVALID_INPUT', 'Provide only a valid email and a nonempty password of at most 128 characters.');
-    const { email, password } = result.output;
-    limitLoginEmail(c, email);
-    if (activePasswordWork >= 2) {
-      c.header('Retry-After', '1');
-      throw new ApiError(429, 'RATE_LIMITED', 'Password processing is temporarily full.');
-    }
-
-    activePasswordWork++;
-    try {
-      const [user] = await database.select({ id: users.id, email: users.email, passwordHash: users.passwordHash })
-        .from(users).where(eq(users.email, email)).limit(1);
-      const valid = await Bun.password.verify(password, user?.passwordHash ?? dummyPasswordHash);
-      if (!user || !valid) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid email or password.');
-
-      const credential = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
-      const tokenHash = new Bun.CryptoHasher('sha256').update(credential).digest('hex');
-      const identity = await database.transaction(async (tx) => {
-        const [current] = await tx.select({ id: users.id, email: users.email, passwordHash: users.passwordHash })
-          .from(users).where(eq(users.id, user.id)).for('update');
-        if (!current || current.passwordHash !== user.passwordHash) {
-          throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid email or password.');
-        }
-        await tx.insert(sessions).values({
-          userId: current.id, tokenHash, expiresAt: new Date(Date.now() + sessionMaxAge * 1000),
+      activePasswordWork++;
+      try {
+        const passwordHash = await Bun.password.hash(password, {
+          algorithm: 'argon2id', memoryCost: 19456, timeCost: 2,
         });
-        return { id: current.id, email: current.email };
-      });
+        const [user] = await database.insert(users)
+          .values({ email, passwordHash })
+          .returning({ id: users.id, email: users.email });
+        if (!user) throw new Error('Registration returned no user.');
+        return c.json({ data: user }, 201);
+      } catch (error) {
+        const cause = error instanceof DrizzleQueryError ? error.cause : error;
+        if (cause instanceof SQL.PostgresError && cause.errno === '23505'
+          && cause.constraint === 'users_email_unique') {
+          throw new ApiError(409, 'ACCOUNT_NOT_AVAILABLE', 'That account is unavailable.');
+        }
+        throw error;
+      } finally {
+        activePasswordWork--;
+      }
+    },
+  );
 
-      setCookie(c, 'session', credential, {
-        httpOnly: true, sameSite: 'Lax', path: '/', maxAge: sessionMaxAge, secure: mode === 'production',
-      });
-      return c.json({ data: identity });
-    } finally {
-      activePasswordWork--;
-    }
-  });
+  auth.post(
+    '/login',
+    limitLoginIp,
+    requireJson,
+    sValidator('json', loginSchema, (result) => {
+      if (!result.success) throw new ApiError(400, 'INVALID_INPUT', 'Provide only a valid email and a nonempty password of at most 128 characters.');
+    }),
+    async (c) => {
+      const { email, password } = c.req.valid('json');
+      limitLoginEmail(c, email);
+      if (activePasswordWork >= 2) {
+        c.header('Retry-After', '1');
+        throw new ApiError(429, 'RATE_LIMITED', 'Password processing is temporarily full.');
+      }
+
+      activePasswordWork++;
+      try {
+        const [user] = await database.select({ id: users.id, email: users.email, passwordHash: users.passwordHash })
+          .from(users).where(eq(users.email, email)).limit(1);
+        const valid = await Bun.password.verify(password, user?.passwordHash ?? dummyPasswordHash);
+        if (!user || !valid) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid email or password.');
+
+        const credential = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
+        const tokenHash = new Bun.CryptoHasher('sha256').update(credential).digest('hex');
+        const identity = await database.transaction(async (tx) => {
+          const [current] = await tx.select({ id: users.id, email: users.email, passwordHash: users.passwordHash })
+            .from(users).where(eq(users.id, user.id)).for('update');
+          if (!current || current.passwordHash !== user.passwordHash) {
+            throw new ApiError(401, 'INVALID_CREDENTIALS', 'Invalid email or password.');
+          }
+          await tx.insert(sessions).values({
+            userId: current.id, tokenHash, expiresAt: new Date(Date.now() + sessionMaxAge * 1000),
+          });
+          return { id: current.id, email: current.email };
+        });
+
+        setCookie(c, 'session', credential, {
+          httpOnly: true, sameSite: 'Lax', path: '/', maxAge: sessionMaxAge, secure: mode === 'production',
+        });
+        return c.json({ data: identity });
+      } finally {
+        activePasswordWork--;
+      }
+    },
+  );
 
   return auth;
 }

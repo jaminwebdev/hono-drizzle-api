@@ -724,6 +724,8 @@ Login checks a nonempty password up to 128 Unicode code points without reapplyin
 
 Suggested commit: `feat: log in with secure cookie sessions`
 
+Route-validation follow-up: Registration and login now declare `sValidator` middleware with their Valibot schemas. Validation hooks throw `ApiError`; handlers read `c.req.valid('json')`. IP throttling runs first. The `requireJson` guard preserves the content-type rule, Hono parses JSON, and the central error handler maps Hono's `400` parsing errors to the common format. The separate `readJson` helper was removed. Added `@hono/standard-validator` 0.4.1 with the matching lockfile. Type checking, lint, all 70 unit tests, the build, and four targeted auth validation tests passed. The full integration suite could not connect to the isolated PostgreSQL database; Docker was unavailable in this WSL session. No API or database process was started. Phase 10 remains unapproved.
+
 PAUSE — user must approve before continuing to next batch.
 
 ### Phase 10. Validate sessions through the current-user endpoint

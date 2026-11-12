@@ -113,7 +113,7 @@ The request ID matches the response header. The timestamp uses UTC. Unexpected f
 | `409` | `ACCOUNT_NOT_AVAILABLE` | The normalized registration email is already in use. |
 | `413` | `PAYLOAD_TOO_LARGE` | The request body exceeds the size limit. |
 | `414` | `URI_TOO_LONG` | The full request URL exceeds the size limit. |
-| `415` | `UNSUPPORTED_MEDIA_TYPE` | A JSON reader received a content type other than `application/json`. |
+| `415` | `UNSUPPORTED_MEDIA_TYPE` | A JSON route received a content type other than `application/json`. |
 | `429` | `RATE_LIMITED` | An authentication attempt or password-processing limit was reached. `Retry-After` gives seconds before retrying. |
 | `500` | `INTERNAL_ERROR` | An unexpected application failure occurred. |
 | `503` | `DATABASE_UNAVAILABLE` | The readiness query failed. |
@@ -179,7 +179,7 @@ The following order matches `installHttp`:
 
 Origin checking and CORS have separate jobs. The origin check rejects unapproved writes on the server; CORS tells browsers whether they may read a response. Neither authenticates a caller.
 
-### Error handlers and JSON helper
+### Error handlers and route validation
 
 Routes, middleware, and helpers throw `ApiError` for expected request failures. They return successful responses normally. If an error needs a header such as `Retry-After`, set it with `c.header()` before throwing. Catch database errors only to translate a known failure into a safe `ApiError`; rethrow unknown failures.
 
@@ -195,4 +195,8 @@ flowchart LR
 
 Hono's method check examines its normal routing result before the missing-URL check runs. An unsupported method becomes `405`; an unmatched URL becomes `404`. Both throw `ApiError` and use the same central handler.
 
-`readJson` is a helper called explicitly by a JSON route. It checks `Content-Type: application/json`, allowing a charset parameter, then calls `c.req.json()` with a safe parsing error. Registration and login use it before validating fields with Valibot.
+Registration and login declare `sValidator('json', schema, hook)` in their route definitions, using `@hono/standard-validator` with the existing Valibot schemas. The hook throws `ApiError` when fields are invalid. Handlers read the validated output with `c.req.valid('json')`, including the normalized email. See [Hono's Valibot example](https://hono.dev/docs/guides/validation#with-valibot).
+
+The order is IP throttling, the `requireJson` content-type guard, schema validation, then the handler. `createIpAttemptLimit` in `auth.ts` builds each route's IP middleware. It gets the connection address from Bun, checks that it exists, and applies the counter before continuing. Both routes use that middleware directly.
+
+`requireJson` requires `application/json` and allows a charset parameter. Hono parses the body. Malformed JSON raises Hono's `HTTPException` with status `400` before the schema hook runs, so `app.onError` maps that error to the common `400 INVALID_INPUT` response. There is no separate JSON-reading helper.

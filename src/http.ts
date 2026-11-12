@@ -1,6 +1,8 @@
 import type { Context, Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
+import { createMiddleware } from 'hono/factory';
+import { HTTPException } from 'hono/http-exception';
 import { methodNotAllowed } from 'hono/method-not-allowed';
 import { routePath } from 'hono/route';
 import { secureHeaders } from 'hono/secure-headers';
@@ -88,6 +90,10 @@ export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
     },
   }));
   app.onError((error, c) => {
+    // Hono's JSON validator throws HTTPException before running the schema hook.
+    if (error instanceof HTTPException && error.status === 400) {
+      error = new ApiError(400, 'INVALID_INPUT', 'The request contains invalid input.');
+    }
     const apiError = error instanceof ApiError
       ? error
       : new ApiError(500, 'INTERNAL_ERROR', 'An unexpected error occurred.');
@@ -95,15 +101,11 @@ export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
   });
 }
 
-export async function readJson(c: Context<HttpEnv>): Promise<unknown> {
+export const requireJson = createMiddleware<HttpEnv>(async (c, next) => {
   const mediaType = c.req.header('Content-Type')?.split(';')[0]?.trim().toLowerCase();
   if (mediaType !== 'application/json') {
     throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Use Content-Type: application/json.');
   }
 
-  try {
-    return await c.req.json<unknown>();
-  } catch {
-    throw new ApiError(400, 'INVALID_INPUT', 'The body must contain valid JSON.');
-  }
-}
+  await next();
+});

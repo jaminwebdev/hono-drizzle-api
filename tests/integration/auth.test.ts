@@ -58,6 +58,53 @@ afterEach(async () => {
 });
 afterAll(async () => { await database.$client.close(); });
 
+describe('route-level JSON validation', () => {
+  test.each(['register', 'login'])('%s returns safe errors before password or database work', async (route) => {
+    const app = fixture();
+    const hash = spyOn(Bun.password, 'hash');
+    const verify = spyOn(Bun.password, 'verify');
+    const cases = [
+      { body: '', contentType: 'application/json', status: 400 },
+      { body: '{"password":"synthetic-private-password",', contentType: 'application/json', status: 400 },
+      { body: '{"email":"invalid","password":"synthetic-private-password"}', contentType: 'application/json', status: 400 },
+      { body: 'null', contentType: 'application/json', status: 400 },
+      { body: '{}', contentType: 'text/plain', status: 415 },
+      { body: '{}', contentType: '', status: 415 },
+    ];
+    try {
+      for (const [index, item] of cases.entries()) {
+        const headers: Record<string, string> = { Origin: origin };
+        if (item.contentType) headers['Content-Type'] = item.contentType;
+        const response = await app.request(`/api/v1/auth/${route}`, {
+          method: 'POST', headers, body: item.body,
+        }, { requestIP: () => ({ address: `192.0.2.${index + 1}`, family: 'IPv4', port: 12345 }) });
+        expect(response.status).toBe(item.status);
+        expect(await response.clone().json()).toMatchObject({ error: {
+          code: item.status === 400 ? 'INVALID_INPUT' : 'UNSUPPORTED_MEDIA_TYPE',
+          status: item.status, requestId: response.headers.get('X-Request-Id'),
+        } });
+        expect(await response.text()).not.toContain('synthetic-private-password');
+      }
+      expect(hash).not.toHaveBeenCalled();
+      expect(verify).not.toHaveBeenCalled();
+      expect(JSON.stringify(log.mock.calls)).not.toContain('synthetic-private-password');
+    } finally { hash.mockRestore(); verify.mockRestore(); }
+  });
+
+  test.each([{ route: 'register', limit: 5 }, { route: 'login', limit: 30 }])(
+    '$route counts malformed JSON toward the IP limit before validation', async ({ route, limit }) => {
+      const app = fixture();
+      const request = () => app.request(`/api/v1/auth/${route}`, {
+        method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: '{',
+      }, { requestIP: () => ({ address: '192.0.2.1', family: 'IPv4', port: 12345 }) });
+      for (let index = 0; index < limit; index++) expect((await request()).status).toBe(400);
+      const response = await request();
+      expect(response.status).toBe(429);
+      expect(Number(response.headers.get('Retry-After'))).toBeGreaterThan(0);
+    },
+  );
+});
+
 describe('registration input', () => {
   test('normalizes only email and preserves the complete password', () => {
     const result = v.parse(registrationSchema, { email: '  LEARNER+LABEL@Example.Test  ', password });

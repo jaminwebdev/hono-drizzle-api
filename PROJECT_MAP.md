@@ -13,12 +13,12 @@ The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, 
 | [drizzle.config.ts](drizzle.config.ts) | Guard local/test targets before schema pushes or Studio connect. |
 | [tests/integration/setup.ts](tests/integration/setup.ts) | Create test database objects only for the isolated test target. |
 | [src/app.ts](src/app.ts) | Build Hono routes with the explicitly supplied database and HTTP settings. |
-| [src/http.ts](src/http.ts) | Install shared middleware, common errors, and the small JSON parsing helper. |
+| [src/http.ts](src/http.ts) | Install shared middleware and common errors, and provide the JSON content-type guard. |
 | [src/features/auth.ts](src/features/auth.ts) | Validate credentials, bound auth attempts/password work, register users, and create hashed sessions with environment-appropriate cookies. |
 
 Importing or constructing the app opens no database connection and starts no server. Bootstrap owns the resources and passes them to the app.
 
-Routes, middleware, and helpers throw `ApiError` for expected request failures. Only `app.onError` calls the private error formatter; unexpected exceptions become generic `500` responses.
+Routes, middleware, and helpers throw `ApiError` for expected request failures. Auth routes use `sValidator` with Valibot schemas and read validated data with `c.req.valid('json')`. Only `app.onError` calls the private error formatter; it also maps Hono's parsing errors to safe `400` responses. Unexpected exceptions become generic `500` responses.
 
 Use [setup](docs/setup.md) for settings, commands, database identities, storage, and tool notes. Use [the API guide](docs/api.md) for endpoints, request limits, origin policy, middleware order, and errors. The [implementation plan](sessions/001_fresh_start/01-architect-todos.md) holds approval gates and session decisions.
 

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { Hono } from 'hono';
-import { ApiError, installHttp, readJson, type HttpEnv } from '../../src/http';
+import { sValidator } from '@hono/standard-validator';
+import * as v from 'valibot';
+import { ApiError, installHttp, requireJson, type HttpEnv } from '../../src/http';
 
 const apiOrigin = 'http://127.0.0.1:3000';
 const browserOrigin = 'http://localhost:5173';
@@ -13,12 +15,11 @@ function fixture(corsOrigins: string[] = []) {
   const app = new Hono<HttpEnv>();
   installHttp(app, { API_ORIGIN: apiOrigin, CORS_ORIGINS: corsOrigins });
   app.get('/status', (c) => c.json({ status: 'ok' }));
-  app.post('/json', async (c) => c.json({ data: await readJson(c) }));
+  app.post('/json', requireJson, sValidator('json', v.unknown()), (c) => c.json({ data: c.req.valid('json') }));
   app.get('/unexpected', () => { throw new Error('synthetic-secret-never-log'); });
   app.get('/expected', () => { throw new ApiError(400, 'INVALID_INPUT', 'A field is invalid.'); });
   app.get('/missing-record', () => { throw new ApiError(404, 'NOT_FOUND', 'The record was not found.'); });
-  app.post('/records/:id', async (c) => {
-    await readJson(c);
+  app.post('/records/:id', requireJson, sValidator('json', v.unknown()), (c) => {
     c.header('Set-Cookie', 'synthetic-session=never-log');
     return c.json({ status: 'ok' });
   });
