@@ -89,16 +89,13 @@ tests/
   integration/
 docs/
   setup.md
-  auth.md
   api.md
-  data-model.md
-  testing.md
   operations.md
 drizzle.config.ts
 bunfig.toml
 ```
 
-`src/http.ts` holds shared JSON parsing and error behavior. Add a separate shared file only when a concrete shared need appears. Small named validation schemas or value-conversion functions may stay beside the routes they serve. Do not add a generic route factory, base repository, dependency-injection container, or feature-specific helper chain. Keep database transactions visible inside the responsible handler.
+`src/http.ts` holds shared request checks, the JSON content-type guard, and error handling. Hono parses JSON; route-level validators apply the feature schemas. Add a separate shared file only when a concrete shared need appears. Small named validation schemas or value-conversion functions may stay beside the routes they serve. Do not add a generic route factory, base repository, dependency-injection container, or feature-specific helper chain. Keep database transactions visible inside the responsible handler.
 
 ```mermaid
 flowchart LR
@@ -488,13 +485,13 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete. Phase 4 was removed at the user's request. Phase 9 is awaiting review; phase 10 requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete, including the phase 9 cleanup follow-ups. Phase 4 was removed at the user's request. Phase 10 is next and requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
-Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests and guide edits, not permission to create an absent file early. The scaffold has eight planned files; later phases target two to seven and may reach nine with dependency/configuration work. Before implementation, split a phase that would reach ten files or mix separate behaviors. Phase 5B is the documented exception for short settings call-site, test, and current-guide updates; it contains only the origin/CORS policy. Split within the same feature and update phase references before proceeding.
+Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests, guides, and request examples, not permission to create an absent file early. The scaffold has eight planned files; later phases stay within nine. Before implementation, split a phase that would reach ten files or mix separate behaviors. Phase 5B is the documented exception for short settings call-site, test, and current-guide updates; it contains only the origin/CORS policy. Split within the same feature and update phase references before proceeding.
 
 Add each endpoint's validation and queries together. Introduce middleware when a real current endpoint needs it. A schema step may precede that feature's first endpoint, but cannot create the rest of the application schema. Repeated additive pushes and handler edits are intentional. No feature begins before the previous feature's review gates have passed.
 
-Every gate report must include the changed files, one request traced through current code, any new schema/query rule, actual check results, and the suggested commit. Add tests, guide sections, and secret-free Requestly examples with the endpoint or behavior they explain; include `requests/finance.json` among the phase's existing guide/example edits when finance requests first appear. Do not defer explanations or cross-user tests to the end. `docs/testing.md` begins with integration setup and grows with each new test command.
+Every gate report must include the changed files, one request traced through current code, any new schema/query rule, actual check results, and the suggested commit. Add tests, guide sections, and secret-free Requestly examples with the endpoint or behavior they explain; include `requests/finance.json` among the phase's existing guide/example edits when finance requests first appear. Do not defer explanations or cross-user tests to the end. Keep endpoint and auth behavior in `docs/api.md`, and schema diagrams, setup, commands, and test instructions in `docs/setup.md`. Extend these guides instead of creating separate auth, data-model, or testing documents.
 
 Run type checking, lint, build, and relevant Bun tests once available. Database changes run meaningful integration checks; schema-only steps inspect push results and preservation of existing rows without writing generic ORM insert/select tests. Scope references below include the preserved constraints in PROJECT_MAP R1–R12 and the source sections cited in S1–S8.
 
@@ -726,18 +723,28 @@ Login checks a nonempty password up to 128 Unicode code points without reapplyin
 
 Suggested commit: `feat: log in with secure cookie sessions`
 
-Route-validation follow-up: Registration and login now declare `sValidator` middleware with their Valibot schemas. Validation hooks throw `ApiError`; handlers read `c.req.valid('json')`. IP throttling runs first. The `requireJson` guard preserves the content-type rule, Hono parses JSON, and the central error handler maps Hono's `400` parsing errors to the common format. The separate `readJson` helper was removed. Added `@hono/standard-validator` 0.4.1 with the matching lockfile. Type checking, lint, all 70 unit tests, the build, and four targeted auth validation tests passed. The full integration suite could not connect to the isolated PostgreSQL database; Docker was unavailable in this WSL session. No API or database process was started. Phase 10 remains unapproved.
-
-Drizzle RC follow-up: The user approved upgrading ORM and Kit to `1.0.0-rc.5`. The database client now imports `drizzle-orm/bun-sql/postgres`, and the existing guarded config explicitly limits pushes to `public`. The lockfile passes a frozen offline install. Type checking, lint, all 70 unit tests, all 44 auth integration tests, and the build passed on Bun 1.3.14. Offline schema export and built-in Valibot generators worked with the existing tables. The test push and local read-only push preview reported no changes; mismatched task settings were refused. No table definitions or migration files changed, and no API was started. The test container was stopped with its volume preserved; the local database stayed running. Phase 10 remains unapproved. Suggested commit: `chore: upgrade Drizzle ORM and Kit to v1 RC`.
-
 PAUSE — user must approve before continuing to next batch.
+
+### Current handoff before phase 10
+
+Phase 9 and its cleanup are complete. Carry these decisions into each later phase:
+
+- Use route-level `sValidator` with Valibot schemas, throw `ApiError` for validation failures, and read typed input with `c.req.valid(...)`. Reuse `requireJson` for JSON bodies; Hono handles parsing.
+- Reuse `createIpAttemptLimit` for IP throttling before validation. It gets Bun's connection address and rejects a missing address. Login counts all attempts, including successes; there is no failure-only counter or success reset.
+- Derive matching stored-field validators through `drizzle-orm/valibot` in the feature being built. Explicitly pick allowed fields, reject unknown input, and keep request-only fields and API rules explicit. See the [schema derivation decision](../../docs/api.md#derive-validation-from-drizzle).
+- ORM and Kit are pinned to `1.0.0-rc.5`. Keep the Bun SQL PostgreSQL import, guarded `public`-only pushes, and push-only schema workflow. No migration files or standalone validator adapter are needed.
+- Extend the existing API/setup guides and Requestly collections with each endpoint. Keep the user's API process under their control.
+
+Latest verification passed on Bun 1.3.14: type checking, lint, 70 unit tests, 44 auth integration tests, build, frozen offline installation, and built-in Valibot generator checks. The test push and local read-only preview reported no schema changes. The test container was stopped with its volume preserved; the local database stayed running.
+
+Next is phase 10 only, after approval: session middleware and GET `/api/v1/auth/me`. Keep logout, password changes, and finance work in their later phases.
 
 ### Phase 10. Validate sessions through the current-user endpoint
 
-Expected files, 4: `src/session.ts`, `src/features/auth.ts`, `tests/integration/session.test.ts`, `docs/auth.md`.
+Expected files, 6: `src/session.ts`, `src/features/auth.ts`, `tests/integration/session.test.ts`, `docs/api.md`, `requests/auth.json`, `PROJECT_MAP.md`.
 
 - [ ] Introduce concrete session middleware that checks cookie shape, hashed lookup, idle/absolute expiry, and current user; update last_seen_at conditionally.
-- [ ] Add GET /auth/me using that middleware and returning only the current user's public identity.
+- [ ] Add GET /api/v1/auth/me using that middleware and returning only the current user's public identity; extend the existing API guide, Requestly collection, and code map.
 - [ ] Test missing, malformed, expired, revoked, and unavailable sessions, boundary times, and user identity separation; clear unusable cookies.
 
 Acceptance: S6–S8; PROJECT_MAP R3, R6–R8, R10–R11. Middleware is introduced for a real endpoint and exported for later finance routes. No global auth mount blocks registration, login, health, or preflight. All session-store failures fail closed.
@@ -748,7 +755,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 11. Protect authenticated writes and log out
 
-Expected files, 4: `src/session.ts`, `src/features/auth.ts`, `tests/integration/session.test.ts`, `docs/auth.md`.
+Expected files, 5: `src/session.ts`, `src/features/auth.ts`, `tests/integration/session.test.ts`, `docs/api.md`, `requests/auth.json`.
 
 - [ ] Verify that the existing required Origin check runs before session validation for logout and future authenticated writes.
 - [ ] Add POST /auth/logout with required Origin/session checks, current-session deletion, and matching cookie removal.
@@ -762,9 +769,9 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 12. Change passwords and revoke old sessions
 
-Expected files, 3: `src/features/auth.ts`, `tests/integration/auth.test.ts`, `docs/auth.md`.
+Expected files, 4: `src/features/auth.ts`, `tests/integration/auth.test.ts`, `docs/api.md`, `requests/auth.json`.
 
-- [ ] Add POST /auth/password with current-password verification, normal password limits, origin checks, and bounded attempts.
+- [ ] Add POST /auth/password with an explicit route-level password schema, current-password verification, normal password limits, origin checks, and bounded attempts. Reuse the existing JSON and error conventions.
 - [ ] Update the password and revoke every session for that user atomically, with user-row locking and hash rechecks shared with the existing login transaction.
 - [ ] Test wrong current password, all-device revocation, another user remaining signed in, and old-password login racing with the change.
 
@@ -776,7 +783,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 13. Clean up expired session records explicitly
 
-Expected files, 3: `package.json`, `tests/integration/session.test.ts`, `docs/auth.md`.
+Expected files, 3: `package.json`, `tests/integration/session.test.ts`, `docs/setup.md`.
 
 - [ ] Add bounded local, test, and production cleanup commands directly in package.json using the explicitly selected database and idle/absolute cutoff.
 - [ ] Test that expired sessions are removed while live sessions and users are untouched, without fixtures for any not-yet-created finance table.
@@ -790,7 +797,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 14. Walk through authentication in Requestly and a browser
 
-Expected files, 6: `requests/auth.json`, `requests/environment.example.json`, `docs/auth.md`, `tests/browser/auth.test.ts`, `package.json`, `bun.lock`.
+Expected files, 5: `requests/auth.json`, `docs/api.md`, `tests/browser/auth.test.ts`, `package.json`, `bun.lock`.
 
 - [ ] Verify the Requestly collection built with each auth endpoint now covers register, login, me, logout, and password change in the current export format.
 - [ ] Document the local HTTP base URL, explicit Origin and cookie jar; verify actual outgoing Cookie headers in the installed desktop build.
@@ -805,7 +812,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 15. Add only the owned accounts table
 
-Expected files, 2: `src/db/schema.ts`, `docs/data-model.md`.
+Expected files, 2: `src/db/schema.ts`, `docs/setup.md`.
 
 - [ ] Add accounts with immutable session-derived user_id and the S3 money/type/currency constraints.
 - [ ] Add the user-scoped indexes needed by current account reads, then push while preserving users and sessions.
@@ -819,9 +826,9 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 16. Create accounts and read owned details
 
-Expected files, 5: `src/features/accounts.ts`, `src/app.ts`, `tests/unit/accounts.test.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`.
+Expected files, 6: `src/features/accounts.ts`, `src/app.ts`, `tests/unit/accounts.test.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `requests/finance.json`.
 
-- [ ] Add strict account-create/detail schemas, handlers, and queries together, applying existing session middleware and required Origin checks.
+- [ ] Derive allowed account-create fields from the accounts table, add strict API rules and ID validation, and wire route-level validators, handlers, and queries together with existing session/Origin checks.
 - [ ] Set ownership from the authenticated context and return 404 for another user's account.
 - [ ] Test exact opening balances, currency/type rules, rejected owner fields, unauthenticated access, rejected write origins, and cross-user detail access.
 - [ ] Add a Requestly-authenticated create/detail example and trace its actual middleware/query path.
@@ -834,7 +841,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 17. List and search owned accounts
 
-Expected files, 4: `src/features/accounts.ts`, `tests/unit/accounts.test.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`.
+Expected files, 5: `src/features/accounts.ts`, `tests/unit/accounts.test.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `requests/finance.json`.
 
 - [ ] Add bounded account lists with name search, archive filtering, and stable name/ID ordering.
 - [ ] Keep every search/count query scoped to the current user and validate singleton query parameters.
@@ -848,9 +855,9 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 18. Rename and archive owned accounts
 
-Expected files, 3: `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`.
+Expected files, 4: `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `requests/finance.json`.
 
-- [ ] Add name/archive patches with strict empty-patch and immutable money/currency/owner rejection.
+- [ ] Derive patches from the allowed name/archive fields, reject empty patches and unknown fields, and keep money/currency/owner immutable.
 - [ ] Apply the owned-row lock/update path that later transaction creation will coordinate with.
 - [ ] Test archive/unarchive, cross-user writes, rejected write origins, protected fields, and safe errors; extend the lifecycle examples.
 
@@ -862,7 +869,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 19. Delete an unused owned account
 
-Expected files, 3: `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`.
+Expected files, 4: `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `requests/finance.json`.
 
 - [ ] Add account deletion for the current accounts-only finance schema using the existing owner/session/origin checks.
 - [ ] Test owned deletion, repeated/missing IDs, and another user's account remaining intact.
@@ -876,7 +883,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 20. Add owned transaction and history tables
 
-Expected files, 4: `src/db/schema.ts`, `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/data-model.md`.
+Expected files, 4: `src/db/schema.ts`, `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/setup.md`.
 
 - [ ] Add transactions/history with user_id, same-owner account foreign keys, exact signed amounts, versions, and the initial feature indexes; add the required composite reference key to accounts now.
 - [ ] Push while preserving existing accounts, users, and sessions; omit all tag/category fields.
@@ -891,9 +898,9 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 21. Create transactions and read owned details
 
-Expected files, 5: `src/features/transactions.ts`, `src/app.ts`, `tests/unit/transactions.test.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`.
+Expected files, 6: `src/features/transactions.ts`, `src/app.ts`, `tests/unit/transactions.test.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`, `requests/finance.json`.
 
-- [ ] Add transaction-create/detail schemas and routes with the existing session middleware and required Origin checks.
+- [ ] Derive allowed transaction fields, keep money/timestamp JSON rules explicit, and add create/detail route validators with the existing session middleware and required Origin checks.
 - [ ] Lock the owned active account and atomically insert the transaction plus initial history with the authenticated owner.
 - [ ] Test signed amounts, timestamps, archived/missing/foreign accounts, rejected owner/tag/category fields, and snapshot-failure rollback.
 - [ ] Return version/ETag and document a current-field-only request, including the lack of automatic POST retries.
@@ -906,7 +913,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 22. Correct transactions and inspect history
 
-Expected files, 3: `src/features/transactions.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`.
+Expected files, 4: `src/features/transactions.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`, `requests/finance.json`.
 
 - [ ] Add transaction patches with required If-Match, owned-row locking, and an appended snapshot.
 - [ ] Add the bounded owner-scoped history endpoint for the current transaction model.
@@ -920,7 +927,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 23. Delete transactions while retaining owned history
 
-Expected files, 4: `src/features/transactions.ts`, `tests/integration/transactions.test.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`.
+Expected files, 5: `src/features/transactions.ts`, `tests/integration/transactions.test.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `requests/finance.json`.
 
 - [ ] Add version-checked transaction deletion with its final snapshot and atomic current-row removal.
 - [ ] Keep history readable only by its owner after deletion and keep used-account deletion restricted.
@@ -934,7 +941,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 24. Browse and filter owned transactions
 
-Expected files, 4: `src/features/transactions.ts`, `tests/unit/transactions.test.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`.
+Expected files, 5: `src/features/transactions.ts`, `tests/unit/transactions.test.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`, `requests/finance.json`.
 
 - [ ] Add bounded occurrence-time/ID cursor lists and description, account, date, and signed-amount filters.
 - [ ] Apply current-user scope to every query, validating foreign account filters and cursor shape without trusting cursor ownership.
@@ -948,7 +955,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 25. Calculate exact owned account balances
 
-Expected files, 3: `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`.
+Expected files, 4: `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `requests/finance.json`.
 
 - [ ] Add the balance endpoint using owned-account opening balance and exact current-transaction sums.
 - [ ] Return currency and defined empty totals without storing a mutable balance.
@@ -962,7 +969,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 26. Summarize the implemented transaction filters
 
-Expected files, 3: `src/features/transactions.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`.
+Expected files, 4: `src/features/transactions.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`, `requests/finance.json`.
 
 - [ ] Add the fixed summary route before /:id using only current transaction filters.
 - [ ] Return income, positive expense magnitude, and signed net totals separately per currency and user.
@@ -990,10 +997,10 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 28. Define tags and create an owned tag
 
-Expected files, 6: `src/db/schema.ts`, `src/features/tags.ts`, `src/app.ts`, `tests/integration/tags.test.ts`, `docs/data-model.md`, `docs/api.md`.
+Expected files, 7: `src/db/schema.ts`, `src/features/tags.ts`, `src/app.ts`, `tests/integration/tags.test.ts`, `docs/setup.md`, `docs/api.md`, `requests/finance.json`.
 
 - [ ] Add only owned tags with per-user normalized name uniqueness and push without changing existing records.
-- [ ] Add authenticated tag-create and owner-scoped detail routes, keeping the required Origin check on creation.
+- [ ] Derive allowed tag input fields and add strict route-level validators for authenticated create and owner-scoped detail routes, keeping the required Origin check on creation.
 - [ ] Test normalization, same name across users, duplicate names within one user, foreign detail IDs, and rejected owner fields; document the catalog.
 
 Acceptance: S3, S5, S8; PROJECT_MAP R3, R5–R11. Four finance tables plus two auth tables. No tag links or account/transaction tag arrays yet. Schema and the first small tag request are one bounded feature step.
@@ -1004,7 +1011,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 29. List rename and delete unlinked tags
 
-Expected files, 3: `src/features/tags.ts`, `tests/integration/tags.test.ts`, `docs/api.md`.
+Expected files, 4: `src/features/tags.ts`, `tests/integration/tags.test.ts`, `docs/api.md`, `requests/finance.json`.
 
 - [ ] Add bounded owned tag lists, rename, and current unlinked-tag deletion using existing validation/middleware patterns.
 - [ ] Test query limits, duplicate rename, empty patches, cross-user writes, and deletion.
@@ -1018,7 +1025,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 30. Attach owned tags to owned accounts
 
-Expected files, 7: `src/db/schema.ts`, `src/features/accounts.ts`, `src/features/tags.ts`, `tests/integration/account-tags.test.ts`, `scripts/seed.ts`, `docs/api.md`, `docs/data-model.md`.
+Expected files, 8: `src/db/schema.ts`, `src/features/accounts.ts`, `src/features/tags.ts`, `tests/integration/account-tags.test.ts`, `scripts/seed.ts`, `docs/api.md`, `docs/setup.md`, `requests/finance.json`.
 
 - [ ] Add account_tags with same-owner foreign keys and a reverse lookup index; add the required composite reference key to tags, then push.
 - [ ] Add account tag reads and atomic replacement under the owned-account lock; restrict deletion of linked tags.
@@ -1032,7 +1039,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 31. Attach owned tags to owned transactions
 
-Expected files, 7: `src/db/schema.ts`, `src/features/transactions.ts`, `src/features/tags.ts`, `tests/integration/transaction-tags.test.ts`, `scripts/seed.ts`, `docs/api.md`, `docs/data-model.md`.
+Expected files, 8: `src/db/schema.ts`, `src/features/transactions.ts`, `src/features/tags.ts`, `tests/integration/transaction-tags.test.ts`, `scripts/seed.ts`, `docs/api.md`, `docs/setup.md`, `requests/finance.json`.
 
 - [ ] Add transaction_tags with same-owner references and a reverse index; add the required composite reference key to transactions, then push without rewriting old history.
 - [ ] Add tag reads and version-checked tag replacement in the existing transaction/snapshot write; restrict linked-tag deletion.
@@ -1046,7 +1053,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 32. Search owned records and summaries by tags
 
-Expected files, 4: `src/features/accounts.ts`, `src/features/transactions.ts`, `tests/integration/tag-search.test.ts`, `docs/api.md`.
+Expected files, 5: `src/features/accounts.ts`, `src/features/transactions.ts`, `tests/integration/tag-search.test.ts`, `docs/api.md`, `requests/finance.json`.
 
 - [ ] Add direct tag-name and all-requested-tag conditions to the existing owned account/transaction searches.
 - [ ] Apply the same transaction filters to summaries using duplicate-free EXISTS-style conditions.
@@ -1060,10 +1067,10 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 33. Define categories and create an owned category
 
-Expected files, 6: `src/db/schema.ts`, `src/features/categories.ts`, `src/app.ts`, `tests/integration/categories.test.ts`, `docs/api.md`, `docs/data-model.md`.
+Expected files, 7: `src/db/schema.ts`, `src/features/categories.ts`, `src/app.ts`, `tests/integration/categories.test.ts`, `docs/api.md`, `docs/setup.md`, `requests/finance.json`.
 
 - [ ] Add only owned categories with stable income/expense kinds and per-user kind/name uniqueness, then push.
-- [ ] Add category create/detail routes with existing session/origin/ownership checks.
+- [ ] Derive allowed category input fields and add strict create/detail route validators with existing session/origin/ownership checks.
 - [ ] Test normalized duplicates, names reused by other users or kinds, missing/foreign IDs, and protected fields; document the current catalog.
 
 Acceptance: S3, S5, S8; PROJECT_MAP R3, R5–R11. Seven finance tables plus two auth tables now exist. Transactions still have no category_id. No global category records or foreign-owner defaults.
@@ -1074,7 +1081,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 34. List rename and delete unused categories
 
-Expected files, 4: `src/features/categories.ts`, `tests/integration/categories.test.ts`, `scripts/seed.ts`, `docs/api.md`.
+Expected files, 5: `src/features/categories.ts`, `tests/integration/categories.test.ts`, `scripts/seed.ts`, `docs/api.md`, `requests/finance.json`.
 
 - [ ] Add bounded owned category lists, renaming, and current unreferenced deletion.
 - [ ] Reject kind/owner changes and test empty patches, duplicates, cross-user writes, and list bounds.
@@ -1088,7 +1095,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 35. Assign owned categories to transactions
 
-Expected files, 7: `src/db/schema.ts`, `src/features/transactions.ts`, `src/features/categories.ts`, `tests/integration/transaction-categories.test.ts`, `scripts/seed.ts`, `docs/api.md`, `docs/data-model.md`.
+Expected files, 8: `src/db/schema.ts`, `src/features/transactions.ts`, `src/features/categories.ts`, `tests/integration/transaction-categories.test.ts`, `scripts/seed.ts`, `docs/api.md`, `docs/setup.md`, `requests/finance.json`.
 
 - [ ] Add nullable category_id with its same-owner foreign key and user/category index, adding the required category reference key now; push while preserving uncategorized rows.
 - [ ] Add optional assignment/clearing and sign checks to transaction create/patch; restrict deletion of categories in use.
@@ -1103,7 +1110,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 36. Filter transactions and summaries by category
 
-Expected files, 3: `src/features/transactions.ts`, `tests/integration/transaction-categories.test.ts`, `docs/api.md`.
+Expected files, 4: `src/features/transactions.ts`, `tests/integration/transaction-categories.test.ts`, `docs/api.md`, `requests/finance.json`.
 
 - [ ] Add owner-validated category filters to existing transaction lists and summaries.
 - [ ] Test category intersections with dates, amounts, and tags, including foreign references and duplicate-free sums.
@@ -1117,7 +1124,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 37. Verify the guides and Requestly collection built along the way
 
-Expected files, 9: `README.md`, `docs/setup.md`, `docs/auth.md`, `docs/api.md`, `docs/testing.md`, `docs/data-model.md`, `requests/auth.json`, `requests/finance.json`, `requests/environment.example.json`.
+Expected files, 5: `README.md`, `docs/setup.md`, `docs/api.md`, `requests/auth.json`, `requests/finance.json`.
 
 - [ ] Replay registration/login and the complete owned-finance walkthrough, correcting stale examples and commands.
 - [ ] Verify the existing Requestly exports contain no live credentials or cookies and demonstrate the cookie reuse and explicit Origin flow.
@@ -1159,7 +1166,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 40. Automate host checks and database tests
 
-Expected files, 3: `.github/workflows/ci.yaml`, `package.json`, `docs/testing.md`.
+Expected files, 3: `.github/workflows/ci.yaml`, `package.json`, `docs/setup.md`.
 
 - [ ] Add CI with pinned Bun, frozen dependencies, type checking, lint, build, and unit tests.
 - [ ] Push schema and run host integration/browser tests with per-job PostgreSQL identities, the local HTTP test origin, and guarded cleanup.
@@ -1214,12 +1221,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 9 is complete and awaiting review. Login issues an HttpOnly session cookie after password verification and locked session creation. Phase 10 remains unapproved. Local development remains on HTTP.
+Status: Phase 9 and its cleanup follow-ups are complete. Login issues an HttpOnly session cookie after password verification and locked session creation. Phase 10 remains unapproved. Local development remains on HTTP.
 
-Handoff note: Registration and login are implemented in the auth feature. Login creates independent 32-byte credentials, stores their SHA-256 hashes, and sets host-only SameSite=Lax cookies with Secure in production. Registration/login share two password-work slots and have bounded attempt maps. Phase 10 adds session validation and GET /api/v1/auth/me after approval. Do not add logout, password change, finance tables, or a separate token endpoint yet. Keep expected HTTP failures as thrown `ApiError` values and update the current guides and collection.
+Handoff note: Use the [current handoff before phase 10](#current-handoff-before-phase-10) for validation, throttling, Drizzle, and documentation decisions. Phase 10 introduces session validation for GET /api/v1/auth/me without changing registration/login access. Keep logout, password change, finance tables, and any separate token mechanism out of that phase.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing required Origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review phase 9 and try login in Requestly, then approve phase 10 when ready. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Approve phase 10 when ready to add session validation and the current-user endpoint. The agent must stop at each phase gate so the user can inspect the diff.
 
 Suggested next specialist and prompt: Continue with the architect skill. "Implement phase 10 only after approval. Add session validation for GET /api/v1/auth/me, including malformed/expired/revoked credentials, idle and absolute deadlines, and last-seen updates. Keep logout and finance routes for their own phases."
