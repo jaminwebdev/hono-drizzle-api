@@ -15,9 +15,9 @@ Keep the API in your terminal and press `Ctrl+C` to stop it. In Requestly deskto
 
 ## Reference
 
-| Need | Read |
-| --- | --- |
-| Install, configure, run, check, or build the project; understand database storage and tool limitations | [Setup guide](docs/setup.md) |
-| Use health endpoints, understand errors and origins, or follow the middleware | [API guide](docs/api.md) |
-| Find code responsibilities and project rules | [Project map](PROJECT_MAP.md) |
-| Review the next implementation step and its approval gate | [Implementation plan](sessions/001_fresh_start/01-architect-todos.md) |
+| Need                                                                                                   | Read                                                                  |
+| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| Install, configure, run, check, or build the project; understand database storage and tool limitations | [Setup guide](docs/setup.md)                                          |
+| Use health endpoints, understand errors and origins, or follow the middleware                          | [API guide](docs/api.md)                                              |
+| Find code responsibilities and project rules                                                           | [Project map](PROJECT_MAP.md)                                         |
+| Review the next implementation step and its approval gate                                              | [Implementation plan](sessions/001_fresh_start/01-architect-todos.md) |

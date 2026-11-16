@@ -5,7 +5,14 @@ import type { Database } from '../../src/db/client';
 function appWith(query: () => Promise<unknown>) {
   const execute = mock(query);
   const database = { execute } as unknown as Database;
-  return { app: createApp(database, { APP_ENV: 'test', API_ORIGIN: 'http://127.0.0.1:3000', CORS_ORIGINS: [] }), execute };
+  return {
+    app: createApp(database, {
+      APP_ENV: 'test',
+      API_ORIGIN: 'http://127.0.0.1:3000',
+      CORS_ORIGINS: [],
+    }),
+    execute,
+  };
 }
 
 describe('health routes', () => {
@@ -27,11 +34,17 @@ describe('health routes', () => {
   });
 
   test('readiness hides database errors and liveness remains available', async () => {
-    const { app } = appWith(() => Promise.reject(new Error('synthetic secret in a driver error')));
+    const { app } = appWith(() =>
+      Promise.reject(new Error('synthetic secret in a driver error')),
+    );
     const response = await app.request('/health/ready');
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({
-      error: { code: 'DATABASE_UNAVAILABLE', status: 503, requestId: response.headers.get('X-Request-Id') },
+      error: {
+        code: 'DATABASE_UNAVAILABLE',
+        status: 503,
+        requestId: response.headers.get('X-Request-Id'),
+      },
     });
     expect((await app.request('/health/live')).status).toBe(200);
   });

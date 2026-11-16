@@ -6,7 +6,11 @@ let config;
 try {
   config = readConfig(process.env);
 } catch (error) {
-  console.error(error instanceof Error ? error.message : 'Invalid application configuration.');
+  console.error(
+    error instanceof Error
+      ? error.message
+      : 'Invalid application configuration.',
+  );
   process.exit(1);
 }
 
@@ -15,7 +19,9 @@ try {
   database = createDatabase(config);
   await database.$client.connect();
 } catch {
-  console.error('Unable to connect to PostgreSQL. Check its settings and whether it is running.');
+  console.error(
+    'Unable to connect to PostgreSQL. Check its settings and whether it is running.',
+  );
   await database?.$client.close({ timeout: 0 });
   process.exit(1);
 }
@@ -53,8 +59,12 @@ async function shutdown(exitCode: number) {
   }
 }
 
-process.on('SIGINT', () => { void shutdown(0); });
-process.on('SIGTERM', () => { void shutdown(0); });
+process.on('SIGINT', () => {
+  void shutdown(0);
+});
+process.on('SIGTERM', () => {
+  void shutdown(0);
+});
 
 function handleFatalError() {
   console.error('Fatal application error; stopping the API.');

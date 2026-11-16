@@ -4,11 +4,11 @@ Use `http://127.0.0.1:3000` with the local settings. Start the API in your termi
 
 ## Health requests
 
-| Request | Response |
-| --- | --- |
-| `GET /health/live` | `200` with `{"status":"ok"}`. Makes no database query. |
-| `GET /health/ready` | Runs `SELECT 1` through Drizzle. Returns the same success body, or `503` with error code `DATABASE_UNAVAILABLE`. |
-| `HEAD` on either health URL | Uses the GET behavior and returns headers without a body. |
+| Request                     | Response                                                                                                         |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `GET /health/live`          | `200` with `{"status":"ok"}`. Makes no database query.                                                           |
+| `GET /health/ready`         | Runs `SELECT 1` through Drizzle. Returns the same success body, or `503` with error code `DATABASE_UNAVAILABLE`. |
+| `HEAD` on either health URL | Uses the GET behavior and returns headers without a body.                                                        |
 
 Readiness uses the existing database timeouts. It has no separate deadline or connection-reservation logic.
 
@@ -17,7 +17,10 @@ Readiness uses the existing database timeouts. It has no separate deadline or co
 Send `POST /api/v1/auth/register` with `Origin: http://127.0.0.1:3000`, `Content-Type: application/json`, and exactly these fields:
 
 ```json
-{"email":"learner@example.test","password":"choose your own long passphrase"}
+{
+  "email": "learner@example.test",
+  "password": "choose your own long passphrase"
+}
 ```
 
 Email is trimmed, lowercased, checked for a valid format, and limited to 254 characters. Dots and `+` suffixes remain part of the address. Passwords must contain 15–128 Unicode code points. A code point is a Unicode value, so one emoji may count as one even though JavaScript's string length counts two. Passwords keep their exact spaces and case, with no trimming or normalization.
@@ -27,7 +30,12 @@ The small local blocklist rejects these passwords regardless of case: `passwordp
 Success returns `201` with only the new user's ID and normalized email inside `data`:
 
 ```json
-{"data":{"id":"4d598d39-dc7a-4ca5-aab6-509ad69080d1","email":"learner@example.test"}}
+{
+  "data": {
+    "id": "4d598d39-dc7a-4ca5-aab6-509ad69080d1",
+    "email": "learner@example.test"
+  }
+}
 ```
 
 The server stores an Argon2id password hash using Bun's asynchronous password API, with `memoryCost: 19456` and `timeCost: 2`. It never returns the password or hash. Registration does not log in or issue a cookie. A duplicate normalized email returns `409 ACCOUNT_NOT_AVAILABLE`, including when two requests race. Email is an unverified login identifier; this response can reveal that an address is registered. Email verification and public signup protection are deferred.
@@ -103,21 +111,21 @@ All API errors use this shape:
 
 The request ID matches the response header. The timestamp uses UTC. Unexpected failures return a generic message; responses do not include raw exceptions, submitted bodies, or SQL details.
 
-| Status | Code | Meaning |
-| --- | --- | --- |
-| `400` | `INVALID_INPUT` | The JSON body is empty, malformed, or contains invalid credential fields. |
-| `401` | `INVALID_CREDENTIALS` | The login email or password is incorrect, or the password changed during verification. |
-| `403` | `ORIGIN_REJECTED` | A write has a missing or unapproved Origin. |
-| `404` | `NOT_FOUND` | No resource matches the URL. |
-| `405` | `METHOD_NOT_ALLOWED` | The URL exists but does not support that method. `Allow` lists supported methods. |
-| `409` | `ACCOUNT_NOT_AVAILABLE` | The normalized registration email is already in use. |
-| `413` | `PAYLOAD_TOO_LARGE` | The request body exceeds the size limit. |
-| `414` | `URI_TOO_LONG` | The full request URL exceeds the size limit. |
-| `415` | `UNSUPPORTED_MEDIA_TYPE` | A JSON route received a content type other than `application/json`. |
-| `429` | `RATE_LIMITED` | An authentication attempt or password-processing limit was reached. `Retry-After` gives seconds before retrying. |
-| `500` | `INTERNAL_ERROR` | An unexpected application failure occurred. |
-| `503` | `DATABASE_UNAVAILABLE` | The readiness query failed. |
-| `503` | `SERVICE_UNAVAILABLE` | A credential endpoint could not determine the connection's peer address. |
+| Status | Code                     | Meaning                                                                                                          |
+| ------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `400`  | `INVALID_INPUT`          | The JSON body is empty, malformed, or contains invalid credential fields.                                        |
+| `401`  | `INVALID_CREDENTIALS`    | The login email or password is incorrect, or the password changed during verification.                           |
+| `403`  | `ORIGIN_REJECTED`        | A write has a missing or unapproved Origin.                                                                      |
+| `404`  | `NOT_FOUND`              | No resource matches the URL.                                                                                     |
+| `405`  | `METHOD_NOT_ALLOWED`     | The URL exists but does not support that method. `Allow` lists supported methods.                                |
+| `409`  | `ACCOUNT_NOT_AVAILABLE`  | The normalized registration email is already in use.                                                             |
+| `413`  | `PAYLOAD_TOO_LARGE`      | The request body exceeds the size limit.                                                                         |
+| `414`  | `URI_TOO_LONG`           | The full request URL exceeds the size limit.                                                                     |
+| `415`  | `UNSUPPORTED_MEDIA_TYPE` | A JSON route received a content type other than `application/json`.                                              |
+| `429`  | `RATE_LIMITED`           | An authentication attempt or password-processing limit was reached. `Retry-After` gives seconds before retrying. |
+| `500`  | `INTERNAL_ERROR`         | An unexpected application failure occurred.                                                                      |
+| `503`  | `DATABASE_UNAVAILABLE`   | The readiness query failed.                                                                                      |
+| `503`  | `SERVICE_UNAVAILABLE`    | A credential endpoint could not determine the connection's peer address.                                         |
 
 In Requestly, send `GET /missing` to see a `404`. To see a `405`, send `POST /health/live` with `Origin: http://127.0.0.1:3000`; that method is unsupported even with an allowed origin. Neither request needs a body. Inspect `X-Request-Id` and, for the method error, `Allow` in the response headers.
 
@@ -128,7 +136,13 @@ The API returns JSON with `Content-Type: application/json` regardless of the req
 Each completed request writes one JSON log entry to the terminal:
 
 ```json
-{"requestId":"4d598d39-dc7a-4ca5-aab6-509ad69080d1","method":"GET","route":"/health/live","status":200,"elapsedMs":1}
+{
+  "requestId": "4d598d39-dc7a-4ca5-aab6-509ad69080d1",
+  "method": "GET",
+  "route": "/health/live",
+  "status": 200,
+  "elapsedMs": 1
+}
 ```
 
 The route comes from Hono's registered route template. A route such as `/records/:id` logs that template rather than a concrete record ID. Unmatched requests can log `*`; the requested URL is never the fallback. Logs contain only the five fields shown above. Headers, bodies, query strings, SQL, and raw exceptions are omitted.
@@ -166,16 +180,16 @@ sequenceDiagram
 
 The following order matches `installHttp`:
 
-| Order | Middleware | Purpose |
-| --- | --- | --- |
-| 1 | Hono `secureHeaders` | Adds browser security headers, including `nosniff` to prevent content-type guessing and `SAMEORIGIN` to restrict framing. Strict-Transport-Security is disabled for local HTTP. |
-| 2 | Request ID, no-store, and logging | Generates a fresh ID and sets `X-Request-Id` and `Cache-Control: no-store`. After `await next()`, writes the final status and elapsed handling time to the log. Client-supplied request IDs are ignored. |
-| 3 | URL limit | Rejects a full URL over 8 KiB with `414` before query parsing. |
-| 4 | Write-origin check | Requires an allowed Origin for methods other than GET, HEAD, and OPTIONS. Rejects missing or unapproved values with `403`. |
-| 5 | Hono `cors`, when configured | Adds browser access headers and handles preflights. This middleware is not registered when the browser allowlist is empty. |
-| 6 | Hono `bodyLimit` | Caps request bodies at 64 KiB before a route parses them. Returns the common `413` error when oversized. |
-| 7 | Missing URL check | Waits for routing and the method check, then throws `ApiError(404)` for an unmatched URL. Preserves explicit errors from routes. |
-| 8 | Hono `methodNotAllowed` | Lets routing run, then throws `ApiError(405)` for an unsupported method on a known URL and supplies its `Allow` header. |
+| Order | Middleware                        | Purpose                                                                                                                                                                                                  |
+| ----- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | Hono `secureHeaders`              | Adds browser security headers, including `nosniff` to prevent content-type guessing and `SAMEORIGIN` to restrict framing. Strict-Transport-Security is disabled for local HTTP.                          |
+| 2     | Request ID, no-store, and logging | Generates a fresh ID and sets `X-Request-Id` and `Cache-Control: no-store`. After `await next()`, writes the final status and elapsed handling time to the log. Client-supplied request IDs are ignored. |
+| 3     | URL limit                         | Rejects a full URL over 8 KiB with `414` before query parsing.                                                                                                                                           |
+| 4     | Write-origin check                | Requires an allowed Origin for methods other than GET, HEAD, and OPTIONS. Rejects missing or unapproved values with `403`.                                                                               |
+| 5     | Hono `cors`, when configured      | Adds browser access headers and handles preflights. This middleware is not registered when the browser allowlist is empty.                                                                               |
+| 6     | Hono `bodyLimit`                  | Caps request bodies at 64 KiB before a route parses them. Returns the common `413` error when oversized.                                                                                                 |
+| 7     | Missing URL check                 | Waits for routing and the method check, then throws `ApiError(404)` for an unmatched URL. Preserves explicit errors from routes.                                                                         |
+| 8     | Hono `methodNotAllowed`           | Lets routing run, then throws `ApiError(405)` for an unsupported method on a known URL and supplies its `Allow` header.                                                                                  |
 
 Origin checking and CORS have separate jobs. The origin check rejects unapproved writes on the server; CORS tells browsers whether they may read a response. Neither authenticates a caller.
 

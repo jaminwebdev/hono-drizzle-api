@@ -6,7 +6,10 @@ import { HTTPException } from 'hono/http-exception';
 import { methodNotAllowed } from 'hono/method-not-allowed';
 import { routePath } from 'hono/route';
 import { secureHeaders } from 'hono/secure-headers';
-import type { ClientErrorStatusCode, ServerErrorStatusCode } from 'hono/utils/http-status';
+import type {
+  ClientErrorStatusCode,
+  ServerErrorStatusCode,
+} from 'hono/utils/http-status';
 import type { Config } from './config';
 
 export type HttpEnv = { Variables: { requestId: string } };
@@ -14,18 +17,28 @@ export type HttpSettings = Pick<Config, 'API_ORIGIN' | 'CORS_ORIGINS'>;
 type ErrorStatus = ClientErrorStatusCode | ServerErrorStatusCode;
 
 export class ApiError extends Error {
-  constructor(readonly status: ErrorStatus, readonly code: string, message: string) {
+  constructor(
+    readonly status: ErrorStatus,
+    readonly code: string,
+    message: string,
+  ) {
     super(message);
   }
 }
 
 function errorResponse(c: Context<HttpEnv>, error: ApiError) {
-  return c.json({
-    error: {
-      code: error.code, message: error.message, status: error.status,
-      requestId: c.get('requestId'), timestamp: new Date().toISOString(),
+  return c.json(
+    {
+      error: {
+        code: error.code,
+        message: error.message,
+        status: error.status,
+        requestId: c.get('requestId'),
+        timestamp: new Date().toISOString(),
+      },
     },
-  }, error.status);
+    error.status,
+  );
 }
 
 export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
@@ -38,17 +51,23 @@ export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
     c.header('Cache-Control', 'no-store');
     const started = performance.now();
     await next();
-    console.log(JSON.stringify({
-      requestId,
-      method: c.req.method,
-      route: routePath(c, -1) || null,
-      status: c.res.status,
-      elapsedMs: Math.round(performance.now() - started),
-    }));
+    console.log(
+      JSON.stringify({
+        requestId,
+        method: c.req.method,
+        route: routePath(c, -1) || null,
+        status: c.res.status,
+        elapsedMs: Math.round(performance.now() - started),
+      }),
+    );
   });
   app.use(async (c, next) => {
     if (new TextEncoder().encode(c.req.url).byteLength > 8192) {
-      throw new ApiError(414, 'URI_TOO_LONG', 'The request URL must be at most 8 KiB.');
+      throw new ApiError(
+        414,
+        'URI_TOO_LONG',
+        'The request URL must be at most 8 KiB.',
+      );
     }
     await next();
   });
@@ -56,55 +75,90 @@ export function installHttp(app: Hono<HttpEnv>, settings: HttpSettings) {
     const origin = c.req.header('Origin');
     const unsafe = !['GET', 'HEAD', 'OPTIONS'].includes(c.req.method);
     if (unsafe && (!origin || !allowedOrigins.includes(origin))) {
-      throw new ApiError(403, 'ORIGIN_REJECTED', 'The request origin is not allowed.');
+      throw new ApiError(
+        403,
+        'ORIGIN_REJECTED',
+        'The request origin is not allowed.',
+      );
     }
     await next();
   });
   if (settings.CORS_ORIGINS.length > 0) {
-    app.use(cors({
-      origin: settings.CORS_ORIGINS,
-      credentials: true,
-      allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
-      allowHeaders: ['Content-Type', 'If-Match'],
-      exposeHeaders: ['ETag', 'Location', 'X-Request-Id'],
-    }));
+    app.use(
+      cors({
+        origin: settings.CORS_ORIGINS,
+        credentials: true,
+        allowMethods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+        allowHeaders: ['Content-Type', 'If-Match'],
+        exposeHeaders: ['ETag', 'Location', 'X-Request-Id'],
+      }),
+    );
   }
-  app.use(bodyLimit({
-    maxSize: 64 * 1024,
-    onError: () => {
-      throw new ApiError(413, 'PAYLOAD_TOO_LARGE', 'The request body must be at most 64 KiB.');
-    },
-  }));
+  app.use(
+    bodyLimit({
+      maxSize: 64 * 1024,
+      onError: () => {
+        throw new ApiError(
+          413,
+          'PAYLOAD_TOO_LARGE',
+          'The request body must be at most 64 KiB.',
+        );
+      },
+    }),
+  );
   app.use(async (c, next) => {
     // Let Hono check for an unsupported method before treating the URL as missing.
     await next();
     if (c.res.status === 404 && !c.error) {
-      throw new ApiError(404, 'NOT_FOUND', 'The requested resource was not found.');
+      throw new ApiError(
+        404,
+        'NOT_FOUND',
+        'The requested resource was not found.',
+      );
     }
   });
-  app.use(methodNotAllowed({
-    app,
-    onMethodNotAllowed: (c, methods) => {
-      c.header('Allow', methods.join(', '));
-      throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'This method is not supported for this URL.');
-    },
-  }));
+  app.use(
+    methodNotAllowed({
+      app,
+      onMethodNotAllowed: (c, methods) => {
+        c.header('Allow', methods.join(', '));
+        throw new ApiError(
+          405,
+          'METHOD_NOT_ALLOWED',
+          'This method is not supported for this URL.',
+        );
+      },
+    }),
+  );
   app.onError((error, c) => {
     // Hono's JSON validator throws HTTPException before running the schema hook.
     if (error instanceof HTTPException && error.status === 400) {
-      error = new ApiError(400, 'INVALID_INPUT', 'The request contains invalid input.');
+      error = new ApiError(
+        400,
+        'INVALID_INPUT',
+        'The request contains invalid input.',
+      );
     }
-    const apiError = error instanceof ApiError
-      ? error
-      : new ApiError(500, 'INTERNAL_ERROR', 'An unexpected error occurred.');
+    const apiError =
+      error instanceof ApiError
+        ? error
+        : new ApiError(500, 'INTERNAL_ERROR', 'An unexpected error occurred.');
     return errorResponse(c, apiError);
   });
 }
 
 export const requireJson = createMiddleware<HttpEnv>(async (c, next) => {
-  const mediaType = c.req.header('Content-Type')?.split(';')[0]?.trim().toLowerCase();
+  const mediaType = c.req
+    .header('Content-Type')
+    ?.split(';')[0]
+    ?.trim()
+    .toLowerCase();
   if (mediaType !== 'application/json') {
-    throw new ApiError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Use Content-Type: application/json.');
+    throw new ApiError(
+      415,
+      'UNSUPPORTED_MEDIA_TYPE',
+      'Use Content-Type: application/json.',
+    );
   }
 
   await next();

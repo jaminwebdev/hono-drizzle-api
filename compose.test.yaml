@@ -10,20 +10,20 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.test}
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.test}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:?Set POSTGRES_PORT in .env.test}:5432"
+      - '127.0.0.1:${POSTGRES_PORT:?Set POSTGRES_PORT in .env.test}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
       test:
         [
-          "CMD-SHELL",
+          'CMD-SHELL',
           'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"',
         ]
       interval: 3s
       timeout: 3s
       retries: 20
       start_period: 10s
-    restart: "no"
+    restart: 'no'
 
 volumes:
   postgres_data:

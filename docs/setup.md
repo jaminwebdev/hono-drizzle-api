@@ -31,24 +31,24 @@ Choose a unique database password before first startup. Keep real environment fi
 
 `.env.example` is the template. `src/config.ts` validates the values Bun supplies; it does not read files or choose connection targets. Invalid settings stop startup with field names rather than submitted values.
 
-| Setting | What to supply |
-| --- | --- |
-| `APP_ENV` | `local`, `test`, or `production`. |
-| `API_PORT` | A decimal port from `1` to `65535`, without leading zeros. The local template uses `3000`. |
-| `API_ORIGIN` | The exact public API origin, such as `http://127.0.0.1:3000`, without a path or trailing slash. Production requires HTTPS. |
-| `CORS_ORIGINS` | An optional comma-separated browser allowlist for cross-origin resource sharing (CORS). Empty disables it. See [origin behavior](api.md#origins-and-browser-access). |
-| `POSTGRES_HOST` | The supplied database hostname. Host commands use `127.0.0.1`. |
-| `POSTGRES_PORT` | A decimal port using the same validation as `API_PORT`. Select the published port below. |
-| `POSTGRES_USER`, `POSTGRES_DB` | Nonblank names for the selected database identity. |
-| `POSTGRES_PASSWORD` | A nonblank password. Configuration preserves its characters rather than trimming it. |
+| Setting                        | What to supply                                                                                                                                                       |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `APP_ENV`                      | `local`, `test`, or `production`.                                                                                                                                    |
+| `API_PORT`                     | A decimal port from `1` to `65535`, without leading zeros. The local template uses `3000`.                                                                           |
+| `API_ORIGIN`                   | The exact public API origin, such as `http://127.0.0.1:3000`, without a path or trailing slash. Production requires HTTPS.                                           |
+| `CORS_ORIGINS`                 | An optional comma-separated browser allowlist for cross-origin resource sharing (CORS). Empty disables it. See [origin behavior](api.md#origins-and-browser-access). |
+| `POSTGRES_HOST`                | The supplied database hostname. Host commands use `127.0.0.1`.                                                                                                       |
+| `POSTGRES_PORT`                | A decimal port using the same validation as `API_PORT`. Select the published port below.                                                                             |
+| `POSTGRES_USER`, `POSTGRES_DB` | Nonblank names for the selected database identity.                                                                                                                   |
+| `POSTGRES_PASSWORD`            | A nonblank password. Configuration preserves its characters rather than trimming it.                                                                                 |
 
 Use separate credentials and these database identities:
 
-| File | `APP_ENV` | Host PostgreSQL port | Database | User |
-| --- | --- | --- | --- | --- |
-| `.env.local` | `local` | 5433 | `finance_tracker_local` | `finance` |
-| `.env.test` | `test` | 5435 | `finance_tracker_test` | `finance_test` |
-| `.env.production` | `production` | 5434 | `finance_tracker_production` | `finance_production` |
+| File              | `APP_ENV`    | Host PostgreSQL port | Database                     | User                 |
+| ----------------- | ------------ | -------------------- | ---------------------------- | -------------------- |
+| `.env.local`      | `local`      | 5433                 | `finance_tracker_local`      | `finance`            |
+| `.env.test`       | `test`       | 5435                 | `finance_tracker_test`       | `finance_test`       |
+| `.env.production` | `production` | 5434                 | `finance_tracker_production` | `finance_production` |
 
 The usual test API port is `3002`, with `API_ORIGIN=http://127.0.0.1:3002`. For production, supply the actual public HTTPS origin. It may differ from the API's internal address behind a deployment proxy. Production Compose explicitly uses `db:5432` inside its API container; host database tools use the published production port.
 
@@ -125,11 +125,11 @@ One user can have several sessions, such as separate logins on two devices. Each
 
 `created_at` records session creation, `last_seen_at` records the latest accepted use, and `expires_at` is the absolute expiry time. The first two default to insertion time; login supplies a deadline seven days later. Session validation, which comes next, will enforce idle and absolute expiry and update `last_seen_at`. Timestamps alone do not enforce expiry or delete rows. The unique credential index supports session lookup, while separate indexes on `user_id`, `last_seen_at`, and `expires_at` support revoking a user's sessions and cleaning up idle or expired rows.
 
-| Command | Purpose |
-| --- | --- |
-| `bun run db:push` | Compare the schema with the local database and apply changes. |
-| `bun run db:test:push` | Apply the same schema to the isolated test database. |
-| `bun run db:studio` | Open Drizzle's database editor, bound to `127.0.0.1`, using local settings. |
+| Command                | Purpose                                                                     |
+| ---------------------- | --------------------------------------------------------------------------- |
+| `bun run db:push`      | Compare the schema with the local database and apply changes.               |
+| `bun run db:test:push` | Apply the same schema to the isolated test database.                        |
+| `bun run db:studio`    | Open Drizzle's database editor, bound to `127.0.0.1`, using local settings. |
 
 Start the selected database before pushing. After editing the schema, run the matching push command again. Drizzle applies differences directly without generating migration files. Review any data-loss prompt before accepting it; these commands do not force destructive changes. See the [Drizzle push guide](https://orm.drizzle.team/docs/drizzle-kit-push).
 
@@ -153,14 +153,18 @@ Unit tests run without private environment files or PostgreSQL. `test:integratio
 
 ## Check and build
 
-| Command | Purpose |
-| --- | --- |
-| `bun run typecheck` | Check source and tests with TypeScript. |
-| `bun run lint` | Check source and configuration with ESLint. |
-| `bun run test` | Run Bun unit tests without PostgreSQL. |
+| Command                    | Purpose                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------- |
+| `bun run typecheck`        | Check source and tests with TypeScript.                                         |
+| `bun run lint`             | Check source and configuration with ESLint.                                     |
+| `bun run format`           | Format all supported project files with Prettier.                               |
+| `bun run format:check`     | Check formatting without changing files.                                        |
+| `bun run test`             | Run Bun unit tests without PostgreSQL.                                          |
 | `bun run test:integration` | Run registration and login tests against the prepared test PostgreSQL database. |
-| `bun run build` | Bundle the server into `dist/server.js`. |
-| `bun run check` | Run type checking, lint, tests, and build in order. |
+| `bun run build`            | Bundle the server into `dist/server.js`.                                        |
+| `bun run check`            | Run type checking, lint, tests, and build in order.                             |
+
+Prettier uses `.prettierrc.json` for shared formatting rules, including single quotes in JavaScript and TypeScript. It skips files listed in `.gitignore` and `.prettierignore`, including generated output and `bun.lock`. The VS Code Prettier extension also uses the locally installed version and configuration.
 
 The project pins TypeScript 6.0.3 and typescript-eslint 8.72.1, whose supported TypeScript range ends below 6.1.0. Bun's type package matches runtime version 1.3.14. Check compatibility when updating these packages together and include `bun.lock` with dependency changes.
 
@@ -184,10 +188,10 @@ flowchart LR
     Docker --> Volume[Named volume retains database files]
 ```
 
-| Compose file | Project | Named volume |
-| --- | --- | --- |
-| `compose.yaml` | `finance-tracker-fresh-local` | `finance-tracker-fresh-local_postgres_data` |
-| `compose.test.yaml` | `finance-tracker-fresh-test` | `finance-tracker-fresh-test_postgres_data` |
+| Compose file              | Project                            | Named volume                                     |
+| ------------------------- | ---------------------------------- | ------------------------------------------------ |
+| `compose.yaml`            | `finance-tracker-fresh-local`      | `finance-tracker-fresh-local_postgres_data`      |
+| `compose.test.yaml`       | `finance-tracker-fresh-test`       | `finance-tracker-fresh-test_postgres_data`       |
 | `compose.production.yaml` | `finance-tracker-fresh-production` | `finance-tracker-fresh-production_postgres_data` |
 
 Compose combines the explicit project name and `postgres_data` key to name each volume. Commands pass `-p` so an inherited `COMPOSE_PROJECT_NAME` cannot select a different project. An explicit global volume name would bypass this project boundary. See [Compose volume names](https://docs.docker.com/reference/compose-file/volumes/#name).

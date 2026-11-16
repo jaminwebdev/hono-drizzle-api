@@ -10,13 +10,13 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.local}
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.local}
     ports:
-      - "127.0.0.1:${POSTGRES_PORT:?Set POSTGRES_PORT in .env.local}:5432"
+      - '127.0.0.1:${POSTGRES_PORT:?Set POSTGRES_PORT in .env.local}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
       test:
         [
-          "CMD-SHELL",
+          'CMD-SHELL',
           'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"',
         ]
       interval: 3s
