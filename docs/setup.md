@@ -151,6 +151,34 @@ bun run test:integration
 
 Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the auth and session suites serially against the guarded test database. It covers registration, login, password preservation, independent hashed session credentials, safe errors, cookie flags, password-change races, bounded limits, session ownership, idle/absolute expiry, and revoked or unavailable sessions. Tests supply a trusted connection-address fixture and delete only their own users and cascading sessions afterward. Cookie flags are checked through Hono requests; real-browser behavior has a later test phase. Stop the test container with `bun run db:test:down` when finished; its volume remains.
 
+## Remove expired sessions manually
+
+Session validation already rejects a session at its 30-minute idle deadline or its absolute expiry time. An expired row can remain in PostgreSQL until you remove it with a maintenance command. Cleanup reclaims storage; authentication does not depend on running it.
+
+Run the command for the database you intend to maintain:
+
+| Command | Explicit environment file | Required database target |
+| ------- | ------------------------- | ------------------------ |
+| `bun run db:sessions:cleanup` | `.env.local` | `APP_ENV=local`, `127.0.0.1:5433`, `finance_tracker_local` |
+| `bun run db:test:sessions:cleanup` | `.env.test` | `APP_ENV=test`, `127.0.0.1:5435`, `finance_tracker_test` |
+| `bun run db:production:sessions:cleanup` | `.env.production` | `APP_ENV=production`, `127.0.0.1:5434`, `finance_tracker_production` |
+
+Each command sets `DATABASE_TASK_MODE` and uses `src/config.ts` to validate the supplied settings. The mode, host, port, and database must match before the command creates a database object. Production cleanup is a host command using the published PostgreSQL port; it does not start or verify the production stack. The selected database must already be running.
+
+Each run captures one current time and deletes at most 100 sessions where `expires_at <= now` or `last_seen_at <= now - 30 minutes`. Equality counts as expired, matching session validation. The command checks expiry again during deletion so it preserves a session refreshed while waiting for a row lock. Live sessions and users remain intact.
+
+```mermaid
+flowchart TD
+    Command[Run the selected cleanup command] --> Guard[Validate settings and exact database target]
+    Guard --> Delete[Delete up to 100 expired sessions]
+    Delete --> Count[Print the deleted count]
+    Count --> Close[Close this command's database pool and exit]
+```
+
+For example, `Deleted 100 expired sessions` means another batch may remain. Run the same command again to process another batch. A zero count means that run removed no rows. A concurrent refresh or logout can reduce the count. Each command exits after one batch; there is no scheduled cleanup or automatic retry. The existing five-second connection and statement timeouts also apply.
+
+Failures print a safe message and exit with a nonzero status. Check the selected settings and PostgreSQL availability before trying again. The command closes its own pool on success or failure and does not start or stop the API or database containers.
+
 ## Check and build
 
 | Command                    | Purpose                                                                         |

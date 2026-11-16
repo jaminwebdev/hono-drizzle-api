@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
+import { cleanupExpiredSessions } from '../../src/cleanup-sessions';
 import { createApp } from '../../src/app';
 import { sessions, users } from '../../src/db/schema';
 import { createTestDatabase } from './setup';
@@ -35,6 +36,119 @@ afterEach(async () => {
   ownedUsers.length = 0;
 });
 afterAll(async () => { await database.$client.close(); });
+
+describe('expired-session cleanup', () => {
+  test('removes only expired sessions, including exact cutoff boundaries', async () => {
+    const now = new Date(Date.now());
+    const fixtures = await Promise.all([
+      seed(new Date(now.getTime() - 1_800_001)),
+      seed(new Date(now.getTime() - 1_800_000)),
+      seed(now, new Date(now.getTime() - 1)),
+      seed(now, now),
+      seed(new Date(now.getTime() - 1_799_999), new Date(now.getTime() + 1)),
+      seed(now, new Date(now.getTime() + 604800_000)),
+    ]);
+
+    await cleanupExpiredSessions(database, now);
+    for (const [index, fixture] of fixtures.entries()) {
+      const remaining = await database.select().from(sessions)
+        .where(eq(sessions.id, fixture.session.id));
+      expect(remaining).toEqual(index < 4 ? [] : [fixture.session]);
+      expect(await database.select({ id: users.id }).from(users)
+        .where(eq(users.id, fixture.user.id))).toEqual([{ id: fixture.user.id }]);
+    }
+    expect(await cleanupExpiredSessions(database, now)).toBe(0);
+  });
+
+  test('removes at most 100 rows and permits repeat runs', async () => {
+    const now = new Date(Date.now());
+    const live = await seed(now, new Date(now.getTime() + 604800_000));
+    await database.insert(sessions).values(Array.from({ length: 101 }, () => ({
+      userId: live.user.id, tokenHash: crypto.randomUUID(), lastSeenAt: now, expiresAt: now,
+    })));
+    expect(await cleanupExpiredSessions(database, now)).toBe(100);
+    expect(await database.select().from(sessions)
+      .where(eq(sessions.userId, live.user.id))).toHaveLength(2);
+    expect(await cleanupExpiredSessions(database, now)).toBe(1);
+    expect(await cleanupExpiredSessions(database, now)).toBe(0);
+    expect(await database.select().from(sessions)
+      .where(eq(sessions.userId, live.user.id))).toEqual([live.session]);
+  });
+
+  test('preserves a session refreshed while deletion waits for its row lock', async () => {
+    const now = new Date(Date.now());
+    const current = await seed(new Date(now.getTime() - 1_800_000));
+    let release!: () => void;
+    let reached!: () => void;
+    const locked = new Promise<void>((resolve) => { reached = resolve; });
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const refreshing = database.transaction(async (tx) => {
+      await tx.update(sessions).set({ lastSeenAt: now })
+        .where(eq(sessions.id, current.session.id));
+      reached();
+      await gate;
+    });
+    let cleanup: Promise<number> | undefined;
+    try {
+      await locked;
+      cleanup = cleanupExpiredSessions(database, now);
+      // Observe an actual lock wait before committing the activity refresh.
+      let waiting = false;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const rows = await database.execute(sql`
+          select 1 from pg_stat_activity
+          where datname = current_database() and wait_event_type = 'Lock'
+            and query like 'delete from "sessions"%'
+        `);
+        if (rows.length) { waiting = true; break; }
+        await Bun.sleep(10);
+      }
+      expect(waiting).toBe(true);
+      release();
+      await refreshing;
+      expect(await cleanup).toBe(0);
+      const [stored] = await database.select().from(sessions)
+        .where(eq(sessions.id, current.session.id));
+      expect(stored!.lastSeenAt).toEqual(now);
+    } finally {
+      release();
+      await refreshing;
+      await cleanup;
+    }
+  });
+
+  test('the test maintenance command cleans expired rows and closes its pool', async () => {
+    const current = await seed(new Date(Date.now() - 1_800_000));
+    const child = Bun.spawn([process.execPath, 'run', 'db:test:sessions:cleanup'], {
+      stdout: 'pipe', stderr: 'pipe',
+    });
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
+    ]);
+    expect(code).toBe(0);
+    expect(stdout).toContain('Deleted 1 expired sessions. Each run removes at most 100 rows');
+    expect(stderr).not.toContain('failed');
+    expect(await database.select().from(sessions)
+      .where(eq(sessions.id, current.session.id))).toHaveLength(0);
+    expect(await database.select({ id: users.id }).from(users)
+      .where(eq(users.id, current.user.id))).toHaveLength(1);
+  });
+
+  test('the command hides connection errors and exits unsuccessfully', async () => {
+    const secret = 'synthetic-cleanup-private-password';
+    const child = Bun.spawn([process.execPath, '--no-env-file', 'src/cleanup-sessions.ts'], {
+      env: { ...process.env, DATABASE_TASK_MODE: 'test', POSTGRES_PASSWORD: secret },
+      stdout: 'pipe', stderr: 'pipe',
+    });
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
+    ]);
+    expect(code).toBe(1);
+    expect(stdout).toBe('');
+    expect(stderr).toBe('Session cleanup failed. Check the selected database settings and PostgreSQL availability.\n');
+    expect(stderr).not.toContain(secret);
+  });
+});
 
 describe('session validation', () => {
   test('returns only the cookie owner and refreshes activity without extending absolute expiry', async () => {

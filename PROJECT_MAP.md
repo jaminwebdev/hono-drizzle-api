@@ -10,6 +10,7 @@ The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, 
 | [src/config.ts](src/config.ts)                           | Validate supplied values without reading environment files.                                                                               |
 | [src/db/client.ts](src/db/client.ts)                     | Create one Drizzle database object backed by Bun's connection pool.                                                                       |
 | [src/db/schema.ts](src/db/schema.ts)                     | Define users and sessions, including email/token uniqueness, user references, timestamps, and session lookup/expiry indexes.              |
+| [src/cleanup-sessions.ts](src/cleanup-sessions.ts) | Guard the selected maintenance target and delete at most 100 expired sessions per manual run. |
 | [drizzle.config.ts](drizzle.config.ts)                   | Guard local/test targets before schema pushes or Studio connect.                                                                          |
 | [tests/integration/setup.ts](tests/integration/setup.ts) | Create test database objects only for the isolated test target.                                                                           |
 | [src/app.ts](src/app.ts)                                 | Build Hono routes with the explicitly supplied database and HTTP settings.                                                                |
