@@ -1,6 +1,6 @@
 # API guide
 
-Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, and the current-user endpoint are available. Logout and finance endpoints come later.
+Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, and the current-user endpoint are available. Logout is available; password changes and finance endpoints come later.
 
 ## Health requests
 
@@ -91,7 +91,7 @@ sequenceDiagram
     API-->>Client: User ID/email and HttpOnly session cookie
 ```
 
-In Requestly, use the collection's **Log in** request and enter the same password used during registration. Check the `Set-Cookie` response and cookie jar after a `200`. Keep `baseUrl` set to `http://127.0.0.1:3000` so the hostname matches the cookie. Do not copy the session value into a variable or script. After login, send the collection's **Current user** request to verify the cookie. Logout comes in the next phase.
+In Requestly, use the collection's **Log in** request and enter the same password used during registration. Check the `Set-Cookie` response and cookie jar after a `200`. Keep `baseUrl` set to `http://127.0.0.1:3000` so the hostname matches the cookie. Do not copy the session value into a variable or script. After login, send the collection's **Current user** request to verify the cookie. Use **Log out** to revoke that session when finished.
 
 ## Current user
 
@@ -110,6 +110,14 @@ flowchart LR
 ```
 
 Only routes that declare this middleware require a session. Registration, login, health checks, and preflight requests keep their existing access rules.
+
+## Log out
+
+Send `POST /api/v1/auth/logout` with the session cookie and an exact allowed `Origin`, such as `http://127.0.0.1:3000`. No request body is needed. In Requestly, use **Log out** after login; the cookie jar sends the credential.
+
+The existing Origin check runs before session validation. The handler deletes only the current session, clears the cookie with matching attributes, and returns `204` with no body. Other sessions for the same user and other users remain valid. Calling the current-user endpoint or logout again with the revoked cookie returns `401`. Missing or unapproved write origins return `403` before any session-store access.
+
+If deletion fails, the response uses the common safe error format and leaves the cookie intact for retry. Logout revokes subsequent requests; a request that already passed session validation may finish.
 
 ## Errors
 

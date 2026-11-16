@@ -1,6 +1,7 @@
 import { and, eq, gt, sql } from 'drizzle-orm';
 import { getCookie, setCookie } from 'hono/cookie';
 import { createMiddleware } from 'hono/factory';
+import type { Context } from 'hono';
 import type { Config } from './config';
 import type { Database } from './db/client';
 import { sessions, users } from './db/schema';
@@ -11,6 +12,12 @@ export type SessionEnv = {
     session: { id: string; user: { id: string; email: string } };
   };
 };
+
+export function clearSessionCookie(c: Context<SessionEnv>, mode: Config['APP_ENV']) {
+  setCookie(c, 'session', '', {
+    httpOnly: true, sameSite: 'Lax', path: '/', maxAge: 0, secure: mode === 'production',
+  });
+}
 
 export function requireSession(database: Database, mode: Config['APP_ENV']) {
   return createMiddleware<SessionEnv>(async (c, next) => {
@@ -41,9 +48,7 @@ export function requireSession(database: Database, mode: Config['APP_ENV']) {
     }
 
     if (!identity) {
-      setCookie(c, 'session', '', {
-        httpOnly: true, sameSite: 'Lax', path: '/', maxAge: 0, secure: mode === 'production',
-      });
+      clearSessionCookie(c, mode);
       throw new ApiError(401, 'UNAUTHENTICATED', 'A valid session is required.');
     }
     c.set('session', identity);

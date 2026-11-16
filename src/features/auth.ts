@@ -10,7 +10,7 @@ import type { Config } from '../config';
 import type { Database } from '../db/client';
 import { sessions, users } from '../db/schema';
 import { ApiError, requireJson, type HttpEnv } from '../http';
-import { requireSession, type SessionEnv } from '../session';
+import { clearSessionCookie, requireSession, type SessionEnv } from '../session';
 
 const commonPasswords = new Set([
   'passwordpassword',
@@ -253,6 +253,12 @@ export function createAuthRoutes(database: Database, mode: Config['APP_ENV']) {
 
   auth.get('/me', requireSession(database, mode), (c) => {
     return c.json({ data: c.get('session').user });
+  });
+
+  auth.post('/logout', requireSession(database, mode), async (c) => {
+    await database.delete(sessions).where(eq(sessions.id, c.get('session').id));
+    clearSessionCookie(c, mode);
+    return c.body(null, 204);
   });
 
   return auth;
