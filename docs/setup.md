@@ -123,7 +123,7 @@ One user can have several sessions, such as separate logins on two devices. Each
 
 `token_hash` stores the SHA-256 hash of the random session credential issued by login in an HttpOnly cookie. The raw credential is never stored in the database. Writes require an approved Origin, with an explicit browser allowlist and SameSite cookies, as explained in the [API guide](api.md#origins-and-browser-access).
 
-`created_at` records session creation, `last_seen_at` records the latest accepted use, and `expires_at` is the absolute expiry time. The first two default to insertion time; login supplies a deadline seven days later. Session validation, which comes next, will enforce idle and absolute expiry and update `last_seen_at`. Timestamps alone do not enforce expiry or delete rows. The unique credential index supports session lookup, while separate indexes on `user_id`, `last_seen_at`, and `expires_at` support revoking a user's sessions and cleaning up idle or expired rows.
+`created_at` records session creation, `last_seen_at` records the latest accepted use, and `expires_at` is the absolute expiry time. The first two default to insertion time; login supplies a deadline seven days later. Session validation enforces idle and absolute expiry and updates `last_seen_at` on accepted requests. Timestamps alone do not enforce expiry or delete rows. The unique credential index supports session lookup, while separate indexes on `user_id`, `last_seen_at`, and `expires_at` support revoking a user's sessions and cleaning up idle or expired rows.
 
 | Command                | Purpose                                                                     |
 | ---------------------- | --------------------------------------------------------------------------- |
@@ -149,7 +149,7 @@ bun run db:test:push
 bun run test:integration
 ```
 
-Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the auth suite serially against the guarded test database. It covers registration, login, password preservation, independent hashed session credentials, safe errors, cookie flags, password-change races, and bounded limits. Tests supply a trusted connection-address fixture and delete only their own users and cascading sessions afterward. Cookie flags are checked through Hono requests; real-browser behavior has a later test phase. Stop the test container with `bun run db:test:down` when finished; its volume remains.
+Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the auth and session suites serially against the guarded test database. It covers registration, login, password preservation, independent hashed session credentials, safe errors, cookie flags, password-change races, bounded limits, session ownership, idle/absolute expiry, and revoked or unavailable sessions. Tests supply a trusted connection-address fixture and delete only their own users and cascading sessions afterward. Cookie flags are checked through Hono requests; real-browser behavior has a later test phase. Stop the test container with `bun run db:test:down` when finished; its volume remains.
 
 ## Check and build
 

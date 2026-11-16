@@ -10,6 +10,7 @@ import type { Config } from '../config';
 import type { Database } from '../db/client';
 import { sessions, users } from '../db/schema';
 import { ApiError, requireJson, type HttpEnv } from '../http';
+import { requireSession, type SessionEnv } from '../session';
 
 const commonPasswords = new Set([
   'passwordpassword',
@@ -48,7 +49,7 @@ type AttemptWindow = { count: number; expiresAt: number };
 
 function createAttemptLimit(maxAttempts: number, windowMs: number) {
   const attempts = new Map<string, AttemptWindow>();
-  return (c: Context<HttpEnv>, key: string) => {
+  return (c: Pick<Context<HttpEnv>, 'header'>, key: string) => {
     const now = Date.now();
     for (const [key, entry] of attempts) {
       if (entry.expiresAt <= now) attempts.delete(key);
@@ -96,7 +97,7 @@ function createIpAttemptLimit(maxAttempts: number, windowMs: number) {
 }
 
 export function createAuthRoutes(database: Database, mode: Config['APP_ENV']) {
-  const auth = new Hono<HttpEnv>();
+  const auth = new Hono<SessionEnv>();
   const limitRegistrationIp = createIpAttemptLimit(5, 3_600_000);
   const limitLoginIp = createIpAttemptLimit(30, 900_000);
   const limitLoginEmail = createAttemptLimit(10, 900_000);
@@ -249,6 +250,10 @@ export function createAuthRoutes(database: Database, mode: Config['APP_ENV']) {
       }
     },
   );
+
+  auth.get('/me', requireSession(database, mode), (c) => {
+    return c.json({ data: c.get('session').user });
+  });
 
   return auth;
 }

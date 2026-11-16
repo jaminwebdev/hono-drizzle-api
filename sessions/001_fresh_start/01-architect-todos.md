@@ -1,6 +1,6 @@
 # Finance tracker architecture and implementation todos
 
-This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases through 9 are complete. Later phases remain subject to their individual approval gates.
+This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases through 10 are complete. Later phases remain subject to their individual approval gates.
 
 ## Spec summary
 
@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Unimplemented details such as idle expiry and future endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 9 are complete, including the requested simplicity retrospective and uniform error-handling cleanup. Phase 10 requires approval. Local development uses HTTP, following the user's removal of the local HTTPS phase.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Unimplemented details such as future endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 10 are complete, including the requested simplicity retrospective and uniform error-handling cleanup. Phase 11 requires approval. Local development uses HTTP, following the user's removal of the local HTTPS phase.
 
 ### Build one feature at a time
 
@@ -484,7 +484,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete, including the phase 9 cleanup follow-ups. Phase 4 was removed at the user's request. Phase 10 is next and requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete, including the phase 9 cleanup follow-ups. Phase 4 was removed at the user's request. Phase 10 is complete; phase 11 is next and requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests, guides, and request examples, not permission to create an absent file early. The scaffold has eight planned files; later phases stay within nine. Before implementation, split a phase that would reach ten files or mix separate behaviors. Phase 5B is the documented exception for short settings call-site, test, and current-guide updates; it contains only the origin/CORS policy. Split within the same feature and update phase references before proceeding.
 
@@ -736,17 +736,19 @@ Phase 9 and its cleanup are complete. Carry these decisions into each later phas
 
 Latest verification passed on Bun 1.3.14: type checking, lint, 70 unit tests, 44 auth integration tests, build, frozen offline installation, and built-in Valibot generator checks. The test push and local read-only preview reported no schema changes. The test container was stopped with its volume preserved; the local database stayed running.
 
-Next is phase 10 only, after approval: session middleware and GET `/api/v1/auth/me`. Keep logout, password changes, and finance work in their later phases.
+Phase 10 now implements session middleware and GET `/api/v1/auth/me`. Keep logout, password changes, and finance work in their later phases.
 
 ### Phase 10. Validate sessions through the current-user endpoint
 
-Expected files, 6: `src/session.ts`, `src/features/auth.ts`, `tests/integration/session.test.ts`, `docs/api.md`, `requests/auth.json`, `PROJECT_MAP.md`.
+Review files, 8: `src/session.ts`, `src/features/auth.ts`, `tests/integration/session.test.ts`, `docs/api.md`, `requests/auth.json`, `PROJECT_MAP.md`, `docs/setup.md`, and this plan.
 
-- [ ] Introduce concrete session middleware that checks cookie shape, hashed lookup, idle/absolute expiry, and current user; update last_seen_at conditionally.
-- [ ] Add GET /api/v1/auth/me using that middleware and returning only the current user's public identity; extend the existing API guide, Requestly collection, and code map.
-- [ ] Test missing, malformed, expired, revoked, and unavailable sessions, boundary times, and user identity separation; clear unusable cookies.
+- [x] Introduce concrete session middleware that checks cookie shape, hashed lookup, idle/absolute expiry, and current user; update last_seen_at conditionally.
+- [x] Add GET /api/v1/auth/me using that middleware and returning only the current user's public identity; extend the existing API guide, Requestly collection, and code map.
+- [x] Test missing, malformed, expired, revoked, and unavailable sessions, boundary times, and user identity separation; clear unusable cookies.
 
 Acceptance: S6–S8; PROJECT_MAP R3, R6–R8, R10–R11. Middleware is introduced for a real endpoint and exported for later finance routes. No global auth mount blocks registration, login, health, or preflight. All session-store failures fail closed.
+
+Validation: Type checking, lint, build, all 70 unit tests, and all 60 integration tests passed on Bun 1.3.14. Session tests cover exact expiry boundaries, identity separation, revoked credentials, cookie clearing, store failures, and reuse of a real login cookie. No schema changes, dependencies, logout, or finance behavior were added. The test container was stopped with its volume preserved; no development API was started.
 
 Suggested commit: `feat: validate sessions and expose the current user`
 
@@ -1208,7 +1210,7 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Is each review bounded?                            | Earlier reviews fit nine tracked files or fewer. Phase 5B is a documented 12-file exception for one origin/CORS policy, including short settings call-site changes, their tests, and accurate docs. Response negotiation and logging are separate in 5C. Other phases keep the nine-file target and their own gates. |
 | Are repetitive catalogs still reviewable?          | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small.                                                         |
 | Is push-only schema management preserved?          | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset.                                                                                                                                 |
-| Is approval preserved?                             | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete; phases 10–41 require their own approval.                                                                                     |
+| Is approval preserved?                             | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete; phases 11–41 require their own approval.                                                                                     |
 
 Structural checks confirmed consecutive phase numbers, matching feature order, 44 approval gates after splitting phases 3 and 5 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Phase 5A passed common-error and JSON-reader tests, type checking, lint, and build. Phase 5B passed origin/CORS policy tests, configuration checks, type checking, lint, and build. Phase 5C passed negotiation and metadata-log tests, type checking, lint, and build. Feature and browser end-to-end checks remain for their own phases.
 
@@ -1220,12 +1222,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 9 and its cleanup follow-ups are complete. Login issues an HttpOnly session cookie after password verification and locked session creation. Phase 10 remains unapproved. Local development remains on HTTP.
+Status: Phase 9 and its cleanup follow-ups are complete. Login issues an HttpOnly session cookie after password verification and locked session creation. Phase 10 is complete; phase 11 requires approval. Local development remains on HTTP.
 
 Handoff note: Use the [current handoff before phase 10](#current-handoff-before-phase-10) for validation, throttling, Drizzle, and documentation decisions. Phase 10 introduces session validation for GET /api/v1/auth/me without changing registration/login access. Keep logout, password change, finance tables, and any separate token mechanism out of that phase.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing required Origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Approve phase 10 when ready to add session validation and the current-user endpoint. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review phase 10 and try Current user in Requestly, then approve phase 11 for logout. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the architect skill. "Implement phase 10 only after approval. Add session validation for GET /api/v1/auth/me, including malformed/expired/revoked credentials, idle and absolute deadlines, and last-seen updates. Keep logout and finance routes for their own phases."
+Suggested next specialist and prompt: Continue with the architect skill. "Implement phase 11 only after approval. Add current-session logout using the existing session middleware and Origin check. Keep password changes and finance routes for later phases."

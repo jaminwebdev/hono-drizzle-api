@@ -1,6 +1,6 @@
 # API guide
 
-Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration and login are available. Session validation, logout, and finance endpoints come later.
+Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, and the current-user endpoint are available. Logout and finance endpoints come later.
 
 ## Health requests
 
@@ -91,7 +91,25 @@ sequenceDiagram
     API-->>Client: User ID/email and HttpOnly session cookie
 ```
 
-In Requestly, use the collection's **Log in** request and enter the same password used during registration. Check the `Set-Cookie` response and cookie jar after a `200`. Keep `baseUrl` set to `http://127.0.0.1:3000` so the hostname matches the cookie. Do not copy the session value into a variable or script. The server now issues sessions; `/api/v1/auth/me`, session expiry validation, and logout are separate later steps.
+In Requestly, use the collection's **Log in** request and enter the same password used during registration. Check the `Set-Cookie` response and cookie jar after a `200`. Keep `baseUrl` set to `http://127.0.0.1:3000` so the hostname matches the cookie. Do not copy the session value into a variable or script. After login, send the collection's **Current user** request to verify the cookie. Logout comes in the next phase.
+
+## Current user
+
+Send `GET /api/v1/auth/me` after login. Requestly sends the session cookie from its cookie jar. This GET needs no Origin header or body. Success returns `200` with `{ "data": { "id": "...", "email": "..." } }` for the cookie's owner.
+
+`requireSession` in `src/session.ts` checks the credential shape, hashes it, and conditionally updates the matching session only if its absolute expiry is still in the future and its last accepted use was less than 30 minutes ago. Exactly 30 minutes of inactivity expires it. Successful validation refreshes `last_seen_at` without extending the seven-day absolute deadline or reissuing the cookie. The handler receives the session ID and public user identity through Hono's context.
+
+Missing, malformed, unknown, revoked, or expired credentials return `401 UNAUTHENTICATED` and clear the cookie using matching attributes. A session-store failure returns a safe `503 SERVICE_UNAVAILABLE` and preserves the cookie for retry. Expired rows remain in the database until the later cleanup phase.
+
+```mermaid
+flowchart LR
+    Cookie[Session cookie] --> Shape[Check shape and hash credential]
+    Shape --> Store[Check expiry and refresh activity in PostgreSQL]
+    Store --> User[Load public user identity]
+    User --> Handler[Return current user]
+```
+
+Only routes that declare this middleware require a session. Registration, login, health checks, and preflight requests keep their existing access rules.
 
 ## Errors
 
@@ -114,6 +132,7 @@ The request ID matches the response header. The timestamp uses UTC. Unexpected f
 | Status | Code                     | Meaning                                                                                                          |
 | ------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
 | `400`  | `INVALID_INPUT`          | The JSON body is empty, malformed, or contains invalid credential fields.                                        |
+| `401` | `UNAUTHENTICATED` | A protected route requires a valid, unexpired session. |
 | `401`  | `INVALID_CREDENTIALS`    | The login email or password is incorrect, or the password changed during verification.                           |
 | `403`  | `ORIGIN_REJECTED`        | A write has a missing or unapproved Origin.                                                                      |
 | `404`  | `NOT_FOUND`              | No resource matches the URL.                                                                                     |
@@ -125,7 +144,7 @@ The request ID matches the response header. The timestamp uses UTC. Unexpected f
 | `429`  | `RATE_LIMITED`           | An authentication attempt or password-processing limit was reached. `Retry-After` gives seconds before retrying. |
 | `500`  | `INTERNAL_ERROR`         | An unexpected application failure occurred.                                                                      |
 | `503`  | `DATABASE_UNAVAILABLE`   | The readiness query failed.                                                                                      |
-| `503`  | `SERVICE_UNAVAILABLE`    | A credential endpoint could not determine the connection's peer address.                                         |
+| `503`  | `SERVICE_UNAVAILABLE`    | Connection information or session verification is unavailable.                                         |
 
 In Requestly, send `GET /missing` to see a `404`. To see a `405`, send `POST /health/live` with `Origin: http://127.0.0.1:3000`; that method is unsupported even with an allowed origin. Neither request needs a body. Inspect `X-Request-Id` and, for the method error, `Allow` in the response headers.
 
@@ -153,7 +172,7 @@ An origin is a scheme, hostname, and port, such as `http://127.0.0.1:3000`. Path
 
 Every POST, PUT, PATCH, or DELETE request must include an `Origin` exactly matching `API_ORIGIN` or an explicitly allowed browser origin. Missing values, `null`, and unlisted values return `403 ORIGIN_REJECTED`. GET and HEAD need no Origin.
 
-For Requestly, leave `CORS_ORIGINS` empty and add the `Origin` header to write requests. CORS means cross-origin resource sharing; browsers use it to decide whether a page may read another origin's responses. Requestly desktop does not need browser CORS permission. Origin checks do not authenticate a caller. Login issues the session cookie; session validation on protected endpoints comes next.
+For Requestly, leave `CORS_ORIGINS` empty and add the `Origin` header to write requests. CORS means cross-origin resource sharing; browsers use it to decide whether a page may read another origin's responses. Requestly desktop does not need browser CORS permission. Origin checks do not authenticate a caller. Login issues the session cookie; the current-user endpoint validates the session cookie.
 
 To allow a separate browser frontend, set an explicit list, for example `CORS_ORIGINS=http://127.0.0.1:5173`. Keep the same hostname when using local session cookies. Hono's CORS middleware allows credentials only for listed origins and exposes `ETag`, `Location`, and `X-Request-Id`. It allows GET, HEAD, POST, PUT, PATCH, and DELETE with `Content-Type` and `If-Match` request headers. Wildcard origins are rejected.
 

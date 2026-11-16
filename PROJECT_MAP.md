@@ -2,7 +2,7 @@
 
 ## Code map
 
-The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks, shared HTTP handling, email/password registration, and login with an HttpOnly session cookie. The users and sessions tables are defined. Session validation and finance tables are not implemented yet.
+The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks, shared HTTP handling, email/password registration, and login with an HttpOnly session cookie. The users and sessions tables are defined. The current-user endpoint validates session cookies and expiry. Finance tables are not implemented yet.
 
 | File                                                     | Responsibility                                                                                                                            |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
@@ -14,6 +14,7 @@ The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, 
 | [tests/integration/setup.ts](tests/integration/setup.ts) | Create test database objects only for the isolated test target.                                                                           |
 | [src/app.ts](src/app.ts)                                 | Build Hono routes with the explicitly supplied database and HTTP settings.                                                                |
 | [src/http.ts](src/http.ts)                               | Install shared middleware and common errors, and provide the JSON content-type guard.                                                     |
+| [src/session.ts](src/session.ts) | Validate session credentials and expiry, refresh activity, and supply the session and public user identity to protected routes. |
 | [src/features/auth.ts](src/features/auth.ts)             | Validate credentials, bound auth attempts/password work, register users, and create hashed sessions with environment-appropriate cookies. |
 
 Importing or constructing the app opens no database connection and starts no server. Bootstrap owns the resources and passes them to the app.
