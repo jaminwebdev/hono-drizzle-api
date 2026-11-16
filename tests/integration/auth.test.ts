@@ -877,3 +877,217 @@ describe('login limits', () => {
     }
   });
 });
+
+const newPassword = '  my replacement passphrase 🐢  ';
+async function changePassword(
+  app: ReturnType<typeof fixture>,
+  token: string,
+  body: unknown,
+  headers = {},
+) {
+  return app.request(
+    '/api/v1/auth/password',
+    {
+      method: 'POST',
+      headers: {
+        Origin: origin,
+        'Content-Type': 'application/json',
+        Cookie: `session=${token}`,
+        ...headers,
+      },
+      body: JSON.stringify(body),
+    },
+    {
+      requestIP: () => ({ address: '192.0.2.1', family: 'IPv4', port: 12345 }),
+    },
+  );
+}
+const currentUser = (app: ReturnType<typeof fixture>, token: string) =>
+  app.request('/api/v1/auth/me', {
+    headers: { Cookie: `session=${token}` },
+  });
+
+describe('password changes', () => {
+  test('changes the hash, revokes all own sessions, preserves another user, and requires fresh login', async () => {
+    const user = await seedUser();
+    const other = await seedUser();
+    const app = fixture();
+    const first = credential(await login(app, { email: user.email, password }));
+    const second = credential(
+      await login(app, { email: user.email, password }),
+    );
+    const otherToken = credential(
+      await login(app, { email: other.email, password }),
+    );
+    const response = await changePassword(app, first, {
+      currentPassword: password,
+      newPassword,
+    });
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
+    expect(response.headers.get('Set-Cookie')).toContain('Max-Age=0');
+    for (const token of [first, second])
+      expect((await currentUser(app, token)).status).toBe(401);
+    expect((await currentUser(app, otherToken)).status).toBe(200);
+    expect((await login(app, { email: user.email, password })).status).toBe(
+      401,
+    );
+    expect(
+      (await login(app, { email: user.email, password: newPassword })).status,
+    ).toBe(200);
+    const [stored] = await database
+      .select()
+      .from(users)
+      .where(eq(users.id, user.id));
+    expect(stored!.passwordHash).not.toBe(user.passwordHash);
+    expect(await Bun.password.verify(newPassword, stored!.passwordHash)).toBe(
+      true,
+    );
+    expect(
+      await Bun.password.verify(newPassword.trim(), stored!.passwordHash),
+    ).toBe(false);
+    expect(stored!.updatedAt.getTime()).toBeGreaterThanOrEqual(
+      user.updatedAt.getTime(),
+    );
+    for (const secret of [password, newPassword, stored!.passwordHash])
+      expect(JSON.stringify(log.mock.calls)).not.toContain(secret);
+  });
+
+  test.each([
+    { currentPassword: 'wrong', newPassword, status: 401 },
+    { currentPassword: password, newPassword: 'short', status: 400 },
+    { currentPassword: password, newPassword: 'PASSWORDPASSWORD', status: 400 },
+    { currentPassword: '', newPassword, status: 400 },
+    {
+      currentPassword: password,
+      newPassword,
+      userId: 'forbidden',
+      status: 400,
+    },
+  ])(
+    'rejects invalid input or the wrong current password without changing credentials',
+    async (input) => {
+      const user = await seedUser();
+      const app = fixture();
+      const token = credential(
+        await login(app, { email: user.email, password }),
+      );
+      const { status, ...body } = input;
+      expect((await changePassword(app, token, body)).status).toBe(status);
+      const [stored] = await database
+        .select()
+        .from(users)
+        .where(eq(users.id, user.id));
+      expect(stored!.passwordHash).toBe(user.passwordHash);
+      expect((await currentUser(app, token)).status).toBe(200);
+    },
+  );
+
+  test('requires an approved Origin, a session, and JSON before password work', async () => {
+    const app = fixture();
+    expect(
+      (await changePassword(app, 'invalid', {}, { Origin: 'null' })).status,
+    ).toBe(403);
+    expect((await changePassword(app, 'invalid', {})).status).toBe(401);
+    const user = await seedUser();
+    const token = credential(await login(app, { email: user.email, password }));
+    expect(
+      (await changePassword(app, token, {}, { 'Content-Type': 'text/plain' }))
+        .status,
+    ).toBe(415);
+  });
+
+  test('bounds current-password guesses per user', async () => {
+    const user = await seedUser();
+    const app = fixture();
+    const token = credential(await login(app, { email: user.email, password }));
+    for (let index = 0; index < 5; index++) {
+      expect(
+        (
+          await changePassword(app, token, {
+            currentPassword: 'wrong',
+            newPassword,
+          })
+        ).status,
+      ).toBe(401);
+    }
+    const blocked = await changePassword(app, token, {
+      currentPassword: password,
+      newPassword,
+    });
+    expect(blocked.status).toBe(429);
+    expect(Number(blocked.headers.get('Retry-After'))).toBeGreaterThan(0);
+  });
+
+  test('an old-password login verified before the change cannot create a session afterward', async () => {
+    const user = await seedUser();
+    const app = fixture();
+    const token = credential(await login(app, { email: user.email, password }));
+    const realVerify = Bun.password.verify.bind(Bun.password);
+    let release!: () => void;
+    let reached!: () => void;
+    const paused = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const verify = spyOn(Bun.password, 'verify').mockImplementationOnce(
+      async (value, hash) => {
+        const valid = await realVerify(value, hash);
+        reached();
+        await gate;
+        return valid;
+      },
+    );
+    const pending = login(app, { email: user.email, password });
+    try {
+      await paused;
+      const response = await changePassword(app, token, {
+        currentPassword: password,
+        newPassword,
+      });
+      expect(response.status).toBe(204);
+      release();
+      const stale = await pending;
+      expect(stale.status).toBe(401);
+      expect(stale.headers.has('Set-Cookie')).toBe(false);
+      expect(
+        await database
+          .select()
+          .from(sessions)
+          .where(eq(sessions.userId, user.id)),
+      ).toHaveLength(0);
+    } finally {
+      release();
+      await pending;
+      verify.mockRestore();
+    }
+  });
+
+  test('preserves the password and cookie when the transaction fails', async () => {
+    const user = await seedUser();
+    const app = fixture();
+    const token = credential(await login(app, { email: user.email, password }));
+    const transaction = spyOn(database, 'transaction').mockRejectedValue(
+      new Error('private-change-error'),
+    );
+    try {
+      const response = await changePassword(app, token, {
+        currentPassword: password,
+        newPassword,
+      });
+      expect(response.status).toBe(500);
+      expect(response.headers.has('Set-Cookie')).toBe(false);
+      expect(await response.text()).not.toContain('private-change-error');
+    } finally {
+      transaction.mockRestore();
+    }
+    expect((await currentUser(app, token)).status).toBe(200);
+    const [stored] = await database
+      .select()
+      .from(users)
+      .where(eq(users.id, user.id));
+    expect(stored!.passwordHash).toBe(user.passwordHash);
+  });
+});

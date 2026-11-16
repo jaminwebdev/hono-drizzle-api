@@ -10,7 +10,11 @@ import type { Config } from '../config';
 import type { Database } from '../db/client';
 import { sessions, users } from '../db/schema';
 import { ApiError, requireJson, type HttpEnv } from '../http';
-import { clearSessionCookie, requireSession, type SessionEnv } from '../session';
+import {
+  clearSessionCookie,
+  requireSession,
+  type SessionEnv,
+} from '../session';
 
 const commonPasswords = new Set([
   'passwordpassword',
@@ -40,6 +44,10 @@ export const registrationSchema = v.strictObject({
 const loginSchema = v.strictObject({
   email: emailSchema,
   password: v.pipe(v.string(), v.minCodePoints(1), v.maxCodePoints(128)),
+});
+const passwordChangeSchema = v.strictObject({
+  currentPassword: loginSchema.entries.password,
+  newPassword: registrationSchema.entries.password,
 });
 // A public dummy hash gives unknown emails the same password-verification work.
 const dummyPasswordHash =
@@ -101,6 +109,8 @@ export function createAuthRoutes(database: Database, mode: Config['APP_ENV']) {
   const limitRegistrationIp = createIpAttemptLimit(5, 3_600_000);
   const limitLoginIp = createIpAttemptLimit(30, 900_000);
   const limitLoginEmail = createAttemptLimit(10, 900_000);
+  const limitPasswordIp = createIpAttemptLimit(10, 900_000);
+  const limitPasswordUser = createAttemptLimit(5, 900_000);
   let activePasswordWork = 0;
 
   auth.post(
@@ -260,6 +270,81 @@ export function createAuthRoutes(database: Database, mode: Config['APP_ENV']) {
     clearSessionCookie(c, mode);
     return c.body(null, 204);
   });
+
+  auth.post(
+    '/password',
+    limitPasswordIp,
+    requireSession(database, mode),
+    requireJson,
+    sValidator('json', passwordChangeSchema, (result) => {
+      if (!result.success) {
+        throw new ApiError(
+          400,
+          'INVALID_INPUT',
+          'Provide only currentPassword and a newPassword meeting the registration password rules.',
+        );
+      }
+    }),
+    async (c) => {
+      const { currentPassword, newPassword } = c.req.valid('json');
+      const userId = c.get('session').user.id;
+      limitPasswordUser(c, userId);
+      if (activePasswordWork >= 2) {
+        c.header('Retry-After', '1');
+        throw new ApiError(
+          429,
+          'RATE_LIMITED',
+          'Password processing is temporarily full.',
+        );
+      }
+      activePasswordWork++;
+      try {
+        const [user] = await database
+          .select({ passwordHash: users.passwordHash })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+        if (
+          !user ||
+          !(await Bun.password.verify(currentPassword, user.passwordHash))
+        ) {
+          throw new ApiError(
+            401,
+            'INVALID_CREDENTIALS',
+            'The current password is incorrect.',
+          );
+        }
+        const passwordHash = await Bun.password.hash(newPassword, {
+          algorithm: 'argon2id',
+          memoryCost: 19456,
+          timeCost: 2,
+        });
+        await database.transaction(async (tx) => {
+          const [current] = await tx
+            .select({ passwordHash: users.passwordHash })
+            .from(users)
+            .where(eq(users.id, userId))
+            .for('update');
+          if (!current || current.passwordHash !== user.passwordHash) {
+            throw new ApiError(
+              401,
+              'INVALID_CREDENTIALS',
+              'The password changed during verification. Log in again.',
+            );
+          }
+          await tx
+            .update(users)
+            .set({ passwordHash, updatedAt: new Date() })
+            .where(eq(users.id, userId));
+          await tx.delete(sessions).where(eq(sessions.userId, userId));
+        });
+        clearSessionCookie(c, mode);
+        return c.body(null, 204);
+      } finally {
+        activePasswordWork--;
+      }
+    },
+  );
 
   return auth;
 }

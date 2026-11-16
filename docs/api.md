@@ -1,6 +1,6 @@
 # API guide
 
-Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, and the current-user endpoint are available. Logout is available; password changes and finance endpoints come later.
+Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, and the current-user endpoint are available. Logout and password changes are available; finance endpoints come later.
 
 ## Health requests
 
@@ -110,6 +110,24 @@ flowchart LR
 ```
 
 Only routes that declare this middleware require a session. Registration, login, health checks, and preflight requests keep their existing access rules.
+
+## Change a password
+
+For how Bun SQL and Drizzle commit or roll back the writes, see [database transactions](database-transactions.md).
+
+Send `POST /api/v1/auth/password` with the session cookie, an allowed `Origin`, and `Content-Type: application/json`:
+
+```json
+{"currentPassword":"your current passphrase","newPassword":"your replacement passphrase"}
+```
+
+`newPassword` follows the registration password rules and preserves spaces and case. Extra fields are rejected. An incorrect current password returns `401 INVALID_CREDENTIALS`. Invalid input returns `400 INVALID_INPUT`.
+
+After verifying the current password, the handler hashes the replacement, locks the user row, and rechecks the stored hash. It updates the password and `updated_at`, then deletes all that user's sessions in the same database transaction. Login takes the same user-row lock and rechecks its verified hash, preventing an old-password login from creating a session after the change. Other users keep their sessions.
+
+Success returns `204` with no body and clears the current cookie. Log in again with the replacement password. In Requestly, fill in the blank fields of **Change password** locally. The collection contains no passwords or session credentials.
+
+Limits are ten attempts per IP and five validated attempts per user in fixed 15-minute windows. IP throttling runs before session and input validation. Password changes share the two-operation password-work cap with registration and login. Limits return `429` with `Retry-After`. A transaction failure returns a safe error and keeps the cookie; the database transaction prevents a partial password/session change. Email recovery remains deferred.
 
 ## Log out
 
