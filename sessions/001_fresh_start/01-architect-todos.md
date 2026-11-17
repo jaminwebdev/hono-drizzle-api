@@ -1,6 +1,6 @@
 # Finance tracker architecture and implementation todos
 
-This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases through 13 are complete. Later phases remain subject to their individual approval gates.
+This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases through 14 are complete. Later phases remain subject to their individual approval gates.
 
 ## Spec summary
 
@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Unimplemented details such as future endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 13 are complete, including the requested simplicity retrospective and uniform error-handling cleanup. Phases 11–13 are complete; phase 14 requires approval. Local development uses HTTP, following the user's removal of the local HTTPS phase.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Unimplemented details such as future endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 14 are complete, including the requested simplicity retrospective and uniform error-handling cleanup. Phases 11–14 are complete; phase 15 requires approval. Local development uses HTTP, following the user's removal of the local HTTPS phase.
 
 ### Build one feature at a time
 
@@ -404,7 +404,7 @@ Logout deletes the current session and clears its cookie. Password change verifi
 
 Expired rows may remain briefly but never authenticate. Add explicit local/test/production session-cleanup commands that delete only rows past an idle or absolute deadline. Bound their work; do not add a worker or delete finance data. Test expiry with supplied time values rather than long sleeps.
 
-Local development and browser tests use HTTP on loopback, without certificates or trust-store changes. Auth and finance walkthroughs use `http://127.0.0.1:3000` consistently. Do not alternate `localhost` and `127.0.0.1` when reusing host-only cookies. Public deployment requires HTTPS termination and a separate deployment review; it is not part of the local certificate-free workflow.
+Local development and test APIs use HTTP on loopback, without certificates or trust-store changes. Auth and finance walkthroughs use `http://127.0.0.1:3000` consistently. Do not alternate `localhost` and `127.0.0.1` when reusing host-only cookies. Public deployment requires HTTPS termination and a separate deployment review; it is not part of the local certificate-free workflow.
 
 Session references: [OWASP session storage and lifecycle](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html) and [Hono cookie options and prefix rules](https://hono.dev/docs/helpers/cookie).
 
@@ -453,7 +453,7 @@ Add a secret-free Requestly collection under `requests/` incrementally. Auth exa
 
 Unsafe requests use `Origin: {{baseUrl}}`, with `baseUrl` equal to the configured API origin and containing no path. The cookie jar adds the session cookie after login. No additional request or post-response script is needed to prepare authenticated writes.
 
-Every auth phase includes its own tests. Before accounts begin, verify registration, generic login failures, cookie flags, idle/absolute expiry, rejected write origins, current-session logout, password-change revocation, concurrent old-password login, and redaction. Confirm a second user's session survives another user's logout/password change. Run real-browser cookie/origin checks with a test-only page and Bun's runner using browser automation as a library; Requestly tests alone cannot prove browser cookie enforcement. No product frontend is added.
+Every auth phase includes its own tests. Before accounts begin, verify registration, generic login failures, cookie flags, idle/absolute expiry, rejected write origins, current-session logout, password-change revocation, concurrent old-password login, and redaction. Confirm a second user's session survives another user's logout/password change. The user completed manual verification of the current auth flows in Requestly. Keep automated coverage in the existing Bun unit and integration suites. No product frontend is added.
 
 Password recovery, email verification, passkeys, and external providers can extend this design later. Do not add their tables, nullable fields, fake mail delivery, or unfinished endpoints now.
 
@@ -484,7 +484,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete, including the phase 9 cleanup follow-ups. Phase 4 was removed at the user's request. Phases 10–13 are complete; phase 14 is next and requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete, including the phase 9 cleanup follow-ups. Phase 4 was removed at the user's request. Phases 10–14 are complete; phase 15 is next and requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests, guides, and request examples, not permission to create an absent file early. The scaffold has eight planned files; later phases stay within nine. Before implementation, split a phase that would reach ten files or mix separate behaviors. Phase 5B is the documented exception for short settings call-site, test, and current-guide updates; it contains only the origin/CORS policy. Split within the same feature and update phase references before proceeding.
 
@@ -804,7 +804,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Follow-up after phase 13. Remove the password-work cap
 
-Approved by the user on 2026-11-17. This follow-up changes authentication only and does not approve phase 14.
+Approved by the user on 2026-11-17. This follow-up changes authentication only and does not approve later phases.
 
 The original `activePasswordWork` counter allowed only two registration, login, or password-change handlers to run together. Two was a conservative choice without a measured resource requirement. Each slot also covered database work, so a slow query could reject another request even when no password operation was running. The user chose to remove this additional constraint for the trusted local learning project.
 
@@ -822,18 +822,22 @@ Suggested commit: `refactor: remove the shared password-work cap`
 
 PAUSE — user must approve before continuing to next batch.
 
-### Phase 14. Walk through authentication in Requestly and a browser
+### Phase 14. Verify authentication in Requestly
 
-Expected files, 5: `requests/auth.json`, `docs/api.md`, `tests/browser/auth.test.ts`, `package.json`, `bun.lock`.
+Status: Complete based on the user's manual verification, reported on 2026-11-17.
 
-- [ ] Verify the Requestly collection built with each auth endpoint now covers register, login, me, logout, and password change in the current export format.
-- [ ] Document the local HTTP base URL, explicit Origin and cookie jar; verify actual outgoing Cookie headers in the installed desktop build.
-- [ ] Add Bun-run browser checks with browser automation as a library for HttpOnly cookie behavior and rejected cross-site writes; verify production Secure attributes in the endpoint tests.
-- [ ] Run the auth acceptance flow with two users and reconcile the guide with actual cookie/expiry behavior.
+- [x] Record the user's confirmation that the current authentication flows work in Requestly using collections and routes they created independently.
+- [x] Remove the proposed additional test framework, browser suite, dependency installation, and related CI work from the roadmap.
 
-Acceptance: S7–S8; PROJECT_MAP R1–R2, R6–R8, R10–R12. No product frontend or finance tables. Earlier auth phases already have unit/integration tests. The browser check uses the guarded test database and local HTTP origin, without an auth bypass or certificate setup.
+Scope decision: This phase verifies the existing authentication behavior and adds no application feature. The user has completed the manual verification. Existing Bun unit and integration tests remain the automated coverage for validation, cookies, origin checks, expiry, revocation, and concurrent password changes. No import of the tracked collection or additional desktop-header inspection is required to complete this phase.
 
-Suggested commit: `test: verify auth with Requestly and browser cookies`
+Documentation changes, 3: `docs/setup.md`, `01-architect-todos.md`, and `02-backend-todos.md`. No runtime, schema, dependency, or collection changes are needed.
+
+Acceptance: S7–S8; PROJECT_MAP R1–R2, R6–R8, R10–R12. Manual verification is attributed to the user. This documentation update does not claim a new automated run or verification of browser cookie enforcement.
+
+Validation: The user confirmed the current auth flows in Requestly. Roadmap consistency and Git whitespace checks passed. No application tests or services were run for this documentation-only update.
+
+Suggested commit: `docs: record manual auth verification and simplify the test roadmap`
 
 PAUSE — user must approve before continuing to next batch.
 
@@ -1196,7 +1200,7 @@ PAUSE — user must approve before continuing to next batch.
 Expected files, 3: `.github/workflows/ci.yaml`, `package.json`, `docs/setup.md`.
 
 - [ ] Add CI with pinned Bun, frozen dependencies, type checking, lint, build, and unit tests.
-- [ ] Push schema and run host integration/browser tests with per-job PostgreSQL identities, the local HTTP test origin, and guarded cleanup.
+- [ ] Push schema and run host integration tests with per-job PostgreSQL identities, the local HTTP test origin, and guarded cleanup.
 - [ ] Verify two-user isolation checks run and no workflow uses real environment files or prunes unrelated volumes.
 
 Acceptance: S1–S2, S7–S8; PROJECT_MAP R1–R2, R4, R6–R12. Only PostgreSQL runs in Docker for development/integration tests. The existing Bun test runner drives the tests. Keep image automation for the next commit.
@@ -1227,18 +1231,18 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Does phase 1 stay a scaffold?                      | Yes. It contains eight expected setup files and only a liveness request. Auth/database feature files wait for their own phases.                                                                                                                                                                                      |
 | Does auth precede all finance features?            | Yes. HTTP request checks precede registration; local HTTPS was removed at the user's request. Users arrive before registration; sessions before login; session middleware with the real current-user endpoint; the existing required Origin check protects logout, the first authenticated write.                    |
-| Are auth concerns separate commits?                | Yes. Password change and expired-session cleanup are separate gates. Requestly/browser verification follows working auth, with route tests and examples already added earlier.                                                                                                                                       |
+| Are auth concerns separate commits?                | Yes. Password change and expired-session cleanup are separate gates. Manual Requestly verification follows working auth, with route tests and examples already added earlier.                                                                                                                                       |
 | Is schema growth feature-driven?                   | Yes. Users at 6, sessions at 8, accounts at 15, transactions/history at 20, tags at 28, account tag links at 30, transaction tag links at 31, categories at 33, and category assignment at 35. Composite reference keys arrive when their relationship first needs them.                                             |
 | Do finance features finish in learning order?      | Yes. Accounts finish at 19, transactions at 27, tags at 32, and categories at 36. Later features extend the existing endpoints and snapshots without resets or speculative fields.                                                                                                                                   |
 | Were broad original phases reduced?                | Yes. Account list/search, editing/archival, and deletion now have separate commits. Transaction corrections and deletion are separate; category assignment and filtering are separate; image build, stack checks, and CI are separate.                                                                               |
 | Do tests and middleware use current features only? | Yes. Test setup checks the selected database before writes. Session-cleanup tests use only users/sessions. Finance endpoint phases include ownership checks and foreign-user failure tests; schema-only phases inspect current constraints without testing future routes. No delayed global ownership retrofit.      |
-| Does Requestly grow with the API?                  | Yes. The first collection request accompanies registration, then the collection grows with endpoints. The cookie jar handles the session without token extraction or additional token requests. Real-browser tests check browser behavior separately.                                                                |
+| Does Requestly grow with the API?                  | Yes. The first collection request accompanies registration, then the collection grows with endpoints. The cookie jar handles the session without token extraction or additional token requests. Existing Bun tests check cookie attributes and origin handling.                                                                |
 | Is each review bounded?                            | Earlier reviews fit nine tracked files or fewer. Phase 5B is a documented 12-file exception for one origin/CORS policy, including short settings call-site changes, their tests, and accurate docs. Response negotiation and logging are separate in 5C. Other phases keep the nine-file target and their own gates. |
 | Are repetitive catalogs still reviewable?          | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small.                                                         |
 | Is push-only schema management preserved?          | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset.                                                                                                                                 |
-| Is approval preserved?                             | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete; phases 14–41 require their own approval.                                                                                     |
+| Is approval preserved?                             | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete; phases 15–41 require their own approval.                                                                                     |
 
-Structural checks confirmed consecutive phase numbers, matching feature order, 44 approval gates after splitting phases 3 and 5 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Phase 5A passed common-error and JSON-reader tests, type checking, lint, and build. Phase 5B passed origin/CORS policy tests, configuration checks, type checking, lint, and build. Phase 5C passed negotiation and metadata-log tests, type checking, lint, and build. Feature and browser end-to-end checks remain for their own phases.
+Structural checks confirmed consecutive phase numbers, matching feature order, 44 approval gates after splitting phases 3 and 5 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Phase 5A passed common-error and JSON-reader tests, type checking, lint, and build. Phase 5B passed origin/CORS policy tests, configuration checks, type checking, lint, and build. Phase 5C passed negotiation and metadata-log tests, type checking, lint, and build. Future feature checks remain for their own phases.
 
 Before each implementation gate, re-estimate the actual diff. Except for the documented settings-wiring exception in 5B, split a phase if it would exceed nine tracked files, introduce a second independent behavior, or require too much new code to explain in one request walkthrough. This rule applies even when a phase has only three todos.
 
@@ -1248,12 +1252,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 9 and its cleanup follow-ups are complete. Login issues an HttpOnly session cookie after password verification and locked session creation. Phases 10–13 are complete; phase 14 requires approval. Local development remains on HTTP.
+Status: Phase 9 and its cleanup follow-ups are complete. Login issues an HttpOnly session cookie after password verification and locked session creation. Phases 10–14 are complete; phase 15 requires approval. Local development remains on HTTP.
 
-Handoff note: Use the [current handoff before phase 10](#current-handoff-before-phase-10) for validation, throttling, Drizzle, and documentation decisions. Phase 13 now provides guarded manual cleanup with a 100-row limit. See [the backend contract](02-backend-todos.md) for its design and the carried-forward roadmap. Phase 14 reviews the existing auth flow in Requestly and a browser; finance work starts later.
+Handoff note: Use the [current handoff before phase 10](#current-handoff-before-phase-10) for validation, throttling, Drizzle, and documentation decisions. Phase 13 now provides guarded manual cleanup with a 100-row limit. See [the backend contract](02-backend-todos.md) for its design and the carried-forward roadmap. Phase 14 is complete based on the user's manual Requestly verification. Phase 15 introduces only the owned accounts table after review and approval.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing required Origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review phase 13 and make the commit when ready, then review phase 14 before approving it. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review this documentation update, then review phase 15 before approving it. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the backend-expert skill. "Review phase 14 before implementation. Verify the existing authentication walkthrough in Requestly and a browser. Keep finance work for later phases."
+Suggested next specialist and prompt: Continue with the backend-expert skill. "Review phase 15 before implementation. Add only the owned accounts table after approval, following the existing schema-push workflow."

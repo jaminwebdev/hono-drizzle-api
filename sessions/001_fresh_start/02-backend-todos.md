@@ -1,6 +1,6 @@
 # Phase 13 review: expired-session cleanup
 
-Status: Phase 13 is implemented and verified, awaiting user diff review. Phases through 13 are complete. Phase 14 requires separate approval.
+Status: Phase 13 is implemented and verified, awaiting user diff review. Phases through 14 are complete. Phase 15 requires separate approval.
 
 ## Roadmap continuity
 
@@ -63,7 +63,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Remaining roadmap carried forward
 
-The following phases were carried forward from the original contract. Phase 13 is now complete, with matching evidence in both roadmaps. Phases 14–41 remain unfinished and require their own approval.
+The following phases were carried forward from the original contract. Phases 13 and 14 are now complete, with matching evidence in both roadmaps. Phases 15–41 remain unfinished and require their own approval.
 
 ### Phase 13. Clean up expired session records explicitly
 
@@ -83,7 +83,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Follow-up after phase 13. Remove the password-work cap
 
-Approved by the user on 2026-11-17. This follow-up changes authentication only and does not approve phase 14.
+Approved by the user on 2026-11-17. This follow-up changes authentication only and does not approve later phases.
 
 The original `activePasswordWork` counter allowed only two registration, login, or password-change handlers to run together. Two was a conservative choice without a measured resource requirement. Each slot also covered database work, so a slow query could reject another request even when no password operation was running. The user chose to remove this additional constraint for the trusted local learning project.
 
@@ -101,18 +101,22 @@ Suggested commit: `refactor: remove the shared password-work cap`
 
 PAUSE — user must approve before continuing to next batch.
 
-### Phase 14. Walk through authentication in Requestly and a browser
+### Phase 14. Verify authentication in Requestly
 
-Expected files, 5: `requests/auth.json`, `docs/api.md`, `tests/browser/auth.test.ts`, `package.json`, `bun.lock`.
+Status: Complete based on the user's manual verification, reported on 2026-11-17.
 
-- [ ] Verify the Requestly collection built with each auth endpoint now covers register, login, me, logout, and password change in the current export format.
-- [ ] Document the local HTTP base URL, explicit Origin and cookie jar; verify actual outgoing Cookie headers in the installed desktop build.
-- [ ] Add Bun-run browser checks with browser automation as a library for HttpOnly cookie behavior and rejected cross-site writes; verify production Secure attributes in the endpoint tests.
-- [ ] Run the auth acceptance flow with two users and reconcile the guide with actual cookie/expiry behavior.
+- [x] Record the user's confirmation that the current authentication flows work in Requestly using collections and routes they created independently.
+- [x] Remove the proposed additional test framework, browser suite, dependency installation, and related CI work from the roadmap.
 
-Acceptance: S7–S8; PROJECT_MAP R1–R2, R6–R8, R10–R12. No product frontend or finance tables. Earlier auth phases already have unit/integration tests. The browser check uses the guarded test database and local HTTP origin, without an auth bypass or certificate setup.
+Scope decision: This phase verifies the existing authentication behavior and adds no application feature. The user has completed the manual verification. Existing Bun unit and integration tests remain the automated coverage for validation, cookies, origin checks, expiry, revocation, and concurrent password changes. No import of the tracked collection or additional desktop-header inspection is required to complete this phase.
 
-Suggested commit: `test: verify auth with Requestly and browser cookies`
+Documentation changes, 3: `docs/setup.md`, `01-architect-todos.md`, and `02-backend-todos.md`. No runtime, schema, dependency, or collection changes are needed.
+
+Acceptance: S7–S8; PROJECT_MAP R1–R2, R6–R8, R10–R12. Manual verification is attributed to the user. This documentation update does not claim a new automated run or verification of browser cookie enforcement.
+
+Validation: The user confirmed the current auth flows in Requestly. Roadmap consistency and Git whitespace checks passed. No application tests or services were run for this documentation-only update.
+
+Suggested commit: `docs: record manual auth verification and simplify the test roadmap`
 
 PAUSE — user must approve before continuing to next batch.
 
@@ -475,7 +479,7 @@ PAUSE — user must approve before continuing to next batch.
 Expected files, 3: `.github/workflows/ci.yaml`, `package.json`, `docs/setup.md`.
 
 - [ ] Add CI with pinned Bun, frozen dependencies, type checking, lint, build, and unit tests.
-- [ ] Push schema and run host integration/browser tests with per-job PostgreSQL identities, the local HTTP test origin, and guarded cleanup.
+- [ ] Push schema and run host integration tests with per-job PostgreSQL identities, the local HTTP test origin, and guarded cleanup.
 - [ ] Verify two-user isolation checks run and no workflow uses real environment files or prunes unrelated volumes.
 
 Acceptance: S1–S2, S7–S8; PROJECT_MAP R1–R2, R4, R6–R12. Only PostgreSQL runs in Docker for development/integration tests. The existing Bun test runner drives the tests. Keep image automation for the next commit.
@@ -500,4 +504,4 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Relay
 
-Phase 13 is implemented and verified. The next action is user diff review and a user-made commit. Phase 14 requires its own review and approval before implementation. All remaining phases and their original details are preserved above and in the architecture contract.
+Phases 13 and 14 are complete, including the user-approved removal of the password-work cap and the user's manual Requestly verification. Review phase 15 before implementation. All remaining phases and their approval gates are preserved above and in the architecture contract. The user makes all commits.
