@@ -50,6 +50,14 @@
         "header": [],
         "url": "{{baseUrl}}/api/v1/accounts/{{accountId}}"
       }
+    },
+    {
+      "name": "List accounts",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/v1/accounts?q=checking&archived=false&page=1&limit=25"
+      }
     }
   ]
 }

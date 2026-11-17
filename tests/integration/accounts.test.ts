@@ -82,6 +82,17 @@ type AccountResponse = {
   };
 };
 
+type AccountListResponse = {
+  data: AccountResponse['data'][];
+  pagination: { page: number; limit: number; total: number };
+};
+
+function list(cookie: string | undefined, query = '') {
+  return app.request(`/api/v1/accounts${query ? `?${query}` : ''}`, {
+    headers: cookie ? { Cookie: cookie } : {},
+  });
+}
+
 beforeEach(() => {
   log = spyOn(console, 'log').mockImplementation(() => {});
 });
@@ -308,6 +319,223 @@ describe('account creation and owned details', () => {
       const response = await detail(user.cookie, crypto.randomUUID());
       expect(response.status).toBe(500);
       expect(await response.text()).not.toContain('private-account-select');
+    } finally {
+      select.mockRestore();
+    }
+  });
+});
+
+describe('owned account lists and search', () => {
+  test('bounds pages, counts only the owner, and returns empty pages without losing the total', async () => {
+    const owner = await signedIn();
+    const other = await signedIn();
+    await database.insert(accounts).values([
+      ...Array.from({ length: 101 }, (_, index) => ({
+        userId: owner.id,
+        name: `Account ${String(index).padStart(3, '0')}`,
+        type: 'checking' as const,
+      })),
+      { userId: other.id, name: 'Account 000 foreign', type: 'cash' },
+    ]);
+    const response = await list(owner.cookie);
+    expect(response.status).toBe(200);
+    const first = (await response.json()) as AccountListResponse;
+    expect(first.pagination).toEqual({ page: 1, limit: 25, total: 101 });
+    expect(first.data).toHaveLength(25);
+    expect(first.data[0]!.name).toBe('Account 000');
+    expect(first.data[24]!.name).toBe('Account 024');
+    expect(
+      first.data.every((account) => account.openingBalance === '0.00'),
+    ).toBe(true);
+    const largest = (await (
+      await list(owner.cookie, 'limit=100')
+    ).json()) as AccountListResponse;
+    expect(largest.data).toHaveLength(100);
+    const last = (await (
+      await list(owner.cookie, 'page=2&limit=100')
+    ).json()) as AccountListResponse;
+    expect(last.data.map((account) => account.name)).toEqual(['Account 100']);
+    expect(last.pagination).toEqual({ page: 2, limit: 100, total: 101 });
+    const beyond = (await (
+      await list(owner.cookie, 'page=3&limit=100')
+    ).json()) as AccountListResponse;
+    expect(beyond).toEqual({
+      data: [],
+      pagination: { page: 3, limit: 100, total: 101 },
+    });
+    const secondOwner = (await (
+      await list(other.cookie)
+    ).json()) as AccountListResponse;
+    expect(secondOwner.pagination.total).toBe(1);
+    expect(secondOwner.data.map((account) => account.name)).toEqual([
+      'Account 000 foreign',
+    ]);
+  });
+
+  test('orders equal names by ID consistently across pages', async () => {
+    const owner = await signedIn();
+    const created = await database
+      .insert(accounts)
+      .values(
+        Array.from({ length: 4 }, () => ({
+          userId: owner.id,
+          name: 'Same name',
+          type: 'cash' as const,
+        })),
+      )
+      .returning({ id: accounts.id });
+    const ids: string[] = [];
+    for (const page of [1, 2]) {
+      const body = (await (
+        await list(owner.cookie, `page=${page}&limit=2`)
+      ).json()) as AccountListResponse;
+      ids.push(...body.data.map((account) => account.id));
+    }
+    expect(ids).toEqual(created.map((account) => account.id).sort());
+    expect(new Set(ids).size).toBe(4);
+  });
+
+  test('combines case-insensitive name search and archive filters for rows and totals', async () => {
+    const owner = await signedIn();
+    const other = await signedIn();
+    await database.insert(accounts).values([
+      {
+        userId: owner.id,
+        name: 'Daily Checking',
+        type: 'checking',
+        isArchived: false,
+      },
+      {
+        userId: owner.id,
+        name: 'Old checking',
+        type: 'checking',
+        isArchived: true,
+      },
+      { userId: owner.id, name: 'Savings', type: 'savings', isArchived: true },
+      {
+        userId: other.id,
+        name: 'Foreign checking',
+        type: 'checking',
+        isArchived: true,
+      },
+    ]);
+    for (const [query, names] of [
+      ['q=%20CHECKING%20', ['Daily Checking', 'Old checking']],
+      ['q=checking&archived=false', ['Daily Checking']],
+      ['q=checking&archived=true', ['Old checking']],
+      ['archived=false', ['Daily Checking']],
+      ['archived=true', ['Old checking', 'Savings']],
+      ['q=foreign', []],
+      ['q=missing', []],
+    ] as const) {
+      const response = await list(owner.cookie, query);
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as AccountListResponse;
+      expect(body.data.map((account) => account.name)).toEqual([...names]);
+      expect(body.pagination.total).toBe(names.length);
+    }
+  });
+
+  test('treats percent, underscore, backslash, and SQL-like input literally', async () => {
+    const owner = await signedIn();
+    const names = [
+      'Rate 100%',
+      'Rate 1000',
+      'Part_one',
+      'PartXone',
+      'folder\\cash',
+      'foldercash',
+      "Quote ' account",
+    ];
+    await database.insert(accounts).values(
+      names.map((name) => ({
+        userId: owner.id,
+        name,
+        type: 'cash' as const,
+      })),
+    );
+    for (const [q, expected] of [
+      ['%', ['Rate 100%']],
+      ['_', ['Part_one']],
+      ['\\', ['folder\\cash']],
+      ["'", ["Quote ' account"]],
+      ["' OR true --", []],
+    ] as const) {
+      const response = await list(
+        owner.cookie,
+        new URLSearchParams({ q }).toString(),
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as AccountListResponse;
+      expect(body.data.map((account) => account.name)).toEqual([...expected]);
+      expect(body.pagination.total).toBe(expected.length);
+    }
+  });
+
+  test('returns an empty owned list and accepts the exact maximum offset', async () => {
+    const owner = await signedIn();
+    const response = await list(owner.cookie, 'page=101&limit=100');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      data: [],
+      pagination: { page: 101, limit: 100, total: 0 },
+    });
+  });
+
+  test.each([undefined, 'session=invalid'])(
+    'requires authentication for list requests: %s',
+    async (cookie) => {
+      expect((await list(cookie)).status).toBe(401);
+    },
+  );
+
+  test.each([
+    'page=0',
+    'limit=101',
+    'page=102&limit=100',
+    'q=' + 'a'.repeat(101),
+    'archived=1',
+    'page=1&page=2',
+    'page=1&page=1',
+    'limit=25&limit=25',
+    'q=cash&q=savings',
+    'archived=false&archived=false',
+    'userId=other',
+    'tagId=not-yet-supported',
+    'page=1%0A',
+    'limit=',
+  ])('rejects invalid queries before account queries: %s', async (query) => {
+    const owner = await signedIn();
+    const select = spyOn(database, 'select');
+    try {
+      const response = await list(owner.cookie, query);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'INVALID_INPUT' },
+      });
+      // Only the shared session middleware reads the user; no account query runs.
+      expect(select).toHaveBeenCalledTimes(1);
+    } finally {
+      select.mockRestore();
+    }
+  });
+
+  test('hides count failures rather than returning a partial list', async () => {
+    const owner = await signedIn();
+    const original = database.select.bind(database);
+    const select = spyOn(database, 'select')
+      .mockImplementationOnce(original)
+      .mockImplementationOnce(original)
+      .mockImplementationOnce(() => {
+        throw new Error('private-account-count');
+      });
+    try {
+      const response = await list(owner.cookie);
+      expect(response.status).toBe(500);
+      const body: unknown = await response.json();
+      expect(body).toMatchObject({ error: { code: 'INTERNAL_ERROR' } });
+      expect(body).not.toHaveProperty('data');
+      expect(JSON.stringify(body)).not.toContain('private-account-count');
     } finally {
       select.mockRestore();
     }

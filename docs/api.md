@@ -1,6 +1,6 @@
 # API guide
 
-Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, the current-user endpoint, logout, password changes, and account creation/detail are available.
+Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, the current-user endpoint, logout, password changes, and account creation, detail, listing, and search are available.
 
 ## Create an account and read its details
 
@@ -51,11 +51,41 @@ flowchart TD
     Read --> Response
 ```
 
-For creation, `requireJson` runs before the JSON validator, and Hono parses the body. Validation failures throw `ApiError`; the shared error handler formats responses. An unexpected database failure returns the normal safe `500` error. No account list, editing, deletion, tags, or transaction routes are available yet.
+For creation, `requireJson` runs before the JSON validator, and Hono parses the body. Validation failures throw `ApiError`; the shared error handler formats responses. An unexpected database failure returns the normal safe `500` error. Account listing and search are described below. Editing, deletion, tags, and transaction routes are not available yet.
 
 ### Try accounts in Requestly
 
 Create the two requests manually or import [requests/finance.json](../requests/finance.json). Use the same `baseUrl` as your auth requests and log in first so Requestly's cookie jar holds the session. Send **Create account** with `Origin: {{baseUrl}}`. Copy only the returned account ID into the `accountId` variable, then send **Account details**. Do not copy the session credential into variables or request headers. Each successful create makes a separate account, even if its name repeats.
+
+## List and search your accounts
+
+Send `GET /api/v1/accounts` with the session cookie. No request body or Origin header is needed. The list includes only accounts owned by the signed-in user. For example:
+
+```http
+GET /api/v1/accounts?q=checking&archived=false&page=1&limit=25
+```
+
+| Query field | Behavior |
+| ----------- | -------- |
+| `q` | Case-insensitive substring search of account names. Trimmed, at most 100 characters. Omitted or blank matches every name. Percent signs, underscores, backslashes, and quotes are literal characters. |
+| `archived` | Accepts only `true` or `false`. Omit it to include both archived and active accounts. |
+| `page` | Positive integer, starting at 1. Defaults to 1. |
+| `limit` | Positive integer from 1 to 100. Defaults to 25. |
+
+Filters combine with AND. Each field may appear only once; repeated fields, unknown fields, malformed integers, and unsupported values return `400 INVALID_INPUT`. Tag filtering is not available yet. Pages that would skip more than 10,000 rows are rejected. For example, `page=101&limit=100` skips exactly 10,000 rows and is allowed; `page=102&limit=100` is rejected.
+
+Results are ordered by account name ascending, then by UUID ascending to keep equal names in a stable order. Each item has the same public fields and exact decimal strings as account detail. The response includes `pagination.page`, `pagination.limit`, and `pagination.total`. The total counts all of the current user's matching accounts before pagination, including when a page is empty:
+
+```json
+{
+  "data": [],
+  "pagination": { "page": 1, "limit": 25, "total": 0 }
+}
+```
+
+The route validates the session and query before reading accounts. It uses the same owner, name, and archive conditions for both the paged results and the total count. The existing owner index supports selecting one user's accounts. Sorting and substring search use those matching rows; no new index or schema change is needed for the current small dataset. Pagination is not a snapshot; concurrent changes can affect results and totals.
+
+In Requestly, use **List accounts** from [requests/finance.json](../requests/finance.json) or create the GET request manually. Reuse the cookie jar from login. Set `q`, `archived`, `page`, and `limit` in the URL as needed; remove a filter to omit it. Archiving accounts through the API arrives in the next phase.
 
 ## Health requests
 

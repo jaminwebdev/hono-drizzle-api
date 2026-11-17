@@ -1,6 +1,6 @@
 # Phase 13 review: expired-session cleanup
 
-Status: Phases through 16 are implemented and verified. Phase 17 is next.
+Status: Phases through 17 are implemented and verified. Phase 18 is next.
 
 ## Roadmap continuity
 
@@ -65,7 +65,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Remaining roadmap carried forward
 
-The following phases were carried forward from the original contract. Phases 13–16 are now complete, with matching evidence in both roadmaps. Phases 17–41 remain unfinished and require their own approval.
+The following phases were carried forward from the original contract. Phases 13–17 are now complete, with matching evidence in both roadmaps. Phases 18–41 remain unfinished and require their own approval.
 
 ### Phase 13. Clean up expired session records explicitly
 
@@ -161,13 +161,17 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 17. List and search owned accounts
 
-Expected files, 5: `src/features/accounts.ts`, `tests/unit/accounts.test.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `requests/finance.json`.
+Review files, 9: `src/features/accounts.ts`, `tests/unit/accounts.test.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `docs/setup.md`, `requests/finance.json`, `PROJECT_MAP.md`, `01-architect-todos.md`, and `02-backend-todos.md`.
 
-- [ ] Add bounded account lists with name search, archive filtering, and stable name/ID ordering.
-- [ ] Keep every search/count query scoped to the current user and validate singleton query parameters.
-- [ ] Test bounds, literal pattern characters, filters, and another user's records being absent from results; document the current URLs.
+- [x] Add bounded account lists with name search, archive filtering, and stable name/ID ordering.
+- [x] Keep every search/count query scoped to the current user and validate singleton query parameters.
+- [x] Test bounds, literal pattern characters, filters, and another user's records being absent from results; document the current URLs.
 
 Acceptance: S3, S5, S8; PROJECT_MAP R3, R5–R8, R10–R11. No editing/deletion is bundled into this commit. Names and cursors do not provide cross-user access. Run focused account tests and available checks.
+
+Validation: Bun 1.3.14 type checking, lint, all 114 unit tests, all 189 integration tests, and build passed. New tests cover pagination defaults and bounds, maximum offset, stable name/ID ordering, case-insensitive name search, literal percent/underscore/backslash/quote handling, archive-filter combinations, singleton query fields, empty pages, owner-scoped rows and totals, and safe count failures. The isolated test container was stopped with its volume preserved. No schema, dependencies, or development API processes changed.
+
+Request flow: Session validation identifies the owner, and the route-level query validator rejects unknown or repeated fields. GET `/api/v1/accounts` applies the same owner/name/archive conditions to both the page query and total count. It orders by name and ID, returns exact decimal strings, and reports `{ page, limit, total }` pagination. Omitted archive filtering includes both states; page 1 and limit 25 are the defaults, limit 100 is the maximum, and offsets above 10000 are rejected. The existing owner index supports the current small dataset.
 
 Suggested commit: `feat: list and search owned accounts`
 
@@ -514,4 +518,4 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Relay
 
-Phases 13–16 are complete, including the password-work simplification, manual Requestly verification, accounts schema, and account create/detail endpoints. Phase 17 is next. Implement its existing todos when requested, without another proposal or design-approval step. All remaining phases are preserved above and in the architecture contract. The user makes all commits and controls the development API.
+Phases 13–17 are complete, including the password-work simplification, manual Requestly verification, accounts schema, account create/detail endpoints, and bounded owned-account lists/search. Phase 18 is next. Implement its existing todos when requested, without another proposal or design-approval step. All remaining phases are preserved above and in the architecture contract. The user makes all commits and controls the development API.

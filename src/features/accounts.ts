@@ -1,5 +1,5 @@
 import { sValidator } from '@hono/standard-validator';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, count, eq, ilike, sql } from 'drizzle-orm';
 import { createSelectSchema } from 'drizzle-orm/valibot';
 import { Hono } from 'hono';
 import * as v from 'valibot';
@@ -31,6 +31,28 @@ export const createAccountSchema = v.strictObject({
 });
 export const accountIdSchema = v.strictObject({ id: accountFields.entries.id });
 
+const positiveQueryInteger = v.pipe(
+  v.string(),
+  v.regex(/^[1-9]\d{0,4}$/),
+  v.check((value) => value === value.trim()),
+  v.transform(Number),
+  v.maxValue(10_001),
+);
+export const accountListSchema = v.pipe(
+  v.strictObject({
+    q: v.optional(v.pipe(v.string(), v.trim(), v.maxLength(100)), ''),
+    archived: v.optional(
+      v.pipe(
+        v.picklist(['true', 'false']),
+        v.transform((value) => value === 'true'),
+      ),
+    ),
+    page: v.optional(positiveQueryInteger, '1'),
+    limit: v.optional(v.pipe(positiveQueryInteger, v.maxValue(100)), '25'),
+  }),
+  v.check(({ page, limit }) => (page - 1) * limit <= 10_000),
+);
+
 const accountSelection = {
   id: accounts.id,
   name: accounts.name,
@@ -49,8 +71,8 @@ export function createAccountRoutes(
 ) {
   const routes = new Hono<SessionEnv>();
   routes.use('*', requireSession(database, mode));
-  routes.use(
-    '*',
+  routes.post(
+    '/',
     sValidator('query', v.strictObject({}), (result) => {
       if (!result.success) {
         throw new ApiError(
@@ -60,10 +82,6 @@ export function createAccountRoutes(
         );
       }
     }),
-  );
-
-  routes.post(
-    '/',
     requireJson,
     sValidator('json', createAccountSchema, (result) => {
       if (!result.success) {
@@ -87,7 +105,55 @@ export function createAccountRoutes(
   );
 
   routes.get(
+    '/',
+    sValidator('query', accountListSchema, (result) => {
+      if (!result.success) {
+        throw new ApiError(
+          400,
+          'INVALID_INPUT',
+          'Use only q, archived=true or false, and positive page/limit values. Limit is at most 100 and pages may skip at most 10000 rows.',
+        );
+      }
+    }),
+    async (c) => {
+      const { q, archived, page, limit } = c.req.valid('query');
+      // Escape LIKE's wildcard and escape characters so q is a literal substring.
+      const escaped = q.replace(/[\\%_]/g, '\\$&');
+      const conditions = and(
+        eq(accounts.userId, c.get('session').user.id),
+        q ? ilike(accounts.name, `%${escaped}%`) : undefined,
+        archived === undefined ? undefined : eq(accounts.isArchived, archived),
+      );
+      const data = await database
+        .select(accountSelection)
+        .from(accounts)
+        .where(conditions)
+        .orderBy(asc(accounts.name), asc(accounts.id))
+        .limit(limit)
+        .offset((page - 1) * limit);
+      const [matching] = await database
+        .select({ total: count() })
+        .from(accounts)
+        .where(conditions);
+      if (!matching) throw new Error('Account count returned no result.');
+      return c.json({
+        data,
+        pagination: { page, limit, total: matching.total },
+      });
+    },
+  );
+
+  routes.get(
     '/:id',
+    sValidator('query', v.strictObject({}), (result) => {
+      if (!result.success) {
+        throw new ApiError(
+          400,
+          'INVALID_INPUT',
+          'This endpoint accepts no query fields.',
+        );
+      }
+    }),
     sValidator('param', accountIdSchema, (result) => {
       if (!result.success) {
         throw new ApiError(400, 'INVALID_INPUT', 'Provide a valid account ID.');

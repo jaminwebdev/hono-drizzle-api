@@ -95,7 +95,7 @@ Pressing `Ctrl+C` during `db:logs` only stops following the logs. For the separa
 
 ## Schema and database tools
 
-`src/db/schema.ts` defines the current database structure. It contains `users`, used by [registration](api.md#register-a-user) and [login](api.md#log-in), `sessions`, created during login, and user-owned `accounts`. Account creation and detail endpoints are available as described in [the API guide](api.md#create-an-account-and-read-its-details).
+`src/db/schema.ts` defines the current database structure. It contains `users`, used by [registration](api.md#register-a-user) and [login](api.md#log-in), `sessions`, created during login, and user-owned `accounts`. Account creation, detail, listing, and search endpoints are available as described in [the API guide](api.md#create-an-account-and-read-its-details).
 
 ```mermaid
 erDiagram
@@ -169,7 +169,7 @@ bun run db:test:push
 bun run test:integration
 ```
 
-Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the auth, session, and account suites serially against the guarded test database. It covers registration, login, password preservation, independent hashed session credentials, safe errors, cookie flags, password-change races, bounded limits, session ownership, idle/absolute expiry, and revoked or unavailable sessions. Auth tests supply a trusted connection-address fixture. Tests delete only their own accounts and users, including cascading sessions. Account tests cover strict input, exact opening balances, and two-user ownership. Cookie flags are checked through Hono requests. The user has independently verified the current authentication flows in Requestly with manually created collections and routes. Stop the test container with `bun run db:test:down` when finished; its volume remains.
+Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the auth, session, and account suites serially against the guarded test database. It covers registration, login, password preservation, independent hashed session credentials, safe errors, cookie flags, password-change races, bounded limits, session ownership, idle/absolute expiry, and revoked or unavailable sessions. Auth tests supply a trusted connection-address fixture. Tests delete only their own accounts and users, including cascading sessions. Account tests cover strict input, exact opening balances, two-user ownership, bounded lists, literal name search, and archive filtering. Cookie flags are checked through Hono requests. The user has independently verified the current authentication flows in Requestly with manually created collections and routes. Stop the test container with `bun run db:test:down` when finished; its volume remains.
 
 ## Remove expired sessions manually
 

@@ -2,7 +2,7 @@
 
 ## Code map
 
-The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks, shared HTTP handling, email/password registration, and login with an HttpOnly session cookie. The users, sessions, and user-owned accounts tables are defined. The current-user endpoint validates session cookies and expiry. Account creation and owned-detail endpoints are available. The other finance tables are not implemented yet.
+The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks, shared HTTP handling, email/password registration, and login with an HttpOnly session cookie. The users, sessions, and user-owned accounts tables are defined. The current-user endpoint validates session cookies and expiry. Account creation, owned-detail, listing, and name-search endpoints are available. The other finance tables are not implemented yet.
 
 | File                                                     | Responsibility                                                                                                                            |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
@@ -17,7 +17,7 @@ The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, 
 | [src/http.ts](src/http.ts)                               | Install shared middleware and common errors, and provide the JSON content-type guard.                                                     |
 | [src/session.ts](src/session.ts) | Validate session credentials and expiry, refresh activity, and supply the session and public user identity to protected routes. |
 | [src/features/auth.ts](src/features/auth.ts)             | Validate credentials, bound auth attempts, register users, and create hashed sessions with environment-appropriate cookies. |
-| [src/features/accounts.ts](src/features/accounts.ts) | Derive strict account input schemas, create accounts for the session owner, and read only that owner's account details with exact decimal strings. |
+| [src/features/accounts.ts](src/features/accounts.ts) | Derive strict account input schemas, create accounts for the session owner, and read only that owner's account details and bounded filtered lists with exact decimal strings. |
 
 Importing or constructing the app opens no database connection and starts no server. Bootstrap owns the resources and passes them to the app.
 
