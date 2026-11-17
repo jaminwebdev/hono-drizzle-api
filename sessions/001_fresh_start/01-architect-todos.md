@@ -380,7 +380,7 @@ Accept passwords of 15–128 Unicode code points, including spaces, without trim
 
 Registration returns `201` with only user ID and email, without automatically logging in. Duplicate normalized email returns `409 ACCOUNT_NOT_AVAILABLE`. This local registration response can reveal that an email is already registered; public signup and recovery need a separately designed anti-enumeration flow. Login returns the same `401 INVALID_CREDENTIALS` for an unknown email or wrong password and performs a comparable dummy password verification for unknown users.
 
-Add bounded throttling with the first credential endpoint. Single-process limits are 5 registrations per peer IP per hour, 10 login attempts per normalized email per 15 minutes, and 30 login attempts per peer IP per 15 minutes. Count every attempt that reaches a limit, including successful logins; clear counters only when their windows expire. Keep the counter logic in one small function in the auth feature. Limit simultaneous password-hash work to 2 operations and return `429` with `Retry-After` when capacity is exceeded. Limit password-change attempts too. The in-memory limiter has a fixed maximum number of entries, expiry cleanup, and a defined refusal when full. Do not introduce Redis for this local exercise. Restarting the process clears this protection; public or multi-instance hosting requires a shared limiter.
+Add bounded throttling with the first credential endpoint. Single-process limits are 5 registrations per peer IP per hour, 10 login attempts per normalized email per 15 minutes, and 30 login attempts per peer IP per 15 minutes. Count every attempt that reaches a limit, including successful logins; clear counters only when their windows expire. Keep the counter logic in one small function in the auth feature. Do not impose a separate limit on simultaneous password work. The user removed the original two-operation cap on 2026-11-17; see [the follow-up decision](#follow-up-after-phase-13-remove-the-password-work-cap). Limit password-change attempts too. The in-memory limiter has a fixed maximum number of entries, expiry cleanup, and a defined refusal when full. Do not introduce Redis for this local exercise. Restarting the process clears this protection; public or multi-instance hosting requires a shared limiter.
 
 Get the peer address from Bun's connection information, not untrusted forwarded headers. Tests supply a trusted peer-address fixture explicitly. Do not log limiter keys or submitted emails/passwords. Implement and test the limiter inside the auth feature while it is the only feature needing it.
 
@@ -799,6 +799,26 @@ Acceptance: S2, S7–S8; PROJECT_MAP R2–R4, R6–R8, R10–R11. No scheduled w
 Validation: Bun 1.3.14 type checking, lint, all 84 unit tests, all 83 integration tests, and build passed. The guarded test schema push reported no changes. Cleanup tests cover idle and absolute expiry, exact boundaries, live-session and user preservation, the 100-row limit, repeat runs, a real concurrent activity refresh, successful test-command execution, and safe connection failures. Only the isolated test database was used. Its container was stopped with its volume preserved. No local or production cleanup ran, and the development API remained under user control. No dependencies or schema changed.
 
 Suggested commit: `chore: clean up expired sessions with explicit commands`
+
+PAUSE — user must approve before continuing to next batch.
+
+### Follow-up after phase 13. Remove the password-work cap
+
+Approved by the user on 2026-11-17. This follow-up changes authentication only and does not approve phase 14.
+
+The original `activePasswordWork` counter allowed only two registration, login, or password-change handlers to run together. Two was a conservative choice without a measured resource requirement. Each slot also covered database work, so a slow query could reject another request even when no password operation was running. The user chose to remove this additional constraint for the trusted local learning project.
+
+- [x] Remove `activePasswordWork`, its concurrency checks, and the `try/finally` blocks used only to maintain the counter. Keep registration's duplicate-email error handling.
+- [x] Keep the IP, normalized-email, and user attempt limits, bounded counter maps, password rules, Argon2id settings, route validation, session transactions, and central error handling.
+- [x] Replace capacity tests with concurrent-request coverage and preserve safe hashing and verification failure checks. Update the API guide and project map.
+
+There is no replacement concurrency limiter or queue. Requests within their attempt limits can perform password work concurrently, which can increase CPU and memory use during a burst. Any future concurrency cap should follow measured resource needs and a separate deployment review. This decision supersedes the password-capacity behavior recorded in the phase 7 and 9 verification history above.
+
+Review files, 6: `src/features/auth.ts`, `tests/integration/auth.test.ts`, `docs/api.md`, `PROJECT_MAP.md`, `01-architect-todos.md`, and `02-backend-todos.md`. All later roadmap details and approval gates remain in place.
+
+Validation: Bun 1.3.14 type checking, lint, all 84 unit tests, all 83 integration tests, build, and Git whitespace checks passed. Updated tests allow three pending registration hashes and four concurrent login/password-change verifications, check that the other credential route can proceed, and preserve safe failure responses. Existing attempt-limit and password-change race tests passed. Integration checks used only the isolated test database; its container was stopped with its volume preserved. No development API was started or stopped. No schema or dependencies changed.
+
+Suggested commit: `refactor: remove the shared password-work cap`
 
 PAUSE — user must approve before continuing to next batch.
 

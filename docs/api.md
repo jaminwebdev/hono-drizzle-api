@@ -50,7 +50,7 @@ flowchart LR
     Insert --> Response[Return ID and email]
 ```
 
-Each peer IP gets five attempts per fixed one-hour window, starting with its first attempt. Invalid JSON, invalid fields, and duplicate emails count too. The server uses Bun's connection address and ignores forwarded IP headers. Registration and login share a limit of two password operations, including their database work. Capacity errors return `429 RATE_LIMITED` with a `Retry-After` header in seconds. A missing connection address returns a safe `503`.
+Each peer IP gets five attempts per fixed one-hour window, starting with its first attempt. Invalid JSON, invalid fields, and duplicate emails count too. The server uses Bun's connection address and ignores forwarded IP headers. Attempt-limit errors return `429 RATE_LIMITED` with a `Retry-After` header in seconds. A missing connection address returns a safe `503`.
 
 The limiter stores at most 1,024 peers and removes expired entries on the next registration request. When full, it refuses new peers with `429`. These limits belong to one running app and reset on restart. They are sufficient for this local exercise; multiple API instances would need shared limits.
 
@@ -76,7 +76,7 @@ Each successful login generates a fresh 32-byte random credential, encoded as ba
 
 An unknown email and a wrong password both return `401 INVALID_CREDENTIALS` with `Invalid email or password.` Unknown emails still perform Argon2id verification against a public dummy hash to keep password work comparable. After verification, a database transaction locks the user row and rechecks the password hash before inserting the session. If the password changed during verification, login fails. The cookie is set only after that transaction commits.
 
-Login allows 30 attempts per connection peer and 10 attempts per normalized email in fixed 15-minute windows. Invalid input counts toward the peer limit. After input validation, every attempt counts toward the email limit, including successful logins. Success does not clear earlier attempts. Each counter allows new attempts when its window expires. Both maps hold at most 1,024 entries, remove expired entries when that limit is checked, and refuse new entries when full. These limits and the shared password-work limit return `429 RATE_LIMITED` with `Retry-After` in seconds. Registration and login use the same small counter function in `src/features/auth.ts`. Restarting the local API clears its in-memory limits.
+Login allows 30 attempts per connection peer and 10 attempts per normalized email in fixed 15-minute windows. Invalid input counts toward the peer limit. After input validation, every attempt counts toward the email limit, including successful logins. Success does not clear earlier attempts. Each counter allows new attempts when its window expires. Both maps hold at most 1,024 entries, remove expired entries when that limit is checked, and refuse new entries when full. These limits return `429 RATE_LIMITED` with `Retry-After` in seconds. Registration and login use the same small counter function in `src/features/auth.ts`. Restarting the local API clears its in-memory limits. Registration, login, and password changes have no separate limit on simultaneous password work. Requests within their attempt limits can proceed concurrently.
 
 ```mermaid
 sequenceDiagram
@@ -127,7 +127,7 @@ After verifying the current password, the handler hashes the replacement, locks 
 
 Success returns `204` with no body and clears the current cookie. Log in again with the replacement password. In Requestly, fill in the blank fields of **Change password** locally. The collection contains no passwords or session credentials.
 
-Limits are ten attempts per IP and five validated attempts per user in fixed 15-minute windows. IP throttling runs before session and input validation. Password changes share the two-operation password-work cap with registration and login. Limits return `429` with `Retry-After`. A transaction failure returns a safe error and keeps the cookie; the database transaction prevents a partial password/session change. Email recovery remains deferred.
+Limits are ten attempts per IP and five validated attempts per user in fixed 15-minute windows. IP throttling runs before session and input validation. Limits return `429` with `Retry-After`. A transaction failure returns a safe error and keeps the cookie; the database transaction prevents a partial password/session change. Email recovery remains deferred.
 
 ## Log out
 
@@ -242,7 +242,7 @@ Origin checking and CORS have separate jobs. The origin check rejects unapproved
 
 Routes, middleware, and helpers throw `ApiError` for expected request failures. They return successful responses normally. If an error needs a header such as `Retry-After`, set it with `c.header()` before throwing. Catch database errors only to translate a known failure into a safe `ApiError`; rethrow unknown failures.
 
-`app.onError` is the only place that calls `errorResponse`, which is private to `src/http.ts`. It preserves an `ApiError`'s status, code, and safe message, and converts unexpected exceptions to a generic `500`. All errors use the same JSON format shown above. `finally` blocks still run, including registration's password-capacity cleanup.
+`app.onError` is the only place that calls `errorResponse`, which is private to `src/http.ts`. It preserves an `ApiError`'s status, code, and safe message, and converts unexpected exceptions to a generic `500`. All errors use the same JSON format shown above.
 
 ```mermaid
 flowchart LR

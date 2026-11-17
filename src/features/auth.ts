@@ -111,7 +111,6 @@ export function createAuthRoutes(database: Database, mode: Config['APP_ENV']) {
   const limitLoginEmail = createAttemptLimit(10, 900_000);
   const limitPasswordIp = createIpAttemptLimit(10, 900_000);
   const limitPasswordUser = createAttemptLimit(5, 900_000);
-  let activePasswordWork = 0;
 
   auth.post(
     '/register',
@@ -128,16 +127,7 @@ export function createAuthRoutes(database: Database, mode: Config['APP_ENV']) {
     }),
     async (c) => {
       const { email, password } = c.req.valid('json');
-      if (activePasswordWork >= 2) {
-        c.header('Retry-After', '1');
-        throw new ApiError(
-          429,
-          'RATE_LIMITED',
-          'Password processing is temporarily full.',
-        );
-      }
 
-      activePasswordWork++;
       try {
         const passwordHash = await Bun.password.hash(password, {
           algorithm: 'argon2id',
@@ -164,8 +154,6 @@ export function createAuthRoutes(database: Database, mode: Config['APP_ENV']) {
           );
         }
         throw error;
-      } finally {
-        activePasswordWork--;
       }
     },
   );
@@ -185,79 +173,66 @@ export function createAuthRoutes(database: Database, mode: Config['APP_ENV']) {
     async (c) => {
       const { email, password } = c.req.valid('json');
       limitLoginEmail(c, email);
-      if (activePasswordWork >= 2) {
-        c.header('Retry-After', '1');
-        throw new ApiError(
-          429,
-          'RATE_LIMITED',
-          'Password processing is temporarily full.',
-        );
-      }
 
-      activePasswordWork++;
-      try {
-        const [user] = await database
+      const [user] = await database
+        .select({
+          id: users.id,
+          email: users.email,
+          passwordHash: users.passwordHash,
+        })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      const valid = await Bun.password.verify(
+        password,
+        user?.passwordHash ?? dummyPasswordHash,
+      );
+      if (!user || !valid)
+        throw new ApiError(
+          401,
+          'INVALID_CREDENTIALS',
+          'Invalid email or password.',
+        );
+
+      const credential = Buffer.from(
+        crypto.getRandomValues(new Uint8Array(32)),
+      ).toString('base64url');
+      const tokenHash = new Bun.CryptoHasher('sha256')
+        .update(credential)
+        .digest('hex');
+      const identity = await database.transaction(async (tx) => {
+        const [current] = await tx
           .select({
             id: users.id,
             email: users.email,
             passwordHash: users.passwordHash,
           })
           .from(users)
-          .where(eq(users.email, email))
-          .limit(1);
-        const valid = await Bun.password.verify(
-          password,
-          user?.passwordHash ?? dummyPasswordHash,
-        );
-        if (!user || !valid)
+          .where(eq(users.id, user.id))
+          .for('update');
+        if (!current || current.passwordHash !== user.passwordHash) {
           throw new ApiError(
             401,
             'INVALID_CREDENTIALS',
             'Invalid email or password.',
           );
-
-        const credential = Buffer.from(
-          crypto.getRandomValues(new Uint8Array(32)),
-        ).toString('base64url');
-        const tokenHash = new Bun.CryptoHasher('sha256')
-          .update(credential)
-          .digest('hex');
-        const identity = await database.transaction(async (tx) => {
-          const [current] = await tx
-            .select({
-              id: users.id,
-              email: users.email,
-              passwordHash: users.passwordHash,
-            })
-            .from(users)
-            .where(eq(users.id, user.id))
-            .for('update');
-          if (!current || current.passwordHash !== user.passwordHash) {
-            throw new ApiError(
-              401,
-              'INVALID_CREDENTIALS',
-              'Invalid email or password.',
-            );
-          }
-          await tx.insert(sessions).values({
-            userId: current.id,
-            tokenHash,
-            expiresAt: new Date(Date.now() + sessionMaxAge * 1000),
-          });
-          return { id: current.id, email: current.email };
+        }
+        await tx.insert(sessions).values({
+          userId: current.id,
+          tokenHash,
+          expiresAt: new Date(Date.now() + sessionMaxAge * 1000),
         });
+        return { id: current.id, email: current.email };
+      });
 
-        setCookie(c, 'session', credential, {
-          httpOnly: true,
-          sameSite: 'Lax',
-          path: '/',
-          maxAge: sessionMaxAge,
-          secure: mode === 'production',
-        });
-        return c.json({ data: identity });
-      } finally {
-        activePasswordWork--;
-      }
+      setCookie(c, 'session', credential, {
+        httpOnly: true,
+        sameSite: 'Lax',
+        path: '/',
+        maxAge: sessionMaxAge,
+        secure: mode === 'production',
+      });
+      return c.json({ data: identity });
     },
   );
 
@@ -289,60 +264,47 @@ export function createAuthRoutes(database: Database, mode: Config['APP_ENV']) {
       const { currentPassword, newPassword } = c.req.valid('json');
       const userId = c.get('session').user.id;
       limitPasswordUser(c, userId);
-      if (activePasswordWork >= 2) {
-        c.header('Retry-After', '1');
+      const [user] = await database
+        .select({ passwordHash: users.passwordHash })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      if (
+        !user ||
+        !(await Bun.password.verify(currentPassword, user.passwordHash))
+      ) {
         throw new ApiError(
-          429,
-          'RATE_LIMITED',
-          'Password processing is temporarily full.',
+          401,
+          'INVALID_CREDENTIALS',
+          'The current password is incorrect.',
         );
       }
-      activePasswordWork++;
-      try {
-        const [user] = await database
+      const passwordHash = await Bun.password.hash(newPassword, {
+        algorithm: 'argon2id',
+        memoryCost: 19456,
+        timeCost: 2,
+      });
+      await database.transaction(async (tx) => {
+        const [current] = await tx
           .select({ passwordHash: users.passwordHash })
           .from(users)
           .where(eq(users.id, userId))
-          .limit(1);
-        if (
-          !user ||
-          !(await Bun.password.verify(currentPassword, user.passwordHash))
-        ) {
+          .for('update');
+        if (!current || current.passwordHash !== user.passwordHash) {
           throw new ApiError(
             401,
             'INVALID_CREDENTIALS',
-            'The current password is incorrect.',
+            'The password changed during verification. Log in again.',
           );
         }
-        const passwordHash = await Bun.password.hash(newPassword, {
-          algorithm: 'argon2id',
-          memoryCost: 19456,
-          timeCost: 2,
-        });
-        await database.transaction(async (tx) => {
-          const [current] = await tx
-            .select({ passwordHash: users.passwordHash })
-            .from(users)
-            .where(eq(users.id, userId))
-            .for('update');
-          if (!current || current.passwordHash !== user.passwordHash) {
-            throw new ApiError(
-              401,
-              'INVALID_CREDENTIALS',
-              'The password changed during verification. Log in again.',
-            );
-          }
-          await tx
-            .update(users)
-            .set({ passwordHash, updatedAt: new Date() })
-            .where(eq(users.id, userId));
-          await tx.delete(sessions).where(eq(sessions.userId, userId));
-        });
-        clearSessionCookie(c, mode);
-        return c.body(null, 204);
-      } finally {
-        activePasswordWork--;
-      }
+        await tx
+          .update(users)
+          .set({ passwordHash, updatedAt: new Date() })
+          .where(eq(users.id, userId));
+        await tx.delete(sessions).where(eq(sessions.userId, userId));
+      });
+      clearSessionCookie(c, mode);
+      return c.body(null, 204);
     },
   );
 

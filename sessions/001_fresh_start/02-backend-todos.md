@@ -81,6 +81,26 @@ Suggested commit: `chore: clean up expired sessions with explicit commands`
 
 PAUSE — user must approve before continuing to next batch.
 
+### Follow-up after phase 13. Remove the password-work cap
+
+Approved by the user on 2026-11-17. This follow-up changes authentication only and does not approve phase 14.
+
+The original `activePasswordWork` counter allowed only two registration, login, or password-change handlers to run together. Two was a conservative choice without a measured resource requirement. Each slot also covered database work, so a slow query could reject another request even when no password operation was running. The user chose to remove this additional constraint for the trusted local learning project.
+
+- [x] Remove `activePasswordWork`, its concurrency checks, and the `try/finally` blocks used only to maintain the counter. Keep registration's duplicate-email error handling.
+- [x] Keep the IP, normalized-email, and user attempt limits, bounded counter maps, password rules, Argon2id settings, route validation, session transactions, and central error handling.
+- [x] Replace capacity tests with concurrent-request coverage and preserve safe hashing and verification failure checks. Update the API guide and project map.
+
+There is no replacement concurrency limiter or queue. Requests within their attempt limits can perform password work concurrently, which can increase CPU and memory use during a burst. Any future concurrency cap should follow measured resource needs and a separate deployment review. This decision supersedes the password-capacity behavior recorded in the original contract's phase 7 and 9 verification history.
+
+Review files, 6: `src/features/auth.ts`, `tests/integration/auth.test.ts`, `docs/api.md`, `PROJECT_MAP.md`, `01-architect-todos.md`, and `02-backend-todos.md`. All later roadmap details and approval gates remain in place.
+
+Validation: Bun 1.3.14 type checking, lint, all 84 unit tests, all 83 integration tests, build, and Git whitespace checks passed. Updated tests allow three pending registration hashes and four concurrent login/password-change verifications, check that the other credential route can proceed, and preserve safe failure responses. Existing attempt-limit and password-change race tests passed. Integration checks used only the isolated test database; its container was stopped with its volume preserved. No development API was started or stopped. No schema or dependencies changed.
+
+Suggested commit: `refactor: remove the shared password-work cap`
+
+PAUSE — user must approve before continuing to next batch.
+
 ### Phase 14. Walk through authentication in Requestly and a browser
 
 Expected files, 5: `requests/auth.json`, `docs/api.md`, `tests/browser/auth.test.ts`, `package.json`, `bun.lock`.

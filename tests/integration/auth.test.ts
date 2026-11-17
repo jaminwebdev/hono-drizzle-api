@@ -471,7 +471,7 @@ describe('registration limits', () => {
     }
   });
 
-  test('allows at most two pending hashes and releases capacity after a hash failure', async () => {
+  test('allows three pending hashes without blocking login and hides hash failures', async () => {
     const app = fixture();
     const rejectHashes: Array<(reason: Error) => void> = [];
     const hash = spyOn(Bun.password, 'hash').mockImplementation(
@@ -484,23 +484,11 @@ describe('registration limits', () => {
     try {
       pending.push(register(app, { email: email(), password }, '192.0.2.1'));
       pending.push(register(app, { email: email(), password }, '192.0.2.2'));
-      await Bun.sleep(0);
-      expect(hash).toHaveBeenCalledTimes(2);
-      const blocked = await register(
-        app,
-        { email: email(), password },
-        '192.0.2.3',
-      );
-      expect(blocked.status).toBe(429);
-      expect(blocked.headers.get('Retry-After')).toBe('1');
-      expect(await blocked.json()).toMatchObject({
-        error: {
-          status: 429,
-          code: 'RATE_LIMITED',
-          requestId: blocked.headers.get('X-Request-Id'),
-        },
-      });
-      expect((await login(app, { email: email(), password })).status).toBe(429);
+      pending.push(register(app, { email: email(), password }, '192.0.2.3'));
+      for (let attempt = 0; rejectHashes.length < 3 && attempt < 100; attempt++)
+        await Bun.sleep(1);
+      expect(hash).toHaveBeenCalledTimes(3);
+      expect((await login(app, { email: email(), password })).status).toBe(401);
       rejectHashes
         .splice(0)
         .forEach((reject) =>
@@ -831,8 +819,10 @@ describe('login limits', () => {
     }
   }, 10000);
 
-  test('shares password capacity with registration and releases it after verification errors', async () => {
+  test('allows concurrent login and password checks without blocking registration and hides verification errors', async () => {
+    const user = await seedUser();
     const app = fixture();
+    const token = credential(await login(app, { email: user.email, password }));
     const rejects: Array<(reason: Error) => void> = [];
     const verify = spyOn(Bun.password, 'verify').mockImplementation(
       () =>
@@ -843,18 +833,20 @@ describe('login limits', () => {
     const pending = [
       login(app, { email: email(), password }),
       login(app, { email: email(), password }, '192.0.2.2'),
+      login(app, { email: email(), password }, '192.0.2.3'),
+      changePassword(app, token, { currentPassword: password, newPassword }),
     ];
     try {
-      for (let attempt = 0; rejects.length < 2 && attempt < 100; attempt++)
+      for (let attempt = 0; rejects.length < 4 && attempt < 100; attempt++)
         await Bun.sleep(1);
-      expect(verify).toHaveBeenCalledTimes(2);
-      const blocked = await register(
+      expect(verify).toHaveBeenCalledTimes(4);
+      const registered = await register(
         app,
         { email: email(), password },
         '192.0.2.3',
       );
-      expect(blocked.status).toBe(429);
-      expect(blocked.headers.get('Retry-After')).toBe('1');
+      expect(registered.status).toBe(201);
+      expect(registered.headers.has('Retry-After')).toBe(false);
       rejects
         .splice(0)
         .forEach((reject) =>

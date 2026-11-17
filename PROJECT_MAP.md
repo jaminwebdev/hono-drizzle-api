@@ -16,7 +16,7 @@ The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, 
 | [src/app.ts](src/app.ts)                                 | Build Hono routes with the explicitly supplied database and HTTP settings.                                                                |
 | [src/http.ts](src/http.ts)                               | Install shared middleware and common errors, and provide the JSON content-type guard.                                                     |
 | [src/session.ts](src/session.ts) | Validate session credentials and expiry, refresh activity, and supply the session and public user identity to protected routes. |
-| [src/features/auth.ts](src/features/auth.ts)             | Validate credentials, bound auth attempts/password work, register users, and create hashed sessions with environment-appropriate cookies. |
+| [src/features/auth.ts](src/features/auth.ts)             | Validate credentials, bound auth attempts, register users, and create hashed sessions with environment-appropriate cookies. |
 
 Importing or constructing the app opens no database connection and starts no server. Bootstrap owns the resources and passes them to the app.
 
