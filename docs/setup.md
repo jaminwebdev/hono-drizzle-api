@@ -95,11 +95,12 @@ Pressing `Ctrl+C` during `db:logs` only stops following the logs. For the separa
 
 ## Schema and database tools
 
-`src/db/schema.ts` defines the current database structure. It contains `users`, used by [registration](api.md#register-a-user) and [login](api.md#log-in), and `sessions`, created during login. Finance tables come later.
+`src/db/schema.ts` defines the current database structure. It contains `users`, used by [registration](api.md#register-a-user) and [login](api.md#log-in), `sessions`, created during login, and user-owned `accounts`. The accounts table is defined, but account endpoints are not implemented yet.
 
 ```mermaid
 erDiagram
     users ||--o{ sessions : "can have"
+    users ||--o{ accounts : "owns"
     users {
         uuid id PK
         varchar email UK
@@ -115,6 +116,17 @@ erDiagram
         timestamptz last_seen_at
         timestamptz expires_at
     }
+    accounts {
+        uuid id PK
+        uuid user_id FK
+        varchar name
+        text type
+        varchar currency
+        numeric opening_balance
+        boolean is_archived
+        timestamptz created_at
+        timestamptz updated_at
+    }
 ```
 
 Each user has a generated UUID, a unique email of at most 254 characters, a password hash, and timestamps that include a time zone. Every field is required. The database rejects empty emails and emails with uppercase letters or surrounding spaces. Registration trims and lowercases email, validates its format, and hashes the password before insertion. The timestamps default to the insertion time; future update handlers must set `updated_at` explicitly.
@@ -124,6 +136,14 @@ One user can have several sessions, such as separate logins on two devices. Each
 `token_hash` stores the SHA-256 hash of the random session credential issued by login in an HttpOnly cookie. The raw credential is never stored in the database. Writes require an approved Origin, with an explicit browser allowlist and SameSite cookies, as explained in the [API guide](api.md#origins-and-browser-access).
 
 `created_at` records session creation, `last_seen_at` records the latest accepted use, and `expires_at` is the absolute expiry time. The first two default to insertion time; login supplies a deadline seven days later. Session validation enforces idle and absolute expiry and updates `last_seen_at` on accepted requests. Timestamps alone do not enforce expiry or delete rows. The unique credential index supports session lookup, while separate indexes on `user_id`, `last_seen_at`, and `expires_at` support revoking a user's sessions and cleaning up idle or expired rows.
+
+Each account belongs to an existing user through `user_id`. PostgreSQL restricts deleting that user while an account references them. The account name must contain 1–100 characters without surrounding spaces; names may repeat. Supported types are `checking`, `savings`, `cash`, `credit`, and `investment`. Investment represents a cash balance without holdings or market prices. Currency defaults to `USD` and must be `USD`, `EUR`, or `GBP`. Accounts start with `is_archived=false`, a generated UUID, and insertion timestamps. The owner index supports finding a user's accounts and checking their references when deleting a user.
+
+`opening_balance` is the starting amount, stored as PostgreSQL `NUMERIC(18,2)`. This permits sixteen digits before the decimal point and two after it, including negative and zero balances. It defaults to `0.00`; debt can be negative, such as `"-24.50"` on a credit account. Drizzle returns this field as a decimal string. Keep it as a string in JSON and never convert money to a JavaScript number. The database rejects non-finite values. PostgreSQL rounds excess fractional digits, so the later account endpoint must validate the exact two-decimal input format before insertion. See [PostgreSQL numeric types](https://www.postgresql.org/docs/18/datatype-numeric.html#DATATYPE-NUMERIC-DECIMAL).
+
+Bun SQL can omit trailing zeros when returning a numeric value, such as returning `"0"` for a stored `0.00`. The later account endpoints must return two fractional digits without converting money to a JavaScript number. Selecting `opening_balance::text` preserves PostgreSQL's two-decimal representation.
+
+The later account routes will take ownership only from the validated session and reject changes to the owner, currency, or opening balance. The foreign key alone does not make those columns immutable. Update handlers must set `updated_at` explicitly. There is no separate mutable balance column; transactions and balance queries arrive in later phases.
 
 | Command                | Purpose                                                                     |
 | ---------------------- | --------------------------------------------------------------------------- |

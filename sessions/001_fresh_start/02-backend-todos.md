@@ -1,8 +1,10 @@
 # Phase 13 review: expired-session cleanup
 
-Status: Phase 13 is implemented and verified, awaiting user diff review. Phases through 14 are complete. Phase 15 requires separate approval.
+Status: Phase 13 is implemented and verified, awaiting user diff review. Phases through 15 are complete. Phase 16 is next.
 
 ## Roadmap continuity
+
+Workflow update from the user on 2026-11-17: A request to continue with an existing phase authorizes implementing that phase directly from its todos. Do not create another proposed design or ask for another design approval before starting. Make routine implementation choices, keep the change limited to the requested phase, and present the finished result for review and adjustment. Continue to leave commits to the user.
 
 This document continues the same `001_fresh_start` session. It carries forward every phase that was unfinished at handoff, 13–41, from [the original architecture contract](01-architect-todos.md) in the roadmap below. Their todos, expected files, acceptance criteria, suggested commits, and individual approval gates are preserved. Carrying work forward does not approve its implementation.
 
@@ -63,7 +65,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Remaining roadmap carried forward
 
-The following phases were carried forward from the original contract. Phases 13 and 14 are now complete, with matching evidence in both roadmaps. Phases 15–41 remain unfinished and require their own approval.
+The following phases were carried forward from the original contract. Phases 13–15 are now complete, with matching evidence in both roadmaps. Phases 16–41 remain unfinished and require their own approval.
 
 ### Phase 13. Clean up expired session records explicitly
 
@@ -122,13 +124,17 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 15. Add only the owned accounts table
 
-Expected files, 2: `src/db/schema.ts`, `docs/setup.md`.
+Review files, 5: `src/db/schema.ts`, `docs/setup.md`, `PROJECT_MAP.md`, `01-architect-todos.md`, and `02-backend-todos.md`.
 
-- [ ] Add accounts with immutable session-derived user_id and the S3 money/type/currency constraints.
-- [ ] Add the user-scoped indexes needed by current account reads, then push while preserving users and sessions.
-- [ ] Explain the user/account relationship and exact opening-balance representation.
+- [x] Add accounts with immutable session-derived user_id and the S3 money/type/currency constraints.
+- [x] Add the user-scoped indexes needed by current account reads, then push while preserving users and sessions.
+- [x] Explain the user/account relationship and exact opening-balance representation.
 
 Acceptance: S3, S8; PROJECT_MAP R3, R5, R8–R11. There is one finance table plus two auth tables. No transaction, tag, or category placeholders. Ownership cannot be transferred by an API field.
+
+Validation: Bun 1.3.14 type checking, lint, all 84 unit tests, all 83 integration tests, and build passed. The guarded schema push added accounts only to the isolated test database. Schema checks confirmed required columns, the owner index, defaults, allowed types/currencies, exact money boundaries, invalid-name and non-finite-value rejection, missing-owner rejection, and restricted user deletion. Before/after comparisons confirmed unchanged users and sessions; all schema-check fixtures rolled back. The test container was stopped with its volume preserved. No local schema push or development API control occurred. No dependencies or migration files were added.
+
+Implementation note for phase 16: Bun SQL can omit trailing zeros from numeric strings. Select `opening_balance::text` or otherwise preserve exact two-decimal output without converting money to a JavaScript number. Ownership, currency, and opening balance immutability are enforced by the later route contracts, not by the foreign key alone.
 
 Suggested commit: `feat: define user-owned accounts`
 
@@ -504,4 +510,4 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Relay
 
-Phases 13 and 14 are complete, including the user-approved removal of the password-work cap and the user's manual Requestly verification. Review phase 15 before implementation. All remaining phases and their approval gates are preserved above and in the architecture contract. The user makes all commits.
+Phases 13–15 are complete, including the password-work simplification, manual Requestly verification, and accounts schema. Phase 16 is next. Implement its existing todos when requested, without another proposal or design-approval step. All remaining phases are preserved above and in the architecture contract. The user makes all commits and controls the development API.

@@ -1,7 +1,9 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   index,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -50,5 +52,54 @@ export const sessions = pgTable(
     index('sessions_user_id_idx').on(table.userId),
     index('sessions_last_seen_at_idx').on(table.lastSeenAt),
     index('sessions_expires_at_idx').on(table.expiresAt),
+  ],
+);
+
+export const accounts = pgTable(
+  'accounts',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    name: varchar('name', { length: 100 }).notNull(),
+    type: text('type', {
+      enum: ['checking', 'savings', 'cash', 'credit', 'investment'],
+    }).notNull(),
+    currency: varchar('currency', {
+      length: 3,
+      enum: ['USD', 'EUR', 'GBP'],
+    })
+      .default('USD')
+      .notNull(),
+    openingBalance: numeric('opening_balance', { precision: 18, scale: 2 })
+      .default('0.00')
+      .notNull(),
+    isArchived: boolean('is_archived').default(false).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index('accounts_user_id_idx').on(table.userId),
+    check(
+      'accounts_name_trimmed',
+      sql`${table.name} <> '' and ${table.name} = btrim(${table.name})`,
+    ),
+    check(
+      'accounts_type_supported',
+      sql`${table.type} in ('checking', 'savings', 'cash', 'credit', 'investment')`,
+    ),
+    check(
+      'accounts_currency_supported',
+      sql`${table.currency} in ('USD', 'EUR', 'GBP')`,
+    ),
+    check(
+      'accounts_opening_balance_finite',
+      sql`${table.openingBalance} <> 'NaN'::numeric`,
+    ),
   ],
 );

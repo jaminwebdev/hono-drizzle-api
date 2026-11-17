@@ -1,6 +1,6 @@
 # Finance tracker architecture and implementation todos
 
-This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases through 14 are complete. Later phases remain subject to their individual approval gates.
+This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases through 15 are complete. Later phases remain subject to their individual approval gates.
 
 ## Spec summary
 
@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Unimplemented details such as future endpoint names remain proposals for review. Each phase needs approval before work starts and ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 14 are complete, including the requested simplicity retrospective and uniform error-handling cleanup. Phases 11–14 are complete; phase 15 requires approval. Local development uses HTTP, following the user's removal of the local HTTPS phase.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Unimplemented details such as future endpoint names remain proposals for review. A request to continue authorizes the existing phase todos; each completed phase ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 15 are complete, including the requested simplicity retrospective and uniform error-handling cleanup. Phases 11–15 are complete; phase 16 is next. Local development uses HTTP, following the user's removal of the local HTTPS phase.
 
 ### Build one feature at a time
 
@@ -484,7 +484,9 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 ## Approval and commit workflow
 
-Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete, including the phase 9 cleanup follow-ups. Phase 4 was removed at the user's request. Phases 10–14 are complete; phase 15 is next and requires approval. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Workflow update from the user on 2026-11-17: A request to continue with an existing phase authorizes implementing that phase directly from its todos. Do not create another proposed design or ask for another design approval before starting. Make routine implementation choices, keep the change limited to the requested phase, and present the finished result for review and adjustment. Continue to leave commits to the user.
+
+Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete, including the phase 9 cleanup follow-ups. Phase 4 was removed at the user's request. Phases 10–15 are complete; phase 16 is next. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests, guides, and request examples, not permission to create an absent file early. The scaffold has eight planned files; later phases stay within nine. Before implementation, split a phase that would reach ten files or mix separate behaviors. Phase 5B is the documented exception for short settings call-site, test, and current-guide updates; it contains only the origin/CORS policy. Split within the same feature and update phase references before proceeding.
 
@@ -843,13 +845,17 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 15. Add only the owned accounts table
 
-Expected files, 2: `src/db/schema.ts`, `docs/setup.md`.
+Review files, 5: `src/db/schema.ts`, `docs/setup.md`, `PROJECT_MAP.md`, `01-architect-todos.md`, and `02-backend-todos.md`.
 
-- [ ] Add accounts with immutable session-derived user_id and the S3 money/type/currency constraints.
-- [ ] Add the user-scoped indexes needed by current account reads, then push while preserving users and sessions.
-- [ ] Explain the user/account relationship and exact opening-balance representation.
+- [x] Add accounts with immutable session-derived user_id and the S3 money/type/currency constraints.
+- [x] Add the user-scoped indexes needed by current account reads, then push while preserving users and sessions.
+- [x] Explain the user/account relationship and exact opening-balance representation.
 
 Acceptance: S3, S8; PROJECT_MAP R3, R5, R8–R11. There is one finance table plus two auth tables. No transaction, tag, or category placeholders. Ownership cannot be transferred by an API field.
+
+Validation: Bun 1.3.14 type checking, lint, all 84 unit tests, all 83 integration tests, and build passed. The guarded schema push added accounts only to the isolated test database. Schema checks confirmed required columns, the owner index, defaults, allowed types/currencies, exact money boundaries, invalid-name and non-finite-value rejection, missing-owner rejection, and restricted user deletion. Before/after comparisons confirmed unchanged users and sessions; all schema-check fixtures rolled back. The test container was stopped with its volume preserved. No local schema push or development API control occurred. No dependencies or migration files were added.
+
+Implementation note for phase 16: Bun SQL can omit trailing zeros from numeric strings. Select `opening_balance::text` or otherwise preserve exact two-decimal output without converting money to a JavaScript number. Ownership, currency, and opening balance immutability are enforced by the later route contracts, not by the foreign key alone.
 
 Suggested commit: `feat: define user-owned accounts`
 
@@ -1240,7 +1246,7 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Is each review bounded?                            | Earlier reviews fit nine tracked files or fewer. Phase 5B is a documented 12-file exception for one origin/CORS policy, including short settings call-site changes, their tests, and accurate docs. Response negotiation and logging are separate in 5C. Other phases keep the nine-file target and their own gates. |
 | Are repetitive catalogs still reviewable?          | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small.                                                         |
 | Is push-only schema management preserved?          | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset.                                                                                                                                 |
-| Is approval preserved?                             | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete; phases 15–41 require their own approval.                                                                                     |
+| Is approval preserved?                             | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete; phases 16–41 remain for later requests.                                                                                     |
 
 Structural checks confirmed consecutive phase numbers, matching feature order, 44 approval gates after splitting phases 3 and 5 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Phase 5A passed common-error and JSON-reader tests, type checking, lint, and build. Phase 5B passed origin/CORS policy tests, configuration checks, type checking, lint, and build. Phase 5C passed negotiation and metadata-log tests, type checking, lint, and build. Future feature checks remain for their own phases.
 
@@ -1252,12 +1258,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 9 and its cleanup follow-ups are complete. Login issues an HttpOnly session cookie after password verification and locked session creation. Phases 10–14 are complete; phase 15 requires approval. Local development remains on HTTP.
+Status: Phase 9 and its cleanup follow-ups are complete. Login issues an HttpOnly session cookie after password verification and locked session creation. Phases 10–15 are complete; phase 16 is next. Local development remains on HTTP.
 
-Handoff note: Use the [current handoff before phase 10](#current-handoff-before-phase-10) for validation, throttling, Drizzle, and documentation decisions. Phase 13 now provides guarded manual cleanup with a 100-row limit. See [the backend contract](02-backend-todos.md) for its design and the carried-forward roadmap. Phase 14 is complete based on the user's manual Requestly verification. Phase 15 introduces only the owned accounts table after review and approval.
+Handoff note: Use the [current handoff before phase 10](#current-handoff-before-phase-10) for validation, throttling, Drizzle, and documentation decisions. Phase 13 now provides guarded manual cleanup with a 100-row limit. See [the backend contract](02-backend-todos.md) for its design and the carried-forward roadmap. Phase 14 is complete based on the user's manual Requestly verification. Phase 15 added the owned accounts table, checked with the isolated test database. Phase 16 introduces account create and detail endpoints. The user can apply the local schema with `bun run db:push`.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing required Origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review this documentation update, then review phase 15 before approving it. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review phase 15 and apply the local schema with `bun run db:push` when ready. Request phase 16 to continue with account endpoints. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the backend-expert skill. "Review phase 15 before implementation. Add only the owned accounts table after approval, following the existing schema-push workflow."
+Suggested next specialist and prompt: Continue with the backend-expert skill. "Implement phase 16 from its existing todos. Add only account create and detail endpoints, using the current validation and error conventions."
