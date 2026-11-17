@@ -95,7 +95,7 @@ Pressing `Ctrl+C` during `db:logs` only stops following the logs. For the separa
 
 ## Schema and database tools
 
-`src/db/schema.ts` defines the current database structure. It contains `users`, used by [registration](api.md#register-a-user) and [login](api.md#log-in), `sessions`, created during login, and user-owned `accounts`. The accounts table is defined, but account endpoints are not implemented yet.
+`src/db/schema.ts` defines the current database structure. It contains `users`, used by [registration](api.md#register-a-user) and [login](api.md#log-in), `sessions`, created during login, and user-owned `accounts`. Account creation and detail endpoints are available as described in [the API guide](api.md#create-an-account-and-read-its-details).
 
 ```mermaid
 erDiagram
@@ -139,11 +139,11 @@ One user can have several sessions, such as separate logins on two devices. Each
 
 Each account belongs to an existing user through `user_id`. PostgreSQL restricts deleting that user while an account references them. The account name must contain 1–100 characters without surrounding spaces; names may repeat. Supported types are `checking`, `savings`, `cash`, `credit`, and `investment`. Investment represents a cash balance without holdings or market prices. Currency defaults to `USD` and must be `USD`, `EUR`, or `GBP`. Accounts start with `is_archived=false`, a generated UUID, and insertion timestamps. The owner index supports finding a user's accounts and checking their references when deleting a user.
 
-`opening_balance` is the starting amount, stored as PostgreSQL `NUMERIC(18,2)`. This permits sixteen digits before the decimal point and two after it, including negative and zero balances. It defaults to `0.00`; debt can be negative, such as `"-24.50"` on a credit account. Drizzle returns this field as a decimal string. Keep it as a string in JSON and never convert money to a JavaScript number. The database rejects non-finite values. PostgreSQL rounds excess fractional digits, so the later account endpoint must validate the exact two-decimal input format before insertion. See [PostgreSQL numeric types](https://www.postgresql.org/docs/18/datatype-numeric.html#DATATYPE-NUMERIC-DECIMAL).
+`opening_balance` is the starting amount, stored as PostgreSQL `NUMERIC(18,2)`. This permits sixteen digits before the decimal point and two after it, including negative and zero balances. It defaults to `0.00`; debt can be negative, such as `"-24.50"` on a credit account. Drizzle returns this field as a decimal string. Keep it as a string in JSON and never convert money to a JavaScript number. The database rejects non-finite values. PostgreSQL rounds excess fractional digits, so the account endpoint validates the exact two-decimal input format before insertion. See [PostgreSQL numeric types](https://www.postgresql.org/docs/18/datatype-numeric.html#DATATYPE-NUMERIC-DECIMAL).
 
-Bun SQL can omit trailing zeros when returning a numeric value, such as returning `"0"` for a stored `0.00`. The later account endpoints must return two fractional digits without converting money to a JavaScript number. Selecting `opening_balance::text` preserves PostgreSQL's two-decimal representation.
+Bun SQL can omit trailing zeros when returning a numeric value, such as returning `"0"` for a stored `0.00`. Account queries select `opening_balance::text` to preserve PostgreSQL's two-decimal representation without converting money to a JavaScript number.
 
-The later account routes will take ownership only from the validated session and reject changes to the owner, currency, or opening balance. The foreign key alone does not make those columns immutable. Update handlers must set `updated_at` explicitly. There is no separate mutable balance column; transactions and balance queries arrive in later phases.
+Account creation takes ownership only from the validated session. The later update routes will reject changes to the owner, currency, or opening balance. The foreign key alone does not make those columns immutable. Update handlers must set `updated_at` explicitly. There is no separate mutable balance column; transactions and balance queries arrive in later phases.
 
 | Command                | Purpose                                                                     |
 | ---------------------- | --------------------------------------------------------------------------- |
@@ -161,7 +161,7 @@ Drizzle ORM and Drizzle Kit are both pinned to `1.0.0-rc.5`, a release candidate
 
 `tests/integration/setup.ts` provides `createTestDatabase()`. It validates the supplied settings and requires the exact test mode, host, port, and database listed above before creating a database object. It never loads an environment file or falls back to local settings. Tests must use this helper before making writes or deleting their fixtures, and close the returned database's `$client` afterward.
 
-To run registration and login tests:
+To run integration tests:
 
 ```sh
 bun run db:test:up
@@ -169,7 +169,7 @@ bun run db:test:push
 bun run test:integration
 ```
 
-Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the auth and session suites serially against the guarded test database. It covers registration, login, password preservation, independent hashed session credentials, safe errors, cookie flags, password-change races, bounded limits, session ownership, idle/absolute expiry, and revoked or unavailable sessions. Tests supply a trusted connection-address fixture and delete only their own users and cascading sessions afterward. Cookie flags are checked through Hono requests. The user has independently verified the current authentication flows in Requestly with manually created collections and routes. Stop the test container with `bun run db:test:down` when finished; its volume remains.
+Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the auth, session, and account suites serially against the guarded test database. It covers registration, login, password preservation, independent hashed session credentials, safe errors, cookie flags, password-change races, bounded limits, session ownership, idle/absolute expiry, and revoked or unavailable sessions. Auth tests supply a trusted connection-address fixture. Tests delete only their own accounts and users, including cascading sessions. Account tests cover strict input, exact opening balances, and two-user ownership. Cookie flags are checked through Hono requests. The user has independently verified the current authentication flows in Requestly with manually created collections and routes. Stop the test container with `bun run db:test:down` when finished; its volume remains.
 
 ## Remove expired sessions manually
 
@@ -208,7 +208,7 @@ Failures print a safe message and exit with a nonzero status. Check the selected
 | `bun run format`           | Format all supported project files with Prettier.                               |
 | `bun run format:check`     | Check formatting without changing files.                                        |
 | `bun run test`             | Run Bun unit tests without PostgreSQL.                                          |
-| `bun run test:integration` | Run registration and login tests against the prepared test PostgreSQL database. |
+| `bun run test:integration` | Run auth, session, and account tests against the prepared test PostgreSQL database. |
 | `bun run build`            | Bundle the server into `dist/server.js`.                                        |
 | `bun run check`            | Run type checking, lint, tests, and build in order.                             |
 

@@ -1,6 +1,61 @@
 # API guide
 
-Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, and the current-user endpoint are available. Logout and password changes are available; finance endpoints come later.
+Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, the current-user endpoint, logout, password changes, and account creation/detail are available.
+
+## Create an account and read its details
+
+Log in first, then send `POST /api/v1/accounts` with the session cookie, an approved `Origin`, and `Content-Type: application/json`:
+
+```json
+{
+  "name": "Daily spending",
+  "type": "checking",
+  "currency": "USD",
+  "openingBalance": "1500.00"
+}
+```
+
+`name` and `type` are required. Names are trimmed and must contain 1–100 characters. Supported types are `checking`, `savings`, `cash`, `credit`, and `investment`. Investment represents a cash balance without holdings or market prices. Currency must be `USD`, `EUR`, or `GBP` and defaults to `USD`. The opening balance defaults to `"0.00"`.
+
+Supply money as a string with exactly two decimal places and at most sixteen integer digits. Zero and negative opening balances are allowed. For example, `"-24.50"` can represent debt. Numeric JSON values, leading zeros, exponent notation, whitespace, commas, negative zero, and extra fractional digits are rejected. Money remains a decimal string throughout the request, database query, and response.
+
+The server takes the owner from the session. Client-supplied IDs, owner fields, archive status, timestamps, tags, categories, and other unknown fields return `400 INVALID_INPUT`. These two endpoints accept no query parameters.
+
+Success returns `201` with a relative `Location` header such as `/api/v1/accounts/62a9b052-bb8a-49f8-935e-76f56b02e2db` and this response shape:
+
+```json
+{
+  "data": {
+    "id": "62a9b052-bb8a-49f8-935e-76f56b02e2db",
+    "name": "Daily spending",
+    "type": "checking",
+    "currency": "USD",
+    "openingBalance": "1500.00",
+    "isArchived": false,
+    "createdAt": "2026-11-17T20:00:00.000Z",
+    "updatedAt": "2026-11-17T20:00:00.000Z"
+  }
+}
+```
+
+Send `GET /api/v1/accounts/:id` with the same session to read the account. It returns `200` with the same shape. The database query checks both the ID and the session's user ID. A missing account and another user's account both return `404 NOT_FOUND` with `The account was not found.` An invalid UUID returns `400 INVALID_INPUT`. Missing or expired sessions return `401 UNAUTHENTICATED`.
+
+```mermaid
+flowchart TD
+    Request[Account request] --> Shared[Shared HTTP checks and write Origin policy]
+    Shared --> Session[Validate session and identify the user]
+    Session --> Validate[Validate allowed input]
+    Validate --> Create[POST inserts with the session owner]
+    Validate --> Read[GET selects by account ID and session owner]
+    Create --> Response[Return public account fields with exact money]
+    Read --> Response
+```
+
+For creation, `requireJson` runs before the JSON validator, and Hono parses the body. Validation failures throw `ApiError`; the shared error handler formats responses. An unexpected database failure returns the normal safe `500` error. No account list, editing, deletion, tags, or transaction routes are available yet.
+
+### Try accounts in Requestly
+
+Create the two requests manually or import [requests/finance.json](../requests/finance.json). Use the same `baseUrl` as your auth requests and log in first so Requestly's cookie jar holds the session. Send **Create account** with `Origin: {{baseUrl}}`. Copy only the returned account ID into the `accountId` variable, then send **Account details**. Do not copy the session credential into variables or request headers. Each successful create makes a separate account, even if its name repeats.
 
 ## Health requests
 

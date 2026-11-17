@@ -1,0 +1,55 @@
+{
+  "info": {
+    "name": "Learning API accounts",
+    "description": "Log in using your auth requests first. Requestly uses its cookie jar. Copy the returned account ID into accountId after creating an account.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:3000",
+      "type": "string"
+    },
+    {
+      "key": "accountId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Create account",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{baseUrl}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Daily spending\",\n  \"type\": \"checking\",\n  \"currency\": \"USD\",\n  \"openingBalance\": \"1500.00\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/v1/accounts"
+      }
+    },
+    {
+      "name": "Account details",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/v1/accounts/{{accountId}}"
+      }
+    }
+  ]
+}

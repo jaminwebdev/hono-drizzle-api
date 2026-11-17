@@ -1,6 +1,6 @@
 # Phase 13 review: expired-session cleanup
 
-Status: Phase 13 is implemented and verified, awaiting user diff review. Phases through 15 are complete. Phase 16 is next.
+Status: Phases through 16 are implemented and verified. Phase 17 is next.
 
 ## Roadmap continuity
 
@@ -65,7 +65,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Remaining roadmap carried forward
 
-The following phases were carried forward from the original contract. Phases 13–15 are now complete, with matching evidence in both roadmaps. Phases 16–41 remain unfinished and require their own approval.
+The following phases were carried forward from the original contract. Phases 13–16 are now complete, with matching evidence in both roadmaps. Phases 17–41 remain unfinished and require their own approval.
 
 ### Phase 13. Clean up expired session records explicitly
 
@@ -142,14 +142,18 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 16. Create accounts and read owned details
 
-Expected files, 6: `src/features/accounts.ts`, `src/app.ts`, `tests/unit/accounts.test.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `requests/finance.json`.
+Review files, 9: `src/features/accounts.ts`, `src/app.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `docs/setup.md`, `requests/finance.json`, `PROJECT_MAP.md`, `01-architect-todos.md`, and `02-backend-todos.md`.
 
-- [ ] Derive allowed account-create fields from the accounts table, add strict API rules and ID validation, and wire route-level validators, handlers, and queries together with existing session/Origin checks.
-- [ ] Set ownership from the authenticated context and return 404 for another user's account.
-- [ ] Test exact opening balances, currency/type rules, rejected owner fields, unauthenticated access, rejected write origins, and cross-user detail access.
-- [ ] Add a Requestly-authenticated create/detail example and trace its actual middleware/query path.
+- [x] Derive allowed account-create fields from the accounts table, add strict API rules and ID validation, and wire route-level validators, handlers, and queries together with existing session/Origin checks.
+- [x] Set ownership from the authenticated context and return 404 for another user's account.
+- [x] Test exact opening balances, currency/type rules, rejected owner fields, unauthenticated access, rejected write origins, and cross-user detail access.
+- [x] Add a Requestly-authenticated create/detail example and trace its actual middleware/query path.
 
 Acceptance: S1, S3, S5, S8; PROJECT_MAP R3, R5–R8, R10–R12. Reuse auth/HTTP code already reviewed. No account list, editing, tags, or categories yet. A valid session is necessary but never sufficient to access another user's ID.
+
+Validation: Bun 1.3.14 type checking, lint, all 84 unit tests, all 167 integration tests, and build passed. The guarded test schema push reported no changes. Account tests cover exact money boundaries and defaults, supported types/currencies, strict fields and IDs, session-required access, origin rejection, two-user ownership, JSON parsing, and safe database failures. Input-schema checks share the account integration suite, matching the auth suite. Test fixtures delete only their own accounts and users. The isolated test container was stopped with its volume preserved; the development API was not started or stopped. No schema or dependencies changed.
+
+Request flow: Shared HTTP checks enforce the Origin policy on account creation. Session middleware validates the cookie and supplies the user. Route-level validators accept only the allowed fields. POST inserts with the session owner; GET selects by both account ID and owner. Both return explicit public fields and `opening_balance::text` for exact two-decimal strings. Foreign accounts and missing accounts return the same safe 404.
 
 Suggested commit: `feat: create accounts and read owned details`
 
@@ -510,4 +514,4 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Relay
 
-Phases 13–15 are complete, including the password-work simplification, manual Requestly verification, and accounts schema. Phase 16 is next. Implement its existing todos when requested, without another proposal or design-approval step. All remaining phases are preserved above and in the architecture contract. The user makes all commits and controls the development API.
+Phases 13–16 are complete, including the password-work simplification, manual Requestly verification, accounts schema, and account create/detail endpoints. Phase 17 is next. Implement its existing todos when requested, without another proposal or design-approval step. All remaining phases are preserved above and in the architecture contract. The user makes all commits and controls the development API.
