@@ -7,7 +7,7 @@ import {
   spyOn,
   test,
 } from 'bun:test';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import * as v from 'valibot';
 import {
   accountIdSchema,
@@ -66,6 +66,24 @@ function create(
 function detail(cookie: string | undefined, id: string) {
   return app.request(`/api/v1/accounts/${id}`, {
     headers: cookie ? { Cookie: cookie } : {},
+  });
+}
+
+async function patchAccount(
+  cookie: string | undefined,
+  id: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+) {
+  return app.request(`/api/v1/accounts/${id}`, {
+    method: 'PATCH',
+    headers: {
+      Origin: origin,
+      'Content-Type': 'application/json',
+      ...(cookie ? { Cookie: cookie } : {}),
+      ...headers,
+    },
+    body: JSON.stringify(body),
   });
 }
 
@@ -538,6 +556,322 @@ describe('owned account lists and search', () => {
       expect(JSON.stringify(body)).not.toContain('private-account-count');
     } finally {
       select.mockRestore();
+    }
+  });
+});
+
+describe('account renaming and archival', () => {
+  test('patches only supplied fields, preserves immutable values, and updates the timestamp', async () => {
+    const owner = await signedIn();
+    const created = await create(owner.cookie, {
+      name: 'Original',
+      type: 'credit',
+      currency: 'GBP',
+      openingBalance: '-24.50',
+    });
+    const before = ((await created.json()) as AccountResponse).data;
+    const now = Date.now() + 1000;
+    const clock = spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const renamed = await patchAccount(owner.cookie, before.id, {
+        name: '  New name  ',
+      });
+      expect(renamed.status).toBe(200);
+      expect(await renamed.json()).toEqual({
+        data: {
+          ...before,
+          name: 'New name',
+          updatedAt: new Date(now).toISOString(),
+        },
+      });
+      expect(renamed.headers.get('Cache-Control')).toBe('no-store');
+      const [stored] = await database
+        .select({ owner: accounts.userId })
+        .from(accounts)
+        .where(eq(accounts.id, before.id));
+      expect(stored!.owner).toBe(owner.id);
+      const archived = await patchAccount(owner.cookie, before.id, {
+        isArchived: true,
+      });
+      expect(archived.status).toBe(200);
+      const archivedBody = (await archived.json()) as AccountResponse;
+      expect(archivedBody.data).toMatchObject({
+        name: 'New name',
+        isArchived: true,
+        currency: 'GBP',
+        openingBalance: '-24.50',
+      });
+      expect(
+        (
+          (await (
+            await list(owner.cookie, 'archived=false')
+          ).json()) as AccountListResponse
+        ).data,
+      ).toHaveLength(0);
+      expect(
+        (
+          (await (
+            await list(owner.cookie, 'archived=true')
+          ).json()) as AccountListResponse
+        ).data.map((row) => row.id),
+      ).toEqual([before.id]);
+      expect((await detail(owner.cookie, before.id)).status).toBe(200);
+      const restored = await patchAccount(owner.cookie, before.id, {
+        name: 'Restored',
+        isArchived: false,
+      });
+      expect(restored.status).toBe(200);
+      expect(((await restored.json()) as AccountResponse).data).toMatchObject({
+        ...before,
+        name: 'Restored',
+        isArchived: false,
+        updatedAt: new Date(now).toISOString(),
+      });
+      expect(
+        (
+          (await (
+            await list(owner.cookie, 'archived=false')
+          ).json()) as AccountListResponse
+        ).pagination.total,
+      ).toBe(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test('rejects empty, invalid, and protected patches without changing the account', async () => {
+    const owner = await signedIn();
+    const before = (
+      (await (
+        await create(owner.cookie, { name: 'Keep me', type: 'checking' })
+      ).json()) as AccountResponse
+    ).data;
+    for (const body of [
+      {},
+      null,
+      [],
+      { name: '' },
+      { name: ' \t' },
+      { name: 'a'.repeat(101) },
+      { name: null },
+      { isArchived: 'false' },
+      { isArchived: 0 },
+      { isArchived: null },
+      ...[
+        'id',
+        'userId',
+        'user_id',
+        'type',
+        'currency',
+        'openingBalance',
+        'createdAt',
+        'updatedAt',
+        'tagIds',
+      ].map((field) => ({ name: 'Attempted rename', [field]: 'blocked' })),
+    ]) {
+      const response = await patchAccount(owner.cookie, before.id, body);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'INVALID_INPUT' },
+      });
+    }
+    expect(await (await detail(owner.cookie, before.id)).json()).toEqual({
+      data: before,
+    });
+  });
+
+  test('returns the same 404 for another user and a nonexistent account', async () => {
+    const owner = await signedIn();
+    const other = await signedIn();
+    const before = (
+      (await (
+        await create(owner.cookie, { name: 'Private', type: 'cash' })
+      ).json()) as AccountResponse
+    ).data;
+    for (const id of [before.id, crypto.randomUUID()]) {
+      const response = await patchAccount(other.cookie, id, {
+        name: 'Stolen',
+        isArchived: true,
+      });
+      expect(response.status).toBe(404);
+      expect(await response.json()).toMatchObject({
+        error: { code: 'NOT_FOUND', message: 'The account was not found.' },
+      });
+    }
+    expect(await (await detail(owner.cookie, before.id)).json()).toEqual({
+      data: before,
+    });
+  });
+
+  test('requires an authenticated session and approved Origin before updating', async () => {
+    const owner = await signedIn();
+    const before = (
+      (await (
+        await create(owner.cookie, { name: 'Protected', type: 'cash' })
+      ).json()) as AccountResponse
+    ).data;
+    expect(
+      (await patchAccount(undefined, before.id, { isArchived: true })).status,
+    ).toBe(401);
+    expect(
+      (await patchAccount('session=invalid', before.id, { isArchived: true }))
+        .status,
+    ).toBe(401);
+    const update = spyOn(database, 'update');
+    try {
+      for (const originValue of [
+        '',
+        'null',
+        'http://untrusted.example',
+        origin + '/',
+      ]) {
+        const response = await patchAccount(
+          owner.cookie,
+          before.id,
+          { isArchived: true },
+          { Origin: originValue },
+        );
+        expect(response.status).toBe(403);
+        expect(await response.json()).toMatchObject({
+          error: { code: 'ORIGIN_REJECTED' },
+        });
+      }
+      expect(update).not.toHaveBeenCalled();
+    } finally {
+      update.mockRestore();
+    }
+    expect(await (await detail(owner.cookie, before.id)).json()).toEqual({
+      data: before,
+    });
+  });
+
+  test('keeps JSON parsing, query fields, and parameter errors on the central error path', async () => {
+    const owner = await signedIn();
+    expect(
+      (await patchAccount(owner.cookie, 'invalid-id', { isArchived: true }))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await patchAccount(
+          owner.cookie,
+          crypto.randomUUID() + '?archived=true',
+          { isArchived: true },
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await patchAccount(
+          owner.cookie,
+          crypto.randomUUID(),
+          {},
+          { 'Content-Type': 'text/plain' },
+        )
+      ).status,
+    ).toBe(415);
+    const response = await app.request(
+      `/api/v1/accounts/${crypto.randomUUID()}`,
+      {
+        method: 'PATCH',
+        headers: {
+          Origin: origin,
+          Cookie: owner.cookie,
+          'Content-Type': 'application/json',
+        },
+        body: '{"private-input":',
+      },
+    );
+    expect(response.status).toBe(400);
+    expect(await response.text()).not.toContain('private-input');
+  });
+
+  test('hides update failures and leaves the account unchanged', async () => {
+    const owner = await signedIn();
+    const before = (
+      (await (
+        await create(owner.cookie, { name: 'Original', type: 'checking' })
+      ).json()) as AccountResponse
+    ).data;
+    const original = database.update.bind(database);
+    const update = spyOn(database, 'update')
+      .mockImplementationOnce(original)
+      .mockImplementationOnce(() => {
+        throw new Error('private-account-update');
+      });
+    try {
+      const response = await patchAccount(owner.cookie, before.id, {
+        name: 'Must not change',
+        isArchived: true,
+      });
+      expect(response.status).toBe(500);
+      expect(await response.text()).not.toContain('private-account-update');
+    } finally {
+      update.mockRestore();
+    }
+    expect(await (await detail(owner.cookie, before.id)).json()).toEqual({
+      data: before,
+    });
+  });
+
+  test('waits for the account lock and preserves another committed field change', async () => {
+    const owner = await signedIn();
+    const before = (
+      (await (
+        await create(owner.cookie, { name: 'Original', type: 'cash' })
+      ).json()) as AccountResponse
+    ).data;
+    let reached!: () => void;
+    let release!: () => void;
+    const locked = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holder = database.transaction(async (tx) => {
+      await tx
+        .select({ id: accounts.id })
+        .from(accounts)
+        .where(eq(accounts.id, before.id))
+        .for('update');
+      reached();
+      await gate;
+      await tx
+        .update(accounts)
+        .set({ name: 'Committed while patch waited' })
+        .where(eq(accounts.id, before.id));
+    });
+    let pending: Promise<Response> | undefined;
+    try {
+      await locked;
+      pending = patchAccount(owner.cookie, before.id, { isArchived: true });
+      let waiting = false;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const rows = await database.execute(sql`
+          select 1 from pg_stat_activity
+          where datname = current_database() and wait_event_type = 'Lock'
+            and query like 'update "accounts"%'
+        `);
+        if (rows.length) {
+          waiting = true;
+          break;
+        }
+        await Bun.sleep(10);
+      }
+      expect(waiting).toBe(true);
+      release();
+      await holder;
+      const response = await pending;
+      expect(response.status).toBe(200);
+      expect(((await response.json()) as AccountResponse).data).toMatchObject({
+        name: 'Committed while patch waited',
+        isArchived: true,
+      });
+    } finally {
+      release();
+      await holder;
+      await pending;
     }
   });
 });

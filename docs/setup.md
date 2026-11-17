@@ -95,7 +95,7 @@ Pressing `Ctrl+C` during `db:logs` only stops following the logs. For the separa
 
 ## Schema and database tools
 
-`src/db/schema.ts` defines the current database structure. It contains `users`, used by [registration](api.md#register-a-user) and [login](api.md#log-in), `sessions`, created during login, and user-owned `accounts`. Account creation, detail, listing, and search endpoints are available as described in [the API guide](api.md#create-an-account-and-read-its-details).
+`src/db/schema.ts` defines the current database structure. It contains `users`, used by [registration](api.md#register-a-user) and [login](api.md#log-in), `sessions`, created during login, and user-owned `accounts`. Account creation, detail, listing, search, renaming, and archival endpoints are available as described in [the API guide](api.md#create-an-account-and-read-its-details).
 
 ```mermaid
 erDiagram
@@ -143,7 +143,7 @@ Each account belongs to an existing user through `user_id`. PostgreSQL restricts
 
 Bun SQL can omit trailing zeros when returning a numeric value, such as returning `"0"` for a stored `0.00`. Account queries select `opening_balance::text` to preserve PostgreSQL's two-decimal representation without converting money to a JavaScript number.
 
-Account creation takes ownership only from the validated session. The later update routes will reject changes to the owner, currency, or opening balance. The foreign key alone does not make those columns immutable. Update handlers must set `updated_at` explicitly. There is no separate mutable balance column; transactions and balance queries arrive in later phases.
+Account creation takes ownership only from the validated session. The account PATCH route allows only name and archive-status changes, preserving the owner, currency, and opening balance. The foreign key alone does not make those columns immutable. The PATCH handler sets `updated_at` in the same atomic SQL update as the supplied name/archive fields. There is no separate mutable balance column; transactions and balance queries arrive in later phases.
 
 | Command                | Purpose                                                                     |
 | ---------------------- | --------------------------------------------------------------------------- |
@@ -169,7 +169,7 @@ bun run db:test:push
 bun run test:integration
 ```
 
-Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the auth, session, and account suites serially against the guarded test database. It covers registration, login, password preservation, independent hashed session credentials, safe errors, cookie flags, password-change races, bounded limits, session ownership, idle/absolute expiry, and revoked or unavailable sessions. Auth tests supply a trusted connection-address fixture. Tests delete only their own accounts and users, including cascading sessions. Account tests cover strict input, exact opening balances, two-user ownership, bounded lists, literal name search, and archive filtering. Cookie flags are checked through Hono requests. The user has independently verified the current authentication flows in Requestly with manually created collections and routes. Stop the test container with `bun run db:test:down` when finished; its volume remains.
+Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the auth, session, and account suites serially against the guarded test database. It covers registration, login, password preservation, independent hashed session credentials, safe errors, cookie flags, password-change races, bounded limits, session ownership, idle/absolute expiry, and revoked or unavailable sessions. Auth tests supply a trusted connection-address fixture. Tests delete only their own accounts and users, including cascading sessions. Account tests cover strict input, exact opening balances, two-user ownership, bounded lists, literal name search, archive filtering, owned patches, safe update failures, and account locking. Cookie flags are checked through Hono requests. The user has independently verified the current authentication flows in Requestly with manually created collections and routes. Stop the test container with `bun run db:test:down` when finished; its volume remains.
 
 ## Remove expired sessions manually
 

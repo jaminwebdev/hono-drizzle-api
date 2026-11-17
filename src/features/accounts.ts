@@ -30,6 +30,11 @@ export const createAccountSchema = v.strictObject({
   openingBalance: v.optional(createFields.entries.openingBalance, '0.00'),
 });
 export const accountIdSchema = v.strictObject({ id: accountFields.entries.id });
+const patchFields = v.partial(v.pick(accountFields, ['name', 'isArchived']));
+export const patchAccountSchema = v.pipe(
+  v.strictObject(patchFields.entries),
+  v.check((value) => Object.keys(value).length > 0),
+);
 
 const positiveQueryInteger = v.pipe(
   v.string(),
@@ -171,6 +176,50 @@ export function createAccountRoutes(
           ),
         )
         .limit(1);
+      if (!account) {
+        throw new ApiError(404, 'NOT_FOUND', 'The account was not found.');
+      }
+      return c.json({ data: account });
+    },
+  );
+  routes.patch(
+    '/:id',
+    sValidator('query', v.strictObject({}), (result) => {
+      if (!result.success) {
+        throw new ApiError(
+          400,
+          'INVALID_INPUT',
+          'This endpoint accepts no query fields.',
+        );
+      }
+    }),
+    sValidator('param', accountIdSchema, (result) => {
+      if (!result.success) {
+        throw new ApiError(400, 'INVALID_INPUT', 'Provide a valid account ID.');
+      }
+    }),
+    requireJson,
+    sValidator('json', patchAccountSchema, (result) => {
+      if (!result.success) {
+        throw new ApiError(
+          400,
+          'INVALID_INPUT',
+          'Provide only a nonempty account name or a boolean isArchived, or both.',
+        );
+      }
+    }),
+    async (c) => {
+      const { id } = c.req.valid('param');
+      const patch = c.req.valid('json');
+      const owned = and(
+        eq(accounts.id, id),
+        eq(accounts.userId, c.get('session').user.id),
+      );
+      const [account] = await database
+        .update(accounts)
+        .set({ ...patch, updatedAt: new Date(Date.now()) })
+        .where(owned)
+        .returning(accountSelection);
       if (!account) {
         throw new ApiError(404, 'NOT_FOUND', 'The account was not found.');
       }

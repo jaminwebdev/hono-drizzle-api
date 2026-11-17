@@ -1,6 +1,6 @@
 # Phase 13 review: expired-session cleanup
 
-Status: Phases through 17 are implemented and verified. Phase 18 is next.
+Status: Phases through 18 are implemented and verified. Phase 19 is next.
 
 ## Roadmap continuity
 
@@ -65,7 +65,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Remaining roadmap carried forward
 
-The following phases were carried forward from the original contract. Phases 13–17 are now complete, with matching evidence in both roadmaps. Phases 18–41 remain unfinished and require their own approval.
+The following phases were carried forward from the original contract. Phases 13–18 are now complete, with matching evidence in both roadmaps. Phases 19–41 remain unfinished and require their own approval.
 
 ### Phase 13. Clean up expired session records explicitly
 
@@ -179,13 +179,19 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 18. Rename and archive owned accounts
 
-Expected files, 4: `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `requests/finance.json`.
+Review files, 8: `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `docs/setup.md`, `requests/finance.json`, `PROJECT_MAP.md`, `01-architect-todos.md`, and `02-backend-todos.md`.
 
-- [ ] Derive patches from the allowed name/archive fields, reject empty patches and unknown fields, and keep money/currency/owner immutable.
-- [ ] Apply the owned-row lock/update path that later transaction creation will coordinate with.
-- [ ] Test archive/unarchive, cross-user writes, rejected write origins, protected fields, and safe errors; extend the lifecycle examples.
+- [x] Derive patches from the allowed name/archive fields, reject empty patches and unknown fields, and keep money/currency/owner immutable.
+- [x] Update the owned account with one atomic `UPDATE ... RETURNING`; PostgreSQL's automatic row lock coordinates with later transaction creation.
+- [x] Test archive/unarchive, cross-user writes, rejected write origins, protected fields, and safe errors; extend the lifecycle examples.
 
 Acceptance: S3–S4, S8; PROJECT_MAP R3, R5–R8, R10–R11. No transaction lookup is added before that table exists. Account metadata uses last accepted write, and ownership stays immutable.
+
+Validation: Bun 1.3.14 type checking, lint, all 114 unit tests, all 196 integration tests, and build passed. New tests cover rename/archive/unarchive, trimmed names, protected fields and empty patches, unchanged owner/currency/money/creation time, updated timestamps, session and Origin checks, foreign and missing account IDs, malformed input, safe update failures, and waiting for a concurrent account lock without overwriting another field. The isolated test container was stopped with its volume preserved. No schema, dependencies, transaction-table lookups, or development API processes changed.
+
+Request flow: Shared HTTP middleware checks write Origin, and session middleware identifies the user. Route-level validators allow only a valid account ID and a nonempty name/archive patch. The handler updates by ID and owner in one atomic statement, changing only supplied fields plus `updated_at`. `RETURNING` supplies the response and detects missing/foreign accounts with one 404 check. PostgreSQL acquires the row lock automatically. Database failures use the central error path. Later transaction creation will use the same account lock to coordinate with archival.
+
+Simplification before commit, requested by the user on 2026-11-17: Remove the explicit transaction and preliminary locking read. This patch does not inspect existing state before writing, so one owned update handles both mutation and existence. Keep the concurrency test to verify the update still waits for conflicting account locks.
 
 Suggested commit: `feat: rename and archive owned accounts`
 
@@ -518,4 +524,4 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Relay
 
-Phases 13–17 are complete, including the password-work simplification, manual Requestly verification, accounts schema, account create/detail endpoints, and bounded owned-account lists/search. Phase 18 is next. Implement its existing todos when requested, without another proposal or design-approval step. All remaining phases are preserved above and in the architecture contract. The user makes all commits and controls the development API.
+Phases 13–18 are complete, including the password-work simplification, manual Requestly verification, accounts schema, account create/detail/list/search endpoints, and owned renaming/archival. Phase 19 is next. Implement its existing todos when requested, without another proposal or design-approval step. All remaining phases are preserved above and in the architecture contract. The user makes all commits and controls the development API.

@@ -1,6 +1,6 @@
 # API guide
 
-Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, the current-user endpoint, logout, password changes, and account creation, detail, listing, and search are available.
+Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, the current-user endpoint, logout, password changes, and account creation, detail, listing, search, renaming, and archival are available.
 
 ## Create an account and read its details
 
@@ -51,7 +51,7 @@ flowchart TD
     Read --> Response
 ```
 
-For creation, `requireJson` runs before the JSON validator, and Hono parses the body. Validation failures throw `ApiError`; the shared error handler formats responses. An unexpected database failure returns the normal safe `500` error. Account listing and search are described below. Editing, deletion, tags, and transaction routes are not available yet.
+For creation, `requireJson` runs before the JSON validator, and Hono parses the body. Validation failures throw `ApiError`; the shared error handler formats responses. An unexpected database failure returns the normal safe `500` error. Account listing and search are described below. Account renaming and archival are described below. Deletion, tags, and transaction routes are not available yet.
 
 ### Try accounts in Requestly
 
@@ -85,7 +85,40 @@ Results are ordered by account name ascending, then by UUID ascending to keep eq
 
 The route validates the session and query before reading accounts. It uses the same owner, name, and archive conditions for both the paged results and the total count. The existing owner index supports selecting one user's accounts. Sorting and substring search use those matching rows; no new index or schema change is needed for the current small dataset. Pagination is not a snapshot; concurrent changes can affect results and totals.
 
-In Requestly, use **List accounts** from [requests/finance.json](../requests/finance.json) or create the GET request manually. Reuse the cookie jar from login. Set `q`, `archived`, `page`, and `limit` in the URL as needed; remove a filter to omit it. Archiving accounts through the API arrives in the next phase.
+In Requestly, use **List accounts** from [requests/finance.json](../requests/finance.json) or create the GET request manually. Reuse the cookie jar from login. Set `q`, `archived`, `page`, and `limit` in the URL as needed; remove a filter to omit it. Use the PATCH endpoint below to archive or unarchive an account.
+
+## Rename, archive, or unarchive an account
+
+Send `PATCH /api/v1/accounts/:id` with the session cookie, an approved `Origin`, and `Content-Type: application/json`. Supply `name`, `isArchived`, or both:
+
+```json
+{
+  "name": "Household checking",
+  "isArchived": true
+}
+```
+
+Names use the same trimming and 1–100 character rules as creation. `isArchived` must be a JSON boolean, `true` or `false`, rather than a string. To unarchive an account, send `{ "isArchived": false }`. Omitted fields keep their current values. Empty patches, null values, unknown fields, and query parameters return `400 INVALID_INPUT`.
+
+The owner, ID, type, currency, opening balance, and creation timestamp cannot change through this endpoint. The server sets `updatedAt` on each successful patch. Success returns `200` with the full public account representation, including the unchanged exact decimal opening balance. A missing account and another user's account both return the same `404 NOT_FOUND` response. Missing sessions, unapproved write origins, and malformed JSON use the existing shared errors.
+
+Archiving does not delete the account. Its detail remains readable, and the list route still includes it when `archived` is omitted or set to `true`. Use `archived=false` to list only active accounts.
+
+```mermaid
+sequenceDiagram
+    participant Client as Signed-in client
+    participant API as Account route
+    participant DB as PostgreSQL
+    Client->>API: PATCH name or archive status
+    API->>API: Check Origin, session, ID, and JSON fields
+    API->>DB: Update supplied fields and updated_at by ID and owner
+    DB-->>API: Return the updated account
+    API-->>Client: 200 with account details
+```
+
+The handler uses one atomic `UPDATE ... RETURNING` statement. No matching row means the account is missing or belongs to another user, so the route returns 404. PostgreSQL automatically holds a row lock during the update; no preliminary read or explicit transaction wrapper is needed. Only supplied fields are updated, so archiving cannot overwrite a concurrent rename with an older name. If two requests change the same field, the last successful update wins. This endpoint requires no version or `If-Match` header. Future transaction creation will coordinate with archival by locking the same account before checking whether it is active; no transaction table or lookup exists yet.
+
+In Requestly, **Rename account**, **Archive account**, and **Unarchive account** in [requests/finance.json](../requests/finance.json) use `{{accountId}}` and the existing cookie jar. You can also create these requests manually. Each write needs `Origin: {{baseUrl}}`. After archiving, try **Account details** and list with `archived=true`; after unarchiving, list with `archived=false`.
 
 ## Health requests
 
