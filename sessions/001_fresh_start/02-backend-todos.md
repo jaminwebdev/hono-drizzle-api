@@ -1,6 +1,6 @@
 # Phase 13 review: expired-session cleanup
 
-Status: Phases through 18 are implemented and verified. Phase 19 is next.
+Status: Phases through 19 are implemented and verified. Phase 20 is next.
 
 ## Roadmap continuity
 
@@ -65,7 +65,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Remaining roadmap carried forward
 
-The following phases were carried forward from the original contract. Phases 13–18 are now complete, with matching evidence in both roadmaps. Phases 19–41 remain unfinished and require their own approval.
+The following phases were carried forward from the original contract. Phases 13–19 are now complete, with matching evidence in both roadmaps. Phases 20–41 remain unfinished and require their own approval.
 
 ### Phase 13. Clean up expired session records explicitly
 
@@ -199,13 +199,17 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 19. Delete an unused owned account
 
-Expected files, 4: `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `requests/finance.json`.
+Review files, 8: `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `docs/setup.md`, `requests/finance.json`, `PROJECT_MAP.md`, `01-architect-todos.md`, and `02-backend-todos.md`.
 
-- [ ] Add account deletion for the current accounts-only finance schema using the existing owner/session/origin checks.
-- [ ] Test owned deletion, repeated/missing IDs, and another user's account remaining intact.
-- [ ] Document the current deletion behavior and the reference restrictions that will arrive with transactions.
+- [x] Add account deletion for the current accounts-only finance schema using the existing owner/session/origin checks.
+- [x] Test owned deletion, repeated/missing IDs, and another user's account remaining intact.
+- [x] Document the current deletion behavior and the reference restrictions that will arrive with transactions.
 
 Acceptance: S3–S5, S8; PROJECT_MAP R3, R5–R8, R10–R11. Do not query future tables or install generic cascade helpers. This is a separate deletion commit that leaves the completed accounts feature usable.
+
+Validation: Bun 1.3.14 type checking, lint, all 114 unit tests, all 203 integration tests, and build passed. New tests cover deletion of active/archived accounts, an empty 204 response, repeated and missing IDs, foreign accounts, invalid/revoked sessions, rejected origins and query fields, safe deletion failures and retry, and preservation of other accounts, users, and sessions. The isolated test container was stopped with its volume preserved. No schema, dependencies, future-table queries, or development API processes changed.
+
+Request flow: Shared HTTP middleware checks the write Origin, then session middleware identifies the user. Route-level validators reject unsupported query fields and malformed IDs. One `DELETE ... RETURNING` statement scopes deletion to the account ID and session owner. A deleted row produces an empty 204; missing, repeated, and foreign IDs produce the same safe 404. The current finance schema has no transaction or history references. Their deletion restrictions remain in phase 20.
 
 Suggested commit: `feat: delete unused owned accounts`
 
@@ -524,4 +528,4 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Relay
 
-Phases 13–18 are complete, including the password-work simplification, manual Requestly verification, accounts schema, account create/detail/list/search endpoints, and owned renaming/archival. Phase 19 is next. Implement its existing todos when requested, without another proposal or design-approval step. All remaining phases are preserved above and in the architecture contract. The user makes all commits and controls the development API.
+Phases 13–19 are complete, including the password-work simplification, manual Requestly verification, and accounts schema/create/detail/list/search/rename/archive/delete behavior. Phase 20 is next. Implement its existing todos when requested, without another proposal or design-approval step. All remaining phases are preserved above and in the architecture contract. The user makes all commits and controls the development API.

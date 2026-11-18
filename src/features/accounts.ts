@@ -226,5 +226,38 @@ export function createAccountRoutes(
       return c.json({ data: account });
     },
   );
+  routes.delete(
+    '/:id',
+    sValidator('query', v.strictObject({}), (result) => {
+      if (!result.success) {
+        throw new ApiError(
+          400,
+          'INVALID_INPUT',
+          'This endpoint accepts no query fields.',
+        );
+      }
+    }),
+    sValidator('param', accountIdSchema, (result) => {
+      if (!result.success) {
+        throw new ApiError(400, 'INVALID_INPUT', 'Provide a valid account ID.');
+      }
+    }),
+    async (c) => {
+      const { id } = c.req.valid('param');
+      const [deleted] = await database
+        .delete(accounts)
+        .where(
+          and(
+            eq(accounts.id, id),
+            eq(accounts.userId, c.get('session').user.id),
+          ),
+        )
+        .returning({ id: accounts.id });
+      if (!deleted) {
+        throw new ApiError(404, 'NOT_FOUND', 'The account was not found.');
+      }
+      return c.body(null, 204);
+    },
+  );
   return routes;
 }

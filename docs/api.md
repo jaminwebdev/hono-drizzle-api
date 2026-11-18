@@ -1,6 +1,6 @@
 # API guide
 
-Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, the current-user endpoint, logout, password changes, and account creation, detail, listing, search, renaming, and archival are available.
+Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, the current-user endpoint, logout, password changes, and account creation, detail, listing, search, renaming, archival, and deletion are available.
 
 ## Create an account and read its details
 
@@ -51,7 +51,7 @@ flowchart TD
     Read --> Response
 ```
 
-For creation, `requireJson` runs before the JSON validator, and Hono parses the body. Validation failures throw `ApiError`; the shared error handler formats responses. An unexpected database failure returns the normal safe `500` error. Account listing and search are described below. Account renaming and archival are described below. Deletion, tags, and transaction routes are not available yet.
+For creation, `requireJson` runs before the JSON validator, and Hono parses the body. Validation failures throw `ApiError`; the shared error handler formats responses. An unexpected database failure returns the normal safe `500` error. Account listing, search, renaming, archival, and deletion are described below. Tags and transaction routes are not available yet.
 
 ### Try accounts in Requestly
 
@@ -119,6 +119,18 @@ sequenceDiagram
 The handler uses one atomic `UPDATE ... RETURNING` statement. No matching row means the account is missing or belongs to another user, so the route returns 404. PostgreSQL automatically holds a row lock during the update; no preliminary read or explicit transaction wrapper is needed. Only supplied fields are updated, so archiving cannot overwrite a concurrent rename with an older name. If two requests change the same field, the last successful update wins. This endpoint requires no version or `If-Match` header. Future transaction creation will coordinate with archival by locking the same account before checking whether it is active; no transaction table or lookup exists yet.
 
 In Requestly, **Rename account**, **Archive account**, and **Unarchive account** in [requests/finance.json](../requests/finance.json) use `{{accountId}}` and the existing cookie jar. You can also create these requests manually. Each write needs `Origin: {{baseUrl}}`. After archiving, try **Account details** and list with `archived=true`; after unarchiving, list with `archived=false`.
+
+## Delete an account
+
+Send `DELETE /api/v1/accounts/:id` with the session cookie and an approved `Origin`. No request body or Content-Type header is needed. Query parameters are rejected, and the account ID must be a UUID.
+
+The handler uses one atomic `DELETE ... RETURNING` statement scoped to both the account ID and the session owner. A successful deletion returns `204` with no body. A missing account, a previously deleted account, and another user's account all return the same `404 NOT_FOUND` response. Missing or revoked sessions return `401 UNAUTHENTICATED`; missing or unapproved origins return `403 ORIGIN_REJECTED` before session or deletion work. Invalid IDs or query fields return `400 INVALID_INPUT`. Unexpected deletion failures use the shared safe `500` response.
+
+Both active and archived accounts can be deleted. Deletion removes the account permanently, so later detail reads and updates return `404`, and the account disappears from lists and totals. Other accounts, users, and sessions remain intact. Archiving is the option that keeps an account available for later use.
+
+The current finance schema contains only accounts, so there are no transaction or history references to check yet. Planned transaction/history support will restrict deletion of referenced accounts and return `409 RESOURCE_IN_USE`, with archival as the alternative. Those checks will arrive with those tables; this endpoint does not query tables that do not exist.
+
+For a Requestly walkthrough, create a temporary account and copy its returned ID into `accountId`. Send **Delete account** from [requests/finance.json](../requests/finance.json) or create the DELETE request manually, including `Origin: {{baseUrl}}`. The cookie jar supplies the session. Expect `204`, then `404` if you read or delete the same account again.
 
 ## Health requests
 

@@ -63,6 +63,21 @@ function create(
     body: JSON.stringify(body),
   });
 }
+function removeAccount(
+  cookie: string | undefined,
+  id: string,
+  headers: Record<string, string> = {},
+) {
+  return app.request(`/api/v1/accounts/${id}`, {
+    method: 'DELETE',
+    headers: {
+      Origin: origin,
+      ...(cookie ? { Cookie: cookie } : {}),
+      ...headers,
+    },
+  });
+}
+
 function detail(cookie: string | undefined, id: string) {
   return app.request(`/api/v1/accounts/${id}`, {
     headers: cookie ? { Cookie: cookie } : {},
@@ -873,6 +888,202 @@ describe('account renaming and archival', () => {
       await holder;
       await pending;
     }
+  });
+});
+
+describe('owned account deletion', () => {
+  test.each([false, true])(
+    'deletes an owned account with archive status %s and leaves other accounts and sessions intact',
+    async (isArchived) => {
+      const owner = await signedIn();
+      const other = await signedIn();
+      const target = (
+        (await (
+          await create(owner.cookie, {
+            name: 'Delete this',
+            type: 'credit',
+            openingBalance: '-24.50',
+          })
+        ).json()) as AccountResponse
+      ).data;
+      if (isArchived) {
+        expect(
+          (await patchAccount(owner.cookie, target.id, { isArchived: true }))
+            .status,
+        ).toBe(200);
+      }
+      const sibling = (
+        (await (
+          await create(owner.cookie, { name: 'Keep this', type: 'cash' })
+        ).json()) as AccountResponse
+      ).data;
+      const foreign = (
+        (await (
+          await create(other.cookie, { name: 'Another owner', type: 'cash' })
+        ).json()) as AccountResponse
+      ).data;
+      const response = await removeAccount(owner.cookie, target.id);
+      expect(response.status).toBe(204);
+      expect(await response.text()).toBe('');
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      expect(response.headers.has('Set-Cookie')).toBe(false);
+      expect((await detail(owner.cookie, target.id)).status).toBe(404);
+      expect((await removeAccount(owner.cookie, target.id)).status).toBe(404);
+      expect(await (await detail(owner.cookie, sibling.id)).json()).toEqual({
+        data: sibling,
+      });
+      expect(await (await detail(other.cookie, foreign.id)).json()).toEqual({
+        data: foreign,
+      });
+      const remaining = (await (
+        await list(owner.cookie)
+      ).json()) as AccountListResponse;
+      expect(remaining.pagination.total).toBe(1);
+      expect(remaining.data.map((account) => account.id)).toEqual([sibling.id]);
+      expect(
+        await database
+          .select({ id: users.id })
+          .from(users)
+          .where(inArray(users.id, [owner.id, other.id])),
+      ).toHaveLength(2);
+      expect(
+        await database
+          .select({ id: sessions.id })
+          .from(sessions)
+          .where(inArray(sessions.userId, [owner.id, other.id])),
+      ).toHaveLength(2);
+    },
+  );
+
+  test('returns the same safe 404 for a foreign account and a missing ID', async () => {
+    const owner = await signedIn();
+    const other = await signedIn();
+    const target = (
+      (await (
+        await create(owner.cookie, {
+          name: 'Private account',
+          type: 'checking',
+        })
+      ).json()) as AccountResponse
+    ).data;
+    for (const id of [target.id, crypto.randomUUID()]) {
+      const response = await removeAccount(other.cookie, id);
+      expect(response.status).toBe(404);
+      const body: unknown = await response.json();
+      expect(body).toMatchObject({
+        error: { code: 'NOT_FOUND', message: 'The account was not found.' },
+      });
+      expect(JSON.stringify(body)).not.toContain(target.name);
+    }
+    expect(await (await detail(owner.cookie, target.id)).json()).toEqual({
+      data: target,
+    });
+  });
+
+  test('rejects invalid or revoked sessions without deleting the account', async () => {
+    const owner = await signedIn();
+    const target = (
+      (await (
+        await create(owner.cookie, { name: 'Protected', type: 'checking' })
+      ).json()) as AccountResponse
+    ).data;
+    for (const cookie of [
+      undefined,
+      'session=invalid',
+      `session=${'a'.repeat(43)}`,
+    ]) {
+      expect((await removeAccount(cookie, target.id)).status).toBe(401);
+    }
+    await database.delete(sessions).where(eq(sessions.userId, owner.id));
+    expect((await removeAccount(owner.cookie, target.id)).status).toBe(401);
+    expect(
+      await database
+        .select({ id: accounts.id })
+        .from(accounts)
+        .where(eq(accounts.id, target.id)),
+    ).toEqual([{ id: target.id }]);
+  });
+
+  test('rejects missing and unapproved origins before session or deletion work', async () => {
+    const owner = await signedIn();
+    const target = (
+      (await (
+        await create(owner.cookie, { name: 'Protected', type: 'cash' })
+      ).json()) as AccountResponse
+    ).data;
+    const update = spyOn(database, 'update');
+    const remove = spyOn(database, 'delete');
+    try {
+      const missing = await app.request(`/api/v1/accounts/${target.id}`, {
+        method: 'DELETE',
+        headers: { Cookie: owner.cookie },
+      });
+      expect(missing.status).toBe(403);
+      for (const value of [
+        '',
+        'null',
+        origin + '/',
+        'http://untrusted.example',
+      ]) {
+        const response = await removeAccount(owner.cookie, target.id, {
+          Origin: value,
+        });
+        expect(response.status).toBe(403);
+        expect(await response.json()).toMatchObject({
+          error: { code: 'ORIGIN_REJECTED' },
+        });
+      }
+      expect(update).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+    } finally {
+      update.mockRestore();
+      remove.mockRestore();
+    }
+    expect((await detail(owner.cookie, target.id)).status).toBe(200);
+  });
+
+  test('rejects malformed IDs and unsupported query fields before deletion', async () => {
+    const owner = await signedIn();
+    const remove = spyOn(database, 'delete');
+    try {
+      for (const id of [
+        'not-a-uuid',
+        crypto.randomUUID() + '?userId=other',
+        crypto.randomUUID() + '?archived=true',
+      ]) {
+        const response = await removeAccount(owner.cookie, id);
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          error: { code: 'INVALID_INPUT' },
+        });
+      }
+      expect(remove).not.toHaveBeenCalled();
+    } finally {
+      remove.mockRestore();
+    }
+  });
+
+  test('hides deletion failures and preserves the account for retry', async () => {
+    const owner = await signedIn();
+    const target = (
+      (await (
+        await create(owner.cookie, { name: 'Keep on failure', type: 'cash' })
+      ).json()) as AccountResponse
+    ).data;
+    const remove = spyOn(database, 'delete').mockImplementation(() => {
+      throw new Error('private-account-delete');
+    });
+    try {
+      const response = await removeAccount(owner.cookie, target.id);
+      expect(response.status).toBe(500);
+      expect(await response.text()).not.toContain('private-account-delete');
+    } finally {
+      remove.mockRestore();
+    }
+    expect(await (await detail(owner.cookie, target.id)).json()).toEqual({
+      data: target,
+    });
+    expect((await removeAccount(owner.cookie, target.id)).status).toBe(204);
   });
 });
 

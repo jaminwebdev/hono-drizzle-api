@@ -136,6 +136,19 @@
         },
         "url": "{{baseUrl}}/api/v1/accounts/{{accountId}}"
       }
+    },
+    {
+      "name": "Delete account",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{baseUrl}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/accounts/{{accountId}}"
+      }
     }
   ]
 }
