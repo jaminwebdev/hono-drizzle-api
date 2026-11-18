@@ -2,14 +2,14 @@
 
 ## Code map
 
-The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks, shared HTTP handling, email/password registration, and login with an HttpOnly session cookie. The users, sessions, and user-owned accounts tables are defined. The current-user endpoint validates session cookies and expiry. Account creation, owned-detail, listing, name-search, renaming, archival, and deletion endpoints are available. The other finance tables are not implemented yet.
+The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks, shared HTTP handling, email/password registration, and login with an HttpOnly session cookie. The users, sessions, owned accounts, current transactions, and retained transaction history tables are defined. The current-user endpoint validates session cookies and expiry. Account creation, owned-detail, listing, name-search, renaming, archival, and deletion endpoints are available. Transaction endpoints and the tag/category tables are not implemented yet. Current transactions and retained history prevent account deletion with `409 RESOURCE_IN_USE`.
 
 | File                                                     | Responsibility                                                                                                                            |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | [src/server.ts](src/server.ts)                           | Validate settings, create the database, start Bun, and own shutdown.                                                                      |
 | [src/config.ts](src/config.ts)                           | Validate supplied values without reading environment files.                                                                               |
 | [src/db/client.ts](src/db/client.ts)                     | Create one Drizzle database object backed by Bun's connection pool.                                                                       |
-| [src/db/schema.ts](src/db/schema.ts)                     | Define users, sessions, and owned accounts, including references, supported account types/currencies, exact opening balances, timestamps, and lookup indexes. |
+| [src/db/schema.ts](src/db/schema.ts)                     | Define auth and owned finance tables, same-owner references, exact money, positive versions, retained history, and lookup indexes. |
 | [src/cleanup-sessions.ts](src/cleanup-sessions.ts) | Guard the selected maintenance target and delete at most 100 expired sessions per manual run. |
 | [drizzle.config.ts](drizzle.config.ts)                   | Guard local/test targets before schema pushes or Studio connect.                                                                          |
 | [tests/integration/setup.ts](tests/integration/setup.ts) | Create test database objects only for the isolated test target.                                                                           |
@@ -17,7 +17,7 @@ The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, 
 | [src/http.ts](src/http.ts)                               | Install shared middleware and common errors, and provide the JSON content-type guard.                                                     |
 | [src/session.ts](src/session.ts) | Validate session credentials and expiry, refresh activity, and supply the session and public user identity to protected routes. |
 | [src/features/auth.ts](src/features/auth.ts)             | Validate credentials, bound auth attempts, register users, and create hashed sessions with environment-appropriate cookies. |
-| [src/features/accounts.ts](src/features/accounts.ts) | Derive strict account input schemas, create accounts for the session owner, read only that owner's account details and filtered lists, update owned account names/archive status, and delete owned accounts with atomic SQL statements. Preserve exact decimal strings. |
+| [src/features/accounts.ts](src/features/accounts.ts) | Derive strict account input schemas, create accounts for the session owner, read only that owner's account details and filtered lists, update owned account names/archive status, and delete unused owned accounts with atomic SQL statements. Translate current/history account-reference conflicts to RESOURCE_IN_USE. Preserve exact decimal strings. |
 
 Importing or constructing the app opens no database connection and starts no server. Bootstrap owns the resources and passes them to the app.
 

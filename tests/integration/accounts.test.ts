@@ -14,7 +14,13 @@ import {
   createAccountSchema,
 } from '../../src/features/accounts';
 import { createApp } from '../../src/app';
-import { accounts, sessions, users } from '../../src/db/schema';
+import {
+  accounts,
+  sessions,
+  transactionHistory,
+  transactions,
+  users,
+} from '../../src/db/schema';
 import { createTestDatabase } from './setup';
 
 const database = createTestDatabase();
@@ -132,6 +138,12 @@ beforeEach(() => {
 afterEach(async () => {
   log.mockRestore();
   if (ownedUsers.length) {
+    await database
+      .delete(transactionHistory)
+      .where(inArray(transactionHistory.userId, ownedUsers));
+    await database
+      .delete(transactions)
+      .where(inArray(transactions.userId, ownedUsers));
     await database.delete(accounts).where(inArray(accounts.userId, ownedUsers));
     await database.delete(users).where(inArray(users.id, ownedUsers));
   }
@@ -1084,6 +1096,238 @@ describe('owned account deletion', () => {
       data: target,
     });
     expect((await removeAccount(owner.cookie, target.id)).status).toBe(204);
+  });
+});
+
+async function expectConstraintFailure(
+  query: PromiseLike<unknown>,
+  errno: string,
+  constraint: string,
+) {
+  const failure: unknown = await Promise.resolve(query).then(
+    () => null,
+    (error: unknown) => error,
+  );
+  expect(failure).toMatchObject({ cause: { errno, constraint } });
+}
+
+describe('transaction references and retained history', () => {
+  test('blocks deletion of an account with current transactions and allows archival', async () => {
+    const owner = await signedIn();
+    const other = await signedIn();
+    const account = (
+      (await (
+        await create(owner.cookie, { name: 'Used account', type: 'checking' })
+      ).json()) as AccountResponse
+    ).data;
+    const [transaction] = await database
+      .insert(transactions)
+      .values({
+        userId: owner.id,
+        accountId: account.id,
+        amount: '-24.50',
+        occurredAt: new Date(),
+      })
+      .returning();
+    for (const isArchived of [false, true]) {
+      if (isArchived)
+        expect(
+          (await patchAccount(owner.cookie, account.id, { isArchived: true }))
+            .status,
+        ).toBe(200);
+      const response = await removeAccount(owner.cookie, account.id);
+      expect(response.status).toBe(409);
+      const body: unknown = await response.json();
+      expect(body).toMatchObject({
+        error: {
+          code: 'RESOURCE_IN_USE',
+          message:
+            'This account has transactions or history. Archive it instead.',
+        },
+      });
+      expect(JSON.stringify(body)).not.toContain(
+        'transactions_user_account_fk',
+      );
+      expect((await removeAccount(other.cookie, account.id)).status).toBe(404);
+    }
+    expect(
+      await database
+        .select()
+        .from(transactions)
+        .where(eq(transactions.id, transaction!.id)),
+    ).toEqual([transaction!]);
+    expect((await detail(owner.cookie, account.id)).status).toBe(200);
+  });
+
+  test('retains history after a current transaction is removed and still blocks account deletion', async () => {
+    const owner = await signedIn();
+    const account = (
+      (await (
+        await create(owner.cookie, { name: 'History account', type: 'cash' })
+      ).json()) as AccountResponse
+    ).data;
+    const occurredAt = new Date();
+    const [transaction] = await database
+      .insert(transactions)
+      .values({
+        userId: owner.id,
+        accountId: account.id,
+        amount: '10.00',
+        occurredAt,
+      })
+      .returning({ id: transactions.id });
+    const snapshot = {
+      id: transaction!.id,
+      accountId: account.id,
+      amount: '10.00',
+      description: null,
+      occurredAt: occurredAt.toISOString(),
+      version: 1,
+    };
+    const [history] = await database
+      .insert(transactionHistory)
+      .values({
+        userId: owner.id,
+        transactionId: transaction!.id,
+        accountId: account.id,
+        version: 1,
+        operation: 'create',
+        snapshot,
+        requestId: crypto.randomUUID(),
+      })
+      .returning();
+    await database
+      .delete(transactions)
+      .where(eq(transactions.id, transaction!.id));
+    expect(
+      await database
+        .select()
+        .from(transactions)
+        .where(eq(transactions.id, transaction!.id)),
+    ).toEqual([]);
+    expect(
+      await database
+        .select()
+        .from(transactionHistory)
+        .where(eq(transactionHistory.id, history!.id)),
+    ).toEqual([history!]);
+    const response = await removeAccount(owner.cookie, account.id);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'RESOURCE_IN_USE' },
+    });
+    expect(
+      (await patchAccount(owner.cookie, account.id, { isArchived: true }))
+        .status,
+    ).toBe(200);
+    expect((await detail(owner.cookie, account.id)).status).toBe(200);
+  });
+
+  test('rejects cross-owner account references in current transactions and history', async () => {
+    const owner = await signedIn();
+    const other = await signedIn();
+    const account = (
+      (await (
+        await create(owner.cookie, { name: 'Owned', type: 'cash' })
+      ).json()) as AccountResponse
+    ).data;
+    await expectConstraintFailure(
+      database.insert(transactions).values({
+        userId: other.id,
+        accountId: account.id,
+        amount: '1.00',
+        occurredAt: new Date(),
+      }),
+      '23503',
+      'transactions_user_account_fk',
+    );
+    await expectConstraintFailure(
+      database.insert(transactionHistory).values({
+        userId: other.id,
+        accountId: account.id,
+        transactionId: crypto.randomUUID(),
+        version: 1,
+        operation: 'create',
+        snapshot: { amount: '1.00' },
+        requestId: crypto.randomUUID(),
+      }),
+      '23503',
+      'transaction_history_user_account_fk',
+    );
+  });
+
+  test('rejects zero/non-finite amounts and nonpositive transaction versions', async () => {
+    const owner = await signedIn();
+    const account = (
+      (await (
+        await create(owner.cookie, { name: 'Money rules', type: 'cash' })
+      ).json()) as AccountResponse
+    ).data;
+    const base = {
+      userId: owner.id,
+      accountId: account.id,
+      amount: '1.00',
+      occurredAt: new Date(),
+    };
+    for (const amount of ['0.00', '-0.00', 'NaN']) {
+      await expectConstraintFailure(
+        database.insert(transactions).values({ ...base, amount }),
+        '23514',
+        'transactions_amount_valid',
+      );
+    }
+    await expectConstraintFailure(
+      database.insert(transactions).values({ ...base, version: 0 }),
+      '23514',
+      'transactions_version_positive',
+    );
+  });
+
+  test('rejects duplicate history versions and invalid history metadata', async () => {
+    const owner = await signedIn();
+    const account = (
+      (await (
+        await create(owner.cookie, { name: 'History rules', type: 'cash' })
+      ).json()) as AccountResponse
+    ).data;
+    const base = {
+      userId: owner.id,
+      accountId: account.id,
+      transactionId: crypto.randomUUID(),
+      version: 1,
+      operation: 'create' as const,
+      snapshot: { amount: '1.00' },
+      requestId: crypto.randomUUID(),
+    };
+    await database.insert(transactionHistory).values(base);
+    await expectConstraintFailure(
+      database.insert(transactionHistory).values(base),
+      '23505',
+      'transaction_history_transaction_version_unique',
+    );
+    await expectConstraintFailure(
+      database
+        .insert(transactionHistory)
+        .values({ ...base, transactionId: crypto.randomUUID(), version: 0 }),
+      '23514',
+      'transaction_history_version_positive',
+    );
+    await expectConstraintFailure(
+      database.execute(sql`
+      insert into transaction_history (user_id, account_id, transaction_id, version, operation, snapshot, request_id)
+      values (${owner.id}, ${account.id}, ${crypto.randomUUID()}, 1, 'invalid', '{}'::jsonb, ${crypto.randomUUID()})
+    `),
+      '23514',
+      'transaction_history_operation_supported',
+    );
+    await expectConstraintFailure(
+      database.execute(sql`
+      insert into transaction_history (user_id, account_id, transaction_id, version, operation, snapshot, request_id)
+      values (${owner.id}, ${account.id}, ${crypto.randomUUID()}, 1, 'create', '[]'::jsonb, ${crypto.randomUUID()})
+    `),
+      '23514',
+      'transaction_history_snapshot_object',
+    );
   });
 });
 

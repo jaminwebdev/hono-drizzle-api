@@ -1,5 +1,14 @@
 import { sValidator } from '@hono/standard-validator';
-import { and, asc, count, eq, ilike, sql } from 'drizzle-orm';
+import { SQL } from 'bun';
+import {
+  and,
+  asc,
+  count,
+  DrizzleQueryError,
+  eq,
+  ilike,
+  sql,
+} from 'drizzle-orm';
 import { createSelectSchema } from 'drizzle-orm/valibot';
 import { Hono } from 'hono';
 import * as v from 'valibot';
@@ -244,17 +253,34 @@ export function createAccountRoutes(
     }),
     async (c) => {
       const { id } = c.req.valid('param');
-      const [deleted] = await database
-        .delete(accounts)
-        .where(
-          and(
-            eq(accounts.id, id),
-            eq(accounts.userId, c.get('session').user.id),
-          ),
-        )
-        .returning({ id: accounts.id });
-      if (!deleted) {
-        throw new ApiError(404, 'NOT_FOUND', 'The account was not found.');
+      try {
+        const [deleted] = await database
+          .delete(accounts)
+          .where(
+            and(
+              eq(accounts.id, id),
+              eq(accounts.userId, c.get('session').user.id),
+            ),
+          )
+          .returning({ id: accounts.id });
+        if (!deleted) {
+          throw new ApiError(404, 'NOT_FOUND', 'The account was not found.');
+        }
+      } catch (error) {
+        const cause = error instanceof DrizzleQueryError ? error.cause : error;
+        if (
+          cause instanceof SQL.PostgresError &&
+          (cause.errno === '23001' || cause.errno === '23503') &&
+          (cause.constraint === 'transactions_user_account_fk' ||
+            cause.constraint === 'transaction_history_user_account_fk')
+        ) {
+          throw new ApiError(
+            409,
+            'RESOURCE_IN_USE',
+            'This account has transactions or history. Archive it instead.',
+          );
+        }
+        throw error;
       }
       return c.body(null, 204);
     },

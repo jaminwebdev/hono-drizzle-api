@@ -2,11 +2,15 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  foreignKey,
   index,
+  integer,
+  jsonb,
   numeric,
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -85,6 +89,7 @@ export const accounts = pgTable(
   },
   (table) => [
     index('accounts_user_id_idx').on(table.userId),
+    unique('accounts_user_id_id_unique').on(table.userId, table.id),
     check(
       'accounts_name_trimmed',
       sql`${table.name} <> '' and ${table.name} = btrim(${table.name})`,
@@ -100,6 +105,101 @@ export const accounts = pgTable(
     check(
       'accounts_opening_balance_finite',
       sql`${table.openingBalance} <> 'NaN'::numeric`,
+    ),
+  ],
+);
+
+export const transactions = pgTable(
+  'transactions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    accountId: uuid('account_id').notNull(),
+    amount: numeric('amount', { precision: 18, scale: 2 }).notNull(),
+    description: varchar('description', { length: 2000 }),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    version: integer('version').default(1).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: 'transactions_user_account_fk',
+      columns: [table.userId, table.accountId],
+      foreignColumns: [accounts.userId, accounts.id],
+    }).onDelete('restrict'),
+    check(
+      'transactions_amount_valid',
+      sql`${table.amount} <> 0 and ${table.amount} <> 'NaN'::numeric`,
+    ),
+    check('transactions_version_positive', sql`${table.version} > 0`),
+    index('transactions_user_account_occurred_idx').on(
+      table.userId,
+      table.accountId,
+      table.occurredAt.desc(),
+      table.id.desc(),
+    ),
+    index('transactions_user_occurred_idx').on(
+      table.userId,
+      table.occurredAt.desc(),
+      table.id.desc(),
+    ),
+  ],
+);
+
+export const transactionHistory = pgTable(
+  'transaction_history',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    // No transaction foreign key: history must survive removal of the current row.
+    transactionId: uuid('transaction_id').notNull(),
+    accountId: uuid('account_id').notNull(),
+    version: integer('version').notNull(),
+    operation: text('operation', {
+      enum: ['create', 'update', 'delete'],
+    }).notNull(),
+    snapshot: jsonb('snapshot').$type<Record<string, unknown>>().notNull(),
+    recordedAt: timestamp('recorded_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    requestId: uuid('request_id').notNull(),
+  },
+  (table) => [
+    foreignKey({
+      name: 'transaction_history_user_account_fk',
+      columns: [table.userId, table.accountId],
+      foreignColumns: [accounts.userId, accounts.id],
+    }).onDelete('restrict'),
+    unique('transaction_history_transaction_version_unique').on(
+      table.transactionId,
+      table.version,
+    ),
+    check('transaction_history_version_positive', sql`${table.version} > 0`),
+    check(
+      'transaction_history_operation_supported',
+      sql`${table.operation} in ('create', 'update', 'delete')`,
+    ),
+    check(
+      'transaction_history_snapshot_object',
+      sql`jsonb_typeof(${table.snapshot}) = 'object'`,
+    ),
+    index('transaction_history_user_transaction_version_idx').on(
+      table.userId,
+      table.transactionId,
+      table.version.desc(),
+    ),
+    index('transaction_history_user_account_idx').on(
+      table.userId,
+      table.accountId,
     ),
   ],
 );

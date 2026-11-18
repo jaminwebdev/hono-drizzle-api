@@ -1,6 +1,6 @@
 # Phase 13 review: expired-session cleanup
 
-Status: Phases through 19 are implemented and verified. Phase 20 is next.
+Status: Phases through 20 are implemented and verified. Phase 21 is next.
 
 ## Roadmap continuity
 
@@ -65,7 +65,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Remaining roadmap carried forward
 
-The following phases were carried forward from the original contract. Phases 13–19 are now complete, with matching evidence in both roadmaps. Phases 20–41 remain unfinished and require their own approval.
+The following phases were carried forward from the original contract. Phases 13–20 are now complete, with matching evidence in both roadmaps. Phases 21–41 remain unfinished and require their own approval.
 
 ### Phase 13. Clean up expired session records explicitly
 
@@ -217,14 +217,18 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 20. Add owned transaction and history tables
 
-Expected files, 4: `src/db/schema.ts`, `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/setup.md`.
+Review files, 8: `src/db/schema.ts`, `src/features/accounts.ts`, `tests/integration/accounts.test.ts`, `docs/setup.md`, `docs/api.md`, `PROJECT_MAP.md`, `01-architect-todos.md`, and `02-backend-todos.md`.
 
-- [ ] Add transactions/history with user_id, same-owner account foreign keys, exact signed amounts, versions, and the initial feature indexes; add the required composite reference key to accounts now.
-- [ ] Push while preserving existing accounts, users, and sessions; omit all tag/category fields.
-- [ ] Extend account deletion to map current/history reference conflicts to RESOURCE_IN_USE and test that application rule.
-- [ ] Document the three-finance-table diagram and history survival after current-record removal.
+- [x] Add transactions/history with user_id, same-owner account foreign keys, exact signed amounts, versions, and the initial feature indexes; add the required composite reference key to accounts now.
+- [x] Push while preserving existing accounts, users, and sessions; omit all tag/category fields.
+- [x] Extend account deletion to map current/history reference conflicts to RESOURCE_IN_USE and test that application rule.
+- [x] Document the three-finance-table diagram and history survival after current-record removal.
 
 Acceptance: S3–S4, S8; PROJECT_MAP R3, R5–R6, R8–R11. Three finance tables plus two auth tables exist. Cross-owner references fail at the database boundary as well as in handlers. No endpoint implementation for future features.
+
+Validation: Bun 1.3.14 type checking, lint, all 114 unit tests, all 208 integration tests, and build passed. The guarded test push added only transactions/history and the account composite reference key. Private before/after comparisons, including synthetic existing user/session/account rows, confirmed unchanged data; only those preservation fixtures were removed afterward. Schema inspection confirmed five total application tables, exact NUMERIC(18,2) amounts, planned indexes, and no history-to-current-transaction foreign key. Tests cover current/history account deletion conflicts, retained history after current-row removal, same-owner references, nonzero/finite amounts, positive versions, unique history versions, supported operations, and object snapshots. The isolated test container was stopped with its volume preserved. No local push, dependencies, migration files, transaction endpoints, or development API processes changed.
+
+Current behavior: Account DELETE remains one owner-scoped statement. The database rejects references from either current transactions or retained history; the feature catches only those named reference conflicts and throws a safe 409 RESOURCE_IN_USE suggesting archival. Missing and foreign accounts still return the same 404. Transactions and history share the account owner through a composite foreign key. History retains its transaction UUID without referencing the removable current row. Operations are create/update/delete, snapshots must be JSON objects, and indexes support owned account/date and history/version access. Snapshot fields and atomic current/history writes belong to phase 21. Apply the local schema with `bun run db:push` when ready.
 
 Suggested commit: `feat: define owned transactions and retained history`
 
@@ -528,4 +532,4 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Relay
 
-Phases 13–19 are complete, including the password-work simplification, manual Requestly verification, and accounts schema/create/detail/list/search/rename/archive/delete behavior. Phase 20 is next. Implement its existing todos when requested, without another proposal or design-approval step. All remaining phases are preserved above and in the architecture contract. The user makes all commits and controls the development API.
+Phases 13–20 are complete, including authentication, accounts, the transaction/history schema, and referenced-account deletion restrictions. Phase 21 is next. Implement its existing todos when requested, without another proposal or design-approval step. All remaining phases are preserved above and in the architecture contract. The user makes all commits and controls the development API.
