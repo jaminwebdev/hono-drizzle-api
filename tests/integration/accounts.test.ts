@@ -1126,7 +1126,7 @@ describe('transaction references and retained history', () => {
         userId: owner.id,
         accountId: account.id,
         amount: '-24.50',
-        occurredAt: new Date(),
+        occurredAt: '2026-11-19',
       })
       .returning();
     for (const isArchived of [false, true]) {
@@ -1166,7 +1166,7 @@ describe('transaction references and retained history', () => {
         await create(owner.cookie, { name: 'History account', type: 'cash' })
       ).json()) as AccountResponse
     ).data;
-    const occurredAt = new Date();
+    const occurredAt = '2026-11-19';
     const [transaction] = await database
       .insert(transactions)
       .values({
@@ -1181,7 +1181,7 @@ describe('transaction references and retained history', () => {
       accountId: account.id,
       amount: '10.00',
       description: null,
-      occurredAt: occurredAt.toISOString(),
+      occurredAt,
       version: 1,
     };
     const [history] = await database
@@ -1236,7 +1236,7 @@ describe('transaction references and retained history', () => {
         userId: other.id,
         accountId: account.id,
         amount: '1.00',
-        occurredAt: new Date(),
+        occurredAt: '2026-11-19',
       }),
       '23503',
       'transactions_user_account_fk',
@@ -1267,7 +1267,7 @@ describe('transaction references and retained history', () => {
       userId: owner.id,
       accountId: account.id,
       amount: '1.00',
-      occurredAt: new Date(),
+      occurredAt: '2026-11-19',
     };
     for (const amount of ['0.00', '-0.00', 'NaN']) {
       await expectConstraintFailure(

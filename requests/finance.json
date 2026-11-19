@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Learning API accounts",
-    "description": "Log in using your auth requests first. Requestly uses its cookie jar. Copy the returned account ID into accountId after creating an account.",
+    "name": "Learning finance API",
+    "description": "Log in using your auth requests first; Requestly uses its cookie jar. Set accountId after creating an active account, then set transactionId after creating a transaction. Account deletion requires an unused account.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -12,6 +12,11 @@
     },
     {
       "key": "accountId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "transactionId",
       "value": "",
       "type": "string"
     }
@@ -135,6 +140,40 @@
           }
         },
         "url": "{{baseUrl}}/api/v1/accounts/{{accountId}}"
+      }
+    },
+    {
+      "name": "Create transaction",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{baseUrl}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"accountId\": \"{{accountId}}\",\n  \"amount\": \"-24.50\",\n  \"description\": \"Weekly groceries\",\n  \"occurredAt\": \"2026-11-18\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/v1/transactions"
+      }
+    },
+    {
+      "name": "Transaction details",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/v1/transactions/{{transactionId}}"
       }
     },
     {

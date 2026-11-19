@@ -1,6 +1,6 @@
 # Phase 13 review: expired-session cleanup
 
-Status: Phases through 20 are implemented and verified. Phase 21 is next.
+Status: Phases through 21 are implemented and verified. Phase 22 is next.
 
 ## Roadmap continuity
 
@@ -65,7 +65,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Remaining roadmap carried forward
 
-The following phases were carried forward from the original contract. Phases 13–20 are now complete, with matching evidence in both roadmaps. Phases 21–41 remain unfinished and require their own approval.
+The following phases were carried forward from the original contract. Phases 13–21 are now complete, with matching evidence in both roadmaps. Phases 22–41 remain unfinished and require their own approval.
 
 ### Phase 13. Clean up expired session records explicitly
 
@@ -236,14 +236,22 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 21. Create transactions and read owned details
 
-Expected files, 6: `src/features/transactions.ts`, `src/app.ts`, `tests/unit/transactions.test.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`, `requests/finance.json`.
+Review files, 9: `src/features/transactions.ts`, `src/app.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`, `docs/setup.md`, `requests/finance.json`, `PROJECT_MAP.md`, `01-architect-todos.md`, and `02-backend-todos.md`.
 
-- [ ] Derive allowed transaction fields, keep money/timestamp JSON rules explicit, and add create/detail route validators with the existing session middleware and required Origin checks.
-- [ ] Lock the owned active account and atomically insert the transaction plus initial history with the authenticated owner.
-- [ ] Test signed amounts, timestamps, archived/missing/foreign accounts, rejected owner/tag/category fields, and snapshot-failure rollback.
-- [ ] Return version/ETag and document a current-field-only request, including the lack of automatic POST retries.
+- [x] Derive allowed transaction fields, keep money/date JSON rules explicit, and add create/detail route validators with the existing session middleware and required Origin checks.
+- [x] Lock the owned active account and atomically insert the transaction plus initial history with the authenticated owner.
+- [x] Test signed amounts, calendar dates, archived/missing/foreign accounts, rejected owner/tag/category fields, and snapshot-failure rollback.
+- [x] Return version/ETag and document a current-field-only request, including the lack of automatic POST retries.
 
 Acceptance: S3–S5, S7–S8; PROJECT_MAP R3, R5–R8, R10–R12. No current transaction can commit without its history. Foreign account IDs return 404. Earlier auth/account walkthroughs still work.
+
+Validation: Bun 1.3.14 type checking, lint, all 114 unit tests, all 262 integration tests, and build passed. New tests cover exact signed amount boundaries, calendar and offset validation, nullable descriptions, initial snapshots and request IDs, version/ETag/Location responses, owner separation, archived/missing/foreign accounts, protected and future-field rejection, and malformed input. A forced second-write failure rolls back the real current-row insert. A lock-wait test confirms creation observes a concurrently committed archive and rejects it. Input-schema checks share the transaction integration suite to keep the review within nine files. Only isolated test fixtures were created and removed; the test container was stopped with its volume preserved. No schema, dependencies, transfers, development API processes, or later-phase endpoints changed.
+
+Request flow: Shared Origin/session checks precede route-level strict validation. Creation locks the owned account, rejects archival, inserts the current transaction and version-1 create snapshot in one database transaction, then returns 201/Location/ETag after commit. Snapshot data includes public transaction fields plus account ID/name/currency at creation and server request metadata. Detail reads by transaction ID and owner and returns the version ETag. Money stays an exact two-decimal string.
+
+Current input contract: accountId, amount, and occurredAt are required; description may be omitted or null. Decision updated on 2026-11-19: users supply a real calendar date as YYYY-MM-DD for occurredAt, within years 0001–9999. PostgreSQL stores it as date and responses return the string unchanged. Users do not need to know the transaction time. Server-managed createdAt and updatedAt remain exact UTC timestamps. Repeated POSTs create independent records; automatic write retries and transfers remain deferred. Transaction lists, patches, history reads, deletion, and balances remain for later phases.
+
+Date-only follow-up validation: type checking, lint, all 114 unit tests, all 269 integration tests, and build passed. The isolated test schema was updated with db:test:push. Tests verify real dates, rejected timestamps, unchanged date strings in responses and history, leap days, and years 0001 and 9999. The test volume was preserved. The development database still needs bun run db:push; no development API process was started or stopped.
 
 Suggested commit: `feat: create owned transactions with initial history`
 
@@ -257,7 +265,7 @@ Expected files, 4: `src/features/transactions.ts`, `tests/integration/transactio
 - [ ] Add the bounded owner-scoped history endpoint for the current transaction model.
 - [ ] Test stale/concurrent patches, hash-free errors, snapshot rollback, and foreign IDs returning 404 before version errors; document corrections.
 
-Acceptance: S3–S4, S7–S8; PROJECT_MAP R3, R5–R8, R10–R11. Money, description, and occurrence time can change; account/user cannot. Tag/category patches remain unknown fields. No delete endpoint is bundled here.
+Acceptance: S3–S4, S7–S8; PROJECT_MAP R3, R5–R8, R10–R11. Money, description, and occurrence date can change; account/user cannot. Tag/category patches remain unknown fields. No delete endpoint is bundled here.
 
 Suggested commit: `feat: correct transactions with version checks and history`
 
@@ -283,7 +291,7 @@ Expected files, 5: `src/features/transactions.ts`, `tests/unit/transactions.test
 
 - [ ] Add bounded occurrence-time/ID cursor lists and description, account, date, and signed-amount filters.
 - [ ] Apply current-user scope to every query, validating foreign account filters and cursor shape without trusting cursor ownership.
-- [ ] Test tied timestamps, bounds, literal matching, filter intersections, and a cursor copied from another user; document current search URLs.
+- [ ] Test tied dates, bounds, literal matching, filter intersections, and a cursor copied from another user; document current search URLs.
 
 Acceptance: S3, S5, S7–S8; PROJECT_MAP R3, R5–R8, R10–R11. No tag/category filters. A foreign account filter returns 404 and a foreign cursor cannot expose records. Lists are not frozen snapshots under concurrent edits.
 
@@ -532,4 +540,4 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Relay
 
-Phases 13–20 are complete, including authentication, accounts, the transaction/history schema, and referenced-account deletion restrictions. Phase 21 is next. Implement its existing todos when requested, without another proposal or design-approval step. All remaining phases are preserved above and in the architecture contract. The user makes all commits and controls the development API.
+Phases 13–21 are complete, including authentication, accounts, the transaction/history schema, reference restrictions, and transaction create/detail with atomic initial history. Phase 22 is next. Implement its existing todos when requested, without another proposal or design-approval step. All remaining phases are preserved above and in the architecture contract. The user makes all commits and controls the development API.

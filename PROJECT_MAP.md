@@ -2,7 +2,7 @@
 
 ## Code map
 
-The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks, shared HTTP handling, email/password registration, and login with an HttpOnly session cookie. The users, sessions, owned accounts, current transactions, and retained transaction history tables are defined. The current-user endpoint validates session cookies and expiry. Account creation, owned-detail, listing, name-search, renaming, archival, and deletion endpoints are available. Transaction endpoints and the tag/category tables are not implemented yet. Current transactions and retained history prevent account deletion with `409 RESOURCE_IN_USE`.
+The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, and Valibot. It provides health checks, shared HTTP handling, email/password registration, and login with an HttpOnly session cookie. The users, sessions, owned accounts, current transactions, and retained transaction history tables are defined. The current-user endpoint validates session cookies and expiry. Account creation, owned-detail, listing, name-search, renaming, archival, and deletion endpoints are available. Transaction create/owned-detail endpoints atomically save initial history and return version ETags. Required occurredAt values are calendar dates in YYYY-MM-DD format; createdAt and updatedAt remain server-managed timestamps. The remaining transaction endpoints and tag/category tables are not implemented yet. Current transactions and retained history prevent account deletion with `409 RESOURCE_IN_USE`.
 
 | File                                                     | Responsibility                                                                                                                            |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
@@ -18,10 +18,11 @@ The current Bun 1.3.14 application uses Hono, Drizzle with Bun SQL, PostgreSQL, 
 | [src/session.ts](src/session.ts) | Validate session credentials and expiry, refresh activity, and supply the session and public user identity to protected routes. |
 | [src/features/auth.ts](src/features/auth.ts)             | Validate credentials, bound auth attempts, register users, and create hashed sessions with environment-appropriate cookies. |
 | [src/features/accounts.ts](src/features/accounts.ts) | Derive strict account input schemas, create accounts for the session owner, read only that owner's account details and filtered lists, update owned account names/archive status, and delete unused owned accounts with atomic SQL statements. Translate current/history account-reference conflicts to RESOURCE_IN_USE. Preserve exact decimal strings. |
+| [src/features/transactions.ts](src/features/transactions.ts) | Validate transaction input, lock the owned active account, atomically create current/history records, and read only owned transaction details with exact money and version ETags. |
 
 Importing or constructing the app opens no database connection and starts no server. Bootstrap owns the resources and passes them to the app.
 
-Routes, middleware, and helpers throw `ApiError` for expected request failures. Auth and account routes use `sValidator` with Valibot schemas and read validated data with `c.req.valid('json')`. Only `app.onError` calls the private error formatter; it also maps Hono's parsing errors to safe `400` responses. Unexpected exceptions become generic `500` responses.
+Routes, middleware, and helpers throw `ApiError` for expected request failures. Auth, account, and transaction routes use `sValidator` with Valibot schemas and read validated data with `c.req.valid('json')`. Only `app.onError` calls the private error formatter; it also maps Hono's parsing errors to safe `400` responses. Unexpected exceptions become generic `500` responses.
 
 Use [setup](docs/setup.md) for settings, commands, database identities, storage, and tool notes. Use [the API guide](docs/api.md) for endpoints, request limits, origin policy, middleware order, and errors. The [implementation plan](sessions/001_fresh_start/01-architect-todos.md) holds approval gates and session decisions.
 

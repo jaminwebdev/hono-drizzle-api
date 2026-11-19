@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -119,7 +120,7 @@ export const transactions = pgTable(
     accountId: uuid('account_id').notNull(),
     amount: numeric('amount', { precision: 18, scale: 2 }).notNull(),
     description: varchar('description', { length: 2000 }),
-    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    occurredAt: date('occurred_at', { mode: 'string' }).notNull(),
     version: integer('version').default(1).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true })
       .defaultNow()

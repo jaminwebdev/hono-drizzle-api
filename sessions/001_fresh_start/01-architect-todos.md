@@ -1,6 +1,6 @@
 # Finance tracker architecture and implementation todos
 
-This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases through 20 are complete. Later phases remain subject to their individual approval gates.
+This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases through 21 are complete. Later phases remain subject to their individual approval gates.
 
 ## Spec summary
 
@@ -12,7 +12,7 @@ The first version supports email/password login with server-side sessions, user-
 
 Build authentication immediately after the scaffold and before finance features. Each user can access only their own data. Keep development on a trusted local machine and treat the production image as a local deployment-check artifact. Public deployment is a separate decision. The proposed initial finance limits remain three two-decimal currencies, flat categories, and no bank connections or transfers.
 
-The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Unimplemented details such as future endpoint names remain proposals for review. A request to continue authorizes the existing phase todos; each completed phase ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 20 are complete, including the requested simplicity retrospective and uniform error-handling cleanup. Phases 11–20 are complete; phase 21 is next. Local development uses HTTP, following the user's removal of the local HTTPS phase.
+The permanent rules already supplied by the user are in [PROJECT_MAP.md](../../PROJECT_MAP.md), R1–R12. Unimplemented details such as future endpoint names remain proposals for review. A request to continue authorizes the existing phase todos; each completed phase ends with a review gate. Approval of one phase does not authorize all later phases. Phases through 21 are complete, including the requested simplicity retrospective and uniform error-handling cleanup. Phases 11–21 are complete; phase 22 is next. Local development uses HTTP, following the user's removal of the local HTTPS phase.
 
 ### Build one feature at a time
 
@@ -166,7 +166,7 @@ Use generated UUID primary keys for standalone records. UUIDs avoid JavaScript i
 | `categories`          | `id`, immutable `user_id`, trimmed `name`, immutable income/expense `kind`, and timestamps. Normalized names are unique within a user's category kind. There are no global categories.                                                                              |
 | `tags`                | `id`, immutable `user_id`, trimmed `name`, and timestamps. Normalized names are unique per user. A user's tag can label their accounts and transactions.                                                                                                            |
 | `account_tags`        | `user_id`, `account_id`, and `tag_id`, with a composite account/tag primary key and same-owner foreign keys. Account deletion cascades to links; tag deletion is restricted while linked.                                                                           |
-| `transactions`        | `id`, immutable `user_id` and `account_id`, nullable `category_id`, nonzero signed `amount`, optional description, occurrence time, version, and timestamps. Version starts at 1.                                                                                   |
+| `transactions`        | `id`, immutable `user_id` and `account_id`, nullable `category_id`, nonzero signed `amount`, optional description, calendar date, version, and timestamps. Version starts at 1.                                                                                   |
 | `transaction_tags`    | `user_id`, `transaction_id`, and `tag_id`, with a composite transaction/tag primary key and same-owner foreign keys. Transaction deletion cascades to links; tag deletion is restricted while linked.                                                               |
 | `transaction_history` | `id`, immutable `user_id`, original transaction ID, account ID, version, operation, JSON snapshot, recorded time, and request ID. Unique transaction/version pairs. History survives transaction deletion.                                                          |
 
@@ -199,7 +199,7 @@ An account balance is `openingBalance + SUM(current transaction amounts)`. Retur
 
 Validate names at 1–100 characters after trimming, descriptions at 2,000 characters, and tag arrays at 20 distinct UUIDs. A category may be absent. When present, its kind must match the amount sign. A category's kind is immutable so renaming it cannot invalidate past transaction rules. The database enforces nonzero amounts, supported account types and currencies, positive versions, required fields, valid references, and name uniqueness. The handler enforces the category/amount relationship inside its database transaction because a simple row `CHECK` cannot inspect another table.
 
-Store instants as `TIMESTAMPTZ`. Require valid RFC 3339 timestamps with an explicit offset and return UTC timestamps. `occurredAt` means when money moved; `createdAt` means when the application saved it. Date filters use an inclusive `from` and exclusive `to`, with `from < to`.
+Store `occurredAt` as PostgreSQL `date` and accept and return a real `YYYY-MM-DD` calendar date. Users do not need to supply a time. Store server-managed `createdAt` and `updatedAt` as `TIMESTAMPTZ` and return UTC timestamps. `occurredAt` means the day money moved; `createdAt` means when the application saved it. Date filters use an inclusive `from` and exclusive `to`, with `from < to`.
 
 Add indexes with the feature that uses them, starting with `user_id`: transaction account/date and date-only lists, category lookups, reverse tag lookups, and transaction/account history reads. For example, use `(user_id, account_id, occurred_at DESC, id DESC)` for an account register. Scope normalized tag/category uniqueness to the user. Add more indexes only after examining actual query plans.
 
@@ -209,7 +209,7 @@ This applies PROJECT_MAP R3 and R5 and the database guide's Relationships and Ke
 
 This is an editable personal tracker. Transaction changes must leave a visible history rather than silently replace financial facts. It is not a tamper-proof accounting ledger.
 
-Create the transaction, tags, and version-1 history snapshot in one database transaction. For a patch, lock the current row, check the expected version, validate references, update the row and links, and append the next history snapshot before committing. For deletion, append a final snapshot at the next version and remove the current row and links in one database transaction. Snapshots include the amount, account and category information, description, occurrence time, tag IDs and names, and version. There is no endpoint to change or delete history.
+Create the transaction, tags, and version-1 history snapshot in one database transaction. For a patch, lock the current row, check the expected version, validate references, update the row and links, and append the next history snapshot before committing. For deletion, append a final snapshot at the next version and remove the current row and links in one database transaction. Snapshots include the amount, account and category information, description, occurrence date, tag IDs and names, and version. There is no endpoint to change or delete history.
 
 Initially, snapshots contain only the transaction fields that exist. Add tag and category information when those features are implemented. History readers must continue to accept earlier snapshots with those fields absent. Present absent tags as an empty list and an absent category as `null` without rewriting stored history. Do not add placeholder fields before the corresponding feature.
 
@@ -243,7 +243,7 @@ Creating another transaction with the same payload creates another record. Autom
 
 ## S5. API contract, search, and bounded reads
 
-The route and filter tables describe the finished API. Each phase implements only its stated routes and fields. Documentation examples must show the API available at that phase. For example, the first transaction request contains an account, amount, description, and occurrence time; the complete example below applies after tags and categories have been added.
+The route and filter tables describe the finished API. Each phase implements only its stated routes and fields. Documentation examples must show the API available at that phase. For example, the first transaction request contains an account, amount, description, and occurrence date; the complete example below applies after tags and categories have been added.
 
 Use `/api/v1` and plural resource names. Successful individual responses use `{ "data": ... }`. Lists use `{ "data": [], "pagination": { ... } }`. Finance-resource creates return `201` with a `Location` header; reads and patches return `200`; successful deletion returns `204` with no body. Registration returns `201` without a `Location` because no public user-detail URL is provided.
 
@@ -276,7 +276,7 @@ Origin: http://127.0.0.1:3000
   "categoryId": "1c81834c-6b6b-4332-8ce0-ddcdb3f72cef",
   "amount": "-24.50",
   "description": "Weekly groceries",
-  "occurredAt": "2026-10-23T18:30:00Z",
+  "occurredAt": "2026-10-23",
   "tagIds": []
 }
 ```
@@ -486,7 +486,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 Workflow update from the user on 2026-11-17: A request to continue with an existing phase authorizes implementing that phase directly from its todos. Do not create another proposed design or ask for another design approval before starting. Make routine implementation choices, keep the change limited to the requested phase, and present the finished result for review and adjustment. Continue to leave commits to the user.
 
-Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete, including the phase 9 cleanup follow-ups. Phase 4 was removed at the user's request. Phases 10–20 are complete; phase 21 is next. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete, including the phase 9 cleanup follow-ups. Phase 4 was removed at the user's request. Phases 10–21 are complete; phase 22 is next. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests, guides, and request examples, not permission to create an absent file early. The scaffold has eight planned files; later phases stay within nine. Before implementation, split a phase that would reach ten files or mix separate behaviors. Phase 5B is the documented exception for short settings call-site, test, and current-guide updates; it contains only the origin/CORS policy. Split within the same feature and update phase references before proceeding.
 
@@ -957,14 +957,22 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 21. Create transactions and read owned details
 
-Expected files, 6: `src/features/transactions.ts`, `src/app.ts`, `tests/unit/transactions.test.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`, `requests/finance.json`.
+Review files, 9: `src/features/transactions.ts`, `src/app.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`, `docs/setup.md`, `requests/finance.json`, `PROJECT_MAP.md`, `01-architect-todos.md`, and `02-backend-todos.md`.
 
-- [ ] Derive allowed transaction fields, keep money/timestamp JSON rules explicit, and add create/detail route validators with the existing session middleware and required Origin checks.
-- [ ] Lock the owned active account and atomically insert the transaction plus initial history with the authenticated owner.
-- [ ] Test signed amounts, timestamps, archived/missing/foreign accounts, rejected owner/tag/category fields, and snapshot-failure rollback.
-- [ ] Return version/ETag and document a current-field-only request, including the lack of automatic POST retries.
+- [x] Derive allowed transaction fields, keep money/date JSON rules explicit, and add create/detail route validators with the existing session middleware and required Origin checks.
+- [x] Lock the owned active account and atomically insert the transaction plus initial history with the authenticated owner.
+- [x] Test signed amounts, calendar dates, archived/missing/foreign accounts, rejected owner/tag/category fields, and snapshot-failure rollback.
+- [x] Return version/ETag and document a current-field-only request, including the lack of automatic POST retries.
 
 Acceptance: S3–S5, S7–S8; PROJECT_MAP R3, R5–R8, R10–R12. No current transaction can commit without its history. Foreign account IDs return 404. Earlier auth/account walkthroughs still work.
+
+Validation: Bun 1.3.14 type checking, lint, all 114 unit tests, all 262 integration tests, and build passed. New tests cover exact signed amount boundaries, calendar and offset validation, nullable descriptions, initial snapshots and request IDs, version/ETag/Location responses, owner separation, archived/missing/foreign accounts, protected and future-field rejection, and malformed input. A forced second-write failure rolls back the real current-row insert. A lock-wait test confirms creation observes a concurrently committed archive and rejects it. Input-schema checks share the transaction integration suite to keep the review within nine files. Only isolated test fixtures were created and removed; the test container was stopped with its volume preserved. No schema, dependencies, transfers, development API processes, or later-phase endpoints changed.
+
+Request flow: Shared Origin/session checks precede route-level strict validation. Creation locks the owned account, rejects archival, inserts the current transaction and version-1 create snapshot in one database transaction, then returns 201/Location/ETag after commit. Snapshot data includes public transaction fields plus account ID/name/currency at creation and server request metadata. Detail reads by transaction ID and owner and returns the version ETag. Money stays an exact two-decimal string.
+
+Current input contract: accountId, amount, and occurredAt are required; description may be omitted or null. Decision updated on 2026-11-19: users supply a real calendar date as YYYY-MM-DD for occurredAt, within years 0001–9999. PostgreSQL stores it as date and responses return the string unchanged. Users do not need to know the transaction time. Server-managed createdAt and updatedAt remain exact UTC timestamps. Repeated POSTs create independent records; automatic write retries and transfers remain deferred. Transaction lists, patches, history reads, deletion, and balances remain for later phases.
+
+Date-only follow-up validation: type checking, lint, all 114 unit tests, all 269 integration tests, and build passed. The isolated test schema was updated with db:test:push. Tests verify real dates, rejected timestamps, unchanged date strings in responses and history, leap days, and years 0001 and 9999. The test volume was preserved. The development database still needs bun run db:push; no development API process was started or stopped.
 
 Suggested commit: `feat: create owned transactions with initial history`
 
@@ -978,7 +986,7 @@ Expected files, 4: `src/features/transactions.ts`, `tests/integration/transactio
 - [ ] Add the bounded owner-scoped history endpoint for the current transaction model.
 - [ ] Test stale/concurrent patches, hash-free errors, snapshot rollback, and foreign IDs returning 404 before version errors; document corrections.
 
-Acceptance: S3–S4, S7–S8; PROJECT_MAP R3, R5–R8, R10–R11. Money, description, and occurrence time can change; account/user cannot. Tag/category patches remain unknown fields. No delete endpoint is bundled here.
+Acceptance: S3–S4, S7–S8; PROJECT_MAP R3, R5–R8, R10–R11. Money, description, and occurrence date can change; account/user cannot. Tag/category patches remain unknown fields. No delete endpoint is bundled here.
 
 Suggested commit: `feat: correct transactions with version checks and history`
 
@@ -1004,7 +1012,7 @@ Expected files, 5: `src/features/transactions.ts`, `tests/unit/transactions.test
 
 - [ ] Add bounded occurrence-time/ID cursor lists and description, account, date, and signed-amount filters.
 - [ ] Apply current-user scope to every query, validating foreign account filters and cursor shape without trusting cursor ownership.
-- [ ] Test tied timestamps, bounds, literal matching, filter intersections, and a cursor copied from another user; document current search URLs.
+- [ ] Test tied dates, bounds, literal matching, filter intersections, and a cursor copied from another user; document current search URLs.
 
 Acceptance: S3, S5, S7–S8; PROJECT_MAP R3, R5–R8, R10–R11. No tag/category filters. A foreign account filter returns 404 and a foreign cursor cannot expose records. Lists are not frozen snapshots under concurrent edits.
 
@@ -1268,7 +1276,7 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Is each review bounded?                            | Earlier reviews fit nine tracked files or fewer. Phase 5B is a documented 12-file exception for one origin/CORS policy, including short settings call-site changes, their tests, and accurate docs. Response negotiation and logging are separate in 5C. Other phases keep the nine-file target and their own gates. |
 | Are repetitive catalogs still reviewable?          | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small.                                                         |
 | Is push-only schema management preserved?          | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset.                                                                                                                                 |
-| Is approval preserved?                             | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete; phases 21–41 remain for later requests.                                                                                     |
+| Is approval preserved?                             | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete; phases 22–41 remain for later requests.                                                                                     |
 
 Structural checks confirmed consecutive phase numbers, matching feature order, 44 approval gates after splitting phases 3 and 5 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Phase 5A passed common-error and JSON-reader tests, type checking, lint, and build. Phase 5B passed origin/CORS policy tests, configuration checks, type checking, lint, and build. Phase 5C passed negotiation and metadata-log tests, type checking, lint, and build. Future feature checks remain for their own phases.
 
@@ -1280,12 +1288,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 9 and its cleanup follow-ups are complete. Login issues an HttpOnly session cookie after password verification and locked session creation. Phases 10–20 are complete; phase 21 is next. Local development remains on HTTP.
+Status: Phase 9 and its cleanup follow-ups are complete. Login issues an HttpOnly session cookie after password verification and locked session creation. Phases 10–21 are complete; phase 22 is next. Local development remains on HTTP.
 
-Handoff note: Use the [current handoff before phase 10](#current-handoff-before-phase-10) for validation, throttling, Drizzle, and documentation decisions. Phase 13 now provides guarded manual cleanup with a 100-row limit. See [the backend contract](02-backend-todos.md) for its design and the carried-forward roadmap. Phase 14 is complete based on the user's manual Requestly verification. Phase 15 added the owned accounts table, checked with the isolated test database. Phase 16 added account create and owned-detail endpoints. Phase 17 added bounded owned-account listing and search. Phase 18 added owned-account renaming and archival with a single atomic update and its automatic row lock. Phase 19 added owned account deletion. Phase 20 added the transaction/history schema and referenced-account deletion restrictions. Phase 21 adds transaction create/detail endpoints when requested. The user can apply the local schema with `bun run db:push`.
+Handoff note: Use the [current handoff before phase 10](#current-handoff-before-phase-10) for validation, throttling, Drizzle, and documentation decisions. Phase 13 now provides guarded manual cleanup with a 100-row limit. See [the backend contract](02-backend-todos.md) for its design and the carried-forward roadmap. Phase 14 is complete based on the user's manual Requestly verification. Phase 15 added the owned accounts table, checked with the isolated test database. Phase 16 added account create and owned-detail endpoints. Phase 17 added bounded owned-account listing and search. Phase 18 added owned-account renaming and archival with a single atomic update and its automatic row lock. Phase 19 added owned account deletion. Phase 20 added the transaction/history schema and referenced-account deletion restrictions. Phase 21 added transaction create/detail with atomic initial history and version ETags. Phase 22 adds transaction corrections and owned history reads when requested. The user can apply the local schema with `bun run db:push`.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing required Origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review phase 20 and apply the local schema with `bun run db:push` when ready. Request phase 21 to continue with transaction create/detail endpoints. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review phase 21 and try Create transaction and Transaction details in Requestly. The local database needs the phase 20 schema push if not applied yet. Request phase 22 to continue with transaction corrections and history reads. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the backend-expert skill. "Implement phase 21 from its existing todos. Add only owned transaction create/detail endpoints with atomic initial history, using the current validation and error conventions."
+Suggested next specialist and prompt: Continue with the backend-expert skill. "Implement phase 22 from its existing todos. Add only version-checked transaction corrections and owned history reads, using the current validation and error conventions."

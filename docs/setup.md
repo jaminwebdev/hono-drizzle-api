@@ -95,7 +95,7 @@ Pressing `Ctrl+C` during `db:logs` only stops following the logs. For the separa
 
 ## Schema and database tools
 
-`src/db/schema.ts` defines the current database structure. It contains `users`, used by [registration](api.md#register-a-user) and [login](api.md#log-in), `sessions`, created during login, and user-owned `accounts`, `transactions`, and `transaction_history`. Transaction tables are defined, but transaction endpoints are not implemented yet. Account creation, detail, listing, search, renaming, archival, and deletion endpoints are available as described in [the API guide](api.md#create-an-account-and-read-its-details).
+`src/db/schema.ts` defines the current database structure. It contains `users`, used by [registration](api.md#register-a-user) and [login](api.md#log-in), `sessions`, created during login, and user-owned `accounts`, `transactions`, and `transaction_history`. Transaction creation and owned-detail endpoints are available; editing, history reads, and other transaction endpoints come later. Account creation, detail, listing, search, renaming, archival, and deletion endpoints are available as described in [the API guide](api.md#create-an-account-and-read-its-details).
 
 ```mermaid
 erDiagram
@@ -137,7 +137,7 @@ erDiagram
         uuid account_id FK
         numeric amount
         varchar description
-        timestamptz occurred_at
+        date occurred_at
         integer version
         timestamptz created_at
         timestamptz updated_at
@@ -155,7 +155,7 @@ erDiagram
     }
 ```
 
-Each user has a generated UUID, a unique email of at most 254 characters, a password hash, and timestamps that include a time zone. Every field is required. The database rejects empty emails and emails with uppercase letters or surrounding spaces. Registration trims and lowercases email, validates its format, and hashes the password before insertion. The timestamps default to the insertion time; future update handlers must set `updated_at` explicitly.
+Each user has a generated UUID, a unique email of at most 254 characters, a password hash, and timestamps that include a time zone. Every field is required. The database rejects empty emails and emails with uppercase letters or surrounding spaces. Registration trims and lowercases email, validates its format, and hashes the password before insertion. The timestamps default to the insertion time; update handlers must set `updated_at` explicitly.
 
 One user can have several sessions, such as separate logins on two devices. Each session has its own generated UUID and a unique credential hash. The foreign key requires an existing user. Deleting a user directly from the database also deletes that user's sessions; there is no user-deletion API.
 
@@ -169,17 +169,17 @@ Each account belongs to an existing user through `user_id`. PostgreSQL restricts
 
 Bun SQL can omit trailing zeros when returning a numeric value, such as returning `"0"` for a stored `0.00`. Account queries select `opening_balance::text` to preserve PostgreSQL's two-decimal representation without converting money to a JavaScript number.
 
-Account creation takes ownership only from the validated session. The account PATCH route allows only name and archive-status changes, preserving the owner, currency, and opening balance. The foreign key alone does not make those columns immutable. The PATCH handler sets `updated_at` in the same atomic SQL update as the supplied name/archive fields. There is no separate mutable balance column; transaction endpoints and balance queries arrive in later phases.
+Account creation takes ownership only from the validated session. The account PATCH route allows only name and archive-status changes, preserving the owner, currency, and opening balance. The foreign key alone does not make those columns immutable. The PATCH handler sets `updated_at` in the same atomic SQL update as the supplied name/archive fields. There is no separate mutable balance column; transaction creation/detail are available, while balance queries arrive in later phases.
 
-`transactions` stores current money movements. Each row has an owner, account, required occurrence time, and a finite nonzero `NUMERIC(18,2)` amount. Positive amounts represent income and negative amounts represent expenses. Currency comes from the account rather than a second currency column. The optional description allows up to 2,000 characters. Version starts at 1 and must stay positive. Creation/update timestamps default to insertion time; future update handlers must set `updated_at` explicitly.
+`transactions` stores current money movements. Each row has an owner, account, required calendar date, and a finite nonzero `NUMERIC(18,2)` amount. Positive amounts increase the account balance; negative amounts decrease it. Currency comes from the account rather than a second currency column. The optional description allows up to 2,000 characters. Version starts at 1 and must stay positive. Creation/update timestamps default to insertion time; update handlers must set `updated_at` explicitly.
 
 Both new tables reference accounts using `(user_id, account_id)` against the account's unique `(user_id, id)` pair. This requires the account and child row to have the same owner, even if application validation misses a mistake. Each new table also references its user with restricted deletion. The account's new composite unique key supports these references; it does not replace its UUID primary key.
 
-`transaction_history` stores a transaction ID, account, owner, positive version, operation, JSON snapshot, recorded time, and request UUID. Operations are `create`, `update`, and `delete`. Each transaction/version pair is unique. The database requires the snapshot to be a JSON object; snapshot fields and atomic writes with the current transaction will be defined by the transaction handlers in later phases. No tag or category fields are present yet.
+`transaction_history` stores a transaction ID, account, owner, positive version, operation, JSON snapshot, recorded time, and request UUID. Operations are `create`, `update`, and `delete`. Each transaction/version pair is unique. The database requires the snapshot to be a JSON object; the create handler writes the current transaction and initial snapshot atomically. The snapshot contains the public transaction fields and the account ID/name/currency at creation. No tag or category fields are present yet.
 
-History deliberately has no foreign key to the current transaction row. Removing that row therefore leaves its history intact. The account reference uses `RESTRICT`, so both current transactions and retained history prevent account deletion. The API translates those reference conflicts to `409 RESOURCE_IN_USE` and suggests archival. There is no history-edit/delete API. These schema definitions alone do not guarantee that every transaction has a history entry; the upcoming create endpoint will write both together in a database transaction.
+History deliberately has no foreign key to the current transaction row. Removing that row therefore leaves its history intact. The account reference uses `RESTRICT`, so both current transactions and retained history prevent account deletion. The API translates those reference conflicts to `409 RESOURCE_IN_USE` and suggests archival. There is no history-edit/delete API. These schema definitions alone do not guarantee that every transaction has a history entry; the create endpoint enforces this by writing both together in a database transaction.
 
-The transaction indexes start with `user_id` and support account/date and date-only reads, ordered by occurrence time and UUID. History indexes support owned transaction/version reads and account-reference checks. The unique transaction/version index prevents duplicate history versions.
+The transaction indexes start with `user_id` and support account/date and date-only reads, ordered by occurrence date and UUID. History indexes support owned transaction/version reads and account-reference checks. The unique transaction/version index prevents duplicate history versions.
 
 | Command                | Purpose                                                                     |
 | ---------------------- | --------------------------------------------------------------------------- |
@@ -205,7 +205,7 @@ bun run db:test:push
 bun run test:integration
 ```
 
-Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the auth, session, and account suites serially against the guarded test database. It covers registration, login, password preservation, independent hashed session credentials, safe errors, cookie flags, password-change races, bounded limits, session ownership, idle/absolute expiry, and revoked or unavailable sessions. Auth tests supply a trusted connection-address fixture. Tests delete only their own history, transactions, accounts, and users, including cascading sessions. Account tests cover strict input, exact opening balances, two-user ownership, bounded lists, literal name search, archive filtering, owned patches, safe update failures, account locking, and owned deletion without revoking sessions, same-owner transaction references, and retained-history deletion restrictions. Cookie flags are checked through Hono requests. The user has independently verified the current authentication flows in Requestly with manually created collections and routes. Stop the test container with `bun run db:test:down` when finished; its volume remains.
+Unit tests run without private environment files or PostgreSQL. `test:integration` explicitly loads `.env.test` and runs the auth, session, account, and transaction suites serially against the guarded test database. It covers registration, login, password preservation, independent hashed session credentials, safe errors, cookie flags, password-change races, bounded limits, session ownership, idle/absolute expiry, and revoked or unavailable sessions. Auth tests supply a trusted connection-address fixture. Tests delete only their own history, transactions, accounts, and users, including cascading sessions. Account tests cover strict input, exact opening balances, two-user ownership, bounded lists, literal name search, archive filtering, owned patches, safe update failures, account locking, and owned deletion without revoking sessions, same-owner transaction references, retained-history deletion restrictions, initial snapshot atomicity, calendar-date validation, and creation versus archival. Cookie flags are checked through Hono requests. The user has independently verified the current authentication flows in Requestly with manually created collections and routes. Stop the test container with `bun run db:test:down` when finished; its volume remains.
 
 ## Remove expired sessions manually
 
@@ -244,7 +244,7 @@ Failures print a safe message and exit with a nonzero status. Check the selected
 | `bun run format`           | Format all supported project files with Prettier.                               |
 | `bun run format:check`     | Check formatting without changing files.                                        |
 | `bun run test`             | Run Bun unit tests without PostgreSQL.                                          |
-| `bun run test:integration` | Run auth, session, and account tests against the prepared test PostgreSQL database. |
+| `bun run test:integration` | Run auth, session, account, and transaction tests against the prepared test PostgreSQL database. |
 | `bun run build`            | Bundle the server into `dist/server.js`.                                        |
 | `bun run check`            | Run type checking, lint, tests, and build in order.                             |
 

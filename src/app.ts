@@ -4,6 +4,7 @@ import type { Database } from './db/client';
 import type { Config } from './config';
 import { createAuthRoutes } from './features/auth';
 import { createAccountRoutes } from './features/accounts';
+import { createTransactionRoutes } from './features/transactions';
 import { ApiError, installHttp, type HttpEnv } from './http';
 
 export function createApp(
@@ -16,6 +17,10 @@ export function createApp(
   app.route(
     '/api/v1/accounts',
     createAccountRoutes(database, settings.APP_ENV),
+  );
+  app.route(
+    '/api/v1/transactions',
+    createTransactionRoutes(database, settings.APP_ENV),
   );
 
   app.get('/health/live', (c) => {

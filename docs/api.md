@@ -1,6 +1,6 @@
 # API guide
 
-Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Registration, login, the current-user endpoint, logout, password changes, and account creation, detail, listing, search, renaming, archival, and deletion are available.
+Use `http://127.0.0.1:3000` with the local settings. Start the API in your terminal as described in [setup](setup.md). Authentication, account management, and transaction creation/detail are available.
 
 ## Create an account and read its details
 
@@ -51,7 +51,7 @@ flowchart TD
     Read --> Response
 ```
 
-For creation, `requireJson` runs before the JSON validator, and Hono parses the body. Validation failures throw `ApiError`; the shared error handler formats responses. An unexpected database failure returns the normal safe `500` error. Account listing, search, renaming, archival, and deletion are described below. Tags and transaction routes are not available yet.
+For creation, `requireJson` runs before the JSON validator, and Hono parses the body. Validation failures throw `ApiError`; the shared error handler formats responses. An unexpected database failure returns the normal safe `500` error. Account listing, search, renaming, archival, and deletion are described below. Tags and the remaining transaction routes are not available yet.
 
 ### Try accounts in Requestly
 
@@ -116,7 +116,7 @@ sequenceDiagram
     API-->>Client: 200 with account details
 ```
 
-The handler uses one atomic `UPDATE ... RETURNING` statement. No matching row means the account is missing or belongs to another user, so the route returns 404. PostgreSQL automatically holds a row lock during the update; no preliminary read or explicit transaction wrapper is needed. Only supplied fields are updated, so archiving cannot overwrite a concurrent rename with an older name. If two requests change the same field, the last successful update wins. This endpoint requires no version or `If-Match` header. Future transaction creation will coordinate with archival by locking the same account before checking whether it is active; transaction tables are defined, but their endpoints are not implemented yet.
+The handler uses one atomic `UPDATE ... RETURNING` statement. No matching row means the account is missing or belongs to another user, so the route returns 404. PostgreSQL automatically holds a row lock during the update; no preliminary read or explicit transaction wrapper is needed. Only supplied fields are updated, so archiving cannot overwrite a concurrent rename with an older name. If two requests change the same field, the last successful update wins. This endpoint requires no version or `If-Match` header. Future transaction creation will coordinate with archival by locking the same account before checking whether it is active; transaction creation locks that same account before checking whether it is active.
 
 In Requestly, **Rename account**, **Archive account**, and **Unarchive account** in [requests/finance.json](../requests/finance.json) use `{{accountId}}` and the existing cookie jar. You can also create these requests manually. Each write needs `Origin: {{baseUrl}}`. After archiving, try **Account details** and list with `archived=true`; after unarchiving, list with `archived=false`.
 
@@ -128,9 +128,69 @@ The handler uses one atomic `DELETE ... RETURNING` statement scoped to both the 
 
 Active and archived accounts can be deleted only when they have no current transactions or retained history. Deletion removes the account permanently, so later detail reads and updates return `404`, and the account disappears from lists and totals. Other accounts, users, and sessions remain intact. Archiving is the option that keeps an account available for later use.
 
-The finance schema now includes current transactions and retained history. A reference from either table prevents account deletion and returns `409 RESOURCE_IN_USE` with `This account has transactions or history. Archive it instead.` Removing a current transaction does not remove its history, so an account with retained history remains protected. Account deletion still uses one statement: PostgreSQL enforces the references, and the handler translates only those known reference failures. Transaction/history endpoints are not implemented yet.
+The finance schema now includes current transactions and retained history. A reference from either table prevents account deletion and returns `409 RESOURCE_IN_USE` with `This account has transactions or history. Archive it instead.` Removing a current transaction does not remove its history, so an account with retained history remains protected. Account deletion still uses one statement: PostgreSQL enforces the references, and the handler translates only those known reference failures. Transaction creation and detail are available; history and transaction-deletion endpoints come later.
 
 For a Requestly walkthrough, create a temporary account and copy its returned ID into `accountId`. Send **Delete account** from [requests/finance.json](../requests/finance.json) or create the DELETE request manually, including `Origin: {{baseUrl}}`. The cookie jar supplies the session. Expect `204`, then `404` if you read or delete the same account again.
+
+## Create a transaction and read its details
+
+Log in and create an active account first. Send `POST /api/v1/transactions` with the session cookie, an approved `Origin`, and `Content-Type: application/json`:
+
+```json
+{
+  "accountId": "62a9b052-bb8a-49f8-935e-76f56b02e2db",
+  "amount": "-24.50",
+  "description": "Weekly groceries",
+  "occurredAt": "2026-11-18"
+}
+```
+
+`accountId`, `amount`, and `occurredAt` are required. The amount uses the account's currency. Positive amounts increase its balance and negative amounts decrease it. Supply a decimal string with exactly two fractional digits and at most sixteen integer digits. Zero, negative zero, numeric JSON values, leading zeros, exponent notation, commas, and whitespace are rejected. Do not supply a separate currency or direction field.
+
+`description` is optional, accepts `null`, and allows up to 2,000 characters. Omitted descriptions are stored and returned as `null`. `occurredAt` must be a real calendar date in `YYYY-MM-DD` format, within years 0001–9999. For example, `"2026-11-19"` is accepted and returned unchanged. Times and timezone offsets are rejected. PostgreSQL stores this field as `date`, so timezone conversion cannot move it to another day. The server manages `createdAt` and `updatedAt` as exact UTC timestamps.
+
+The route accepts only these four fields. Client-supplied owner/transaction IDs, versions, timestamps managed by the server, category/tag fields, transfer IDs, and unknown fields return `400 INVALID_INPUT`. Neither create nor detail accepts query parameters.
+
+Creation locks the account selected by both its ID and the session owner. Missing and foreign accounts return the same `404 NOT_FOUND`; an owned archived account returns `409 ACCOUNT_ARCHIVED`. Archival and creation use conflicting account row locks, so creation rechecks the account's state after a concurrent archive finishes. Existing transactions remain readable after archival.
+
+The route inserts the current transaction and its initial history in one database transaction. A failed history write rolls back the current insert too. Only after commit does it return `201` with `Location: /api/v1/transactions/:id`, `ETag: "1"`, and this shape:
+
+```json
+{
+  "data": {
+    "id": "c8e9a8a6-871b-46f0-95d8-67987eedab56",
+    "accountId": "62a9b052-bb8a-49f8-935e-76f56b02e2db",
+    "amount": "-24.50",
+    "description": "Weekly groceries",
+    "occurredAt": "2026-11-18",
+    "version": 1,
+    "createdAt": "2026-11-18T20:00:00.000Z",
+    "updatedAt": "2026-11-18T20:00:00.000Z"
+  }
+}
+```
+
+Send `GET /api/v1/transactions/:id` with the same session to read the transaction. It returns `200`, the same public fields, and the version ETag. Another user's transaction and a missing transaction both return `404 NOT_FOUND` with `The transaction was not found.` An invalid UUID returns `400 INVALID_INPUT`. The response keeps money as a two-decimal string. No `If-Match` header is required for these two endpoints.
+
+```mermaid
+sequenceDiagram
+    participant Client as Signed-in client
+    participant API as Transaction route
+    participant DB as PostgreSQL
+    Client->>API: POST account, amount, description, and occurrence date
+    API->>API: Check Origin, session, and allowed input
+    API->>DB: Begin and lock the owned account
+    API->>API: Require an active account
+    API->>DB: Insert current transaction and version-1 history
+    DB-->>API: Commit both writes
+    API-->>Client: 201 with Location, ETag, and transaction
+```
+
+The initial snapshot contains the returned transaction fields plus the account's ID, name, and currency at creation. History records operation `create`, version 1, the owner, and the server-generated request ID. It contains no tag/category placeholders. There is no history endpoint yet.
+
+**POST is not idempotent.** Repeating the same request creates another transaction with a new ID and its own history. The API does not retry writes automatically. Transfers, corrections, transaction deletion, lists, and balance/summary endpoints remain outside the current API.
+
+In Requestly, use **Create transaction** from [requests/finance.json](../requests/finance.json), or create the request manually. Set `accountId` to an active account you own, and reuse the session cookie jar. Copy only the returned transaction ID into `transactionId` for **Transaction details**; do not copy session credentials into variables or headers.
 
 ## Health requests
 
@@ -398,6 +458,6 @@ Use `createInsertSchema` for creation inputs, `createUpdateSchema` for updates, 
 
 Add normalization and API rules through refinements or explicit fields. Generated schemas validate values at runtime, but do not reproduce every database rule. Email format, password policy, ownership, cross-field checks, uniqueness, and foreign-key existence still need validation or database enforcement. Database defaults can make generated insert fields optional; require them explicitly when the endpoint needs them. For patches, optional fields must not make an empty object valid. Preserve the difference between an omitted field and an allowed `null`.
 
-Auth's password validation stays explicit because the request contains `password` while storage contains `passwordHash`. Money and timestamp fields also need deliberate JSON formats; a database schema alone does not define their serialized form. Feed the final endpoint schema into the existing `sValidator` pattern with its `ApiError` hook.
+Auth's password validation stays explicit because the request contains `password` while storage contains `passwordHash`. Money and date fields also need deliberate JSON formats; a database schema alone does not define their serialized form. Feed the final endpoint schema into the existing `sValidator` pattern with its `ApiError` hook.
 
 The pinned Drizzle `1.0.0-rc.5` provides `createInsertSchema`, `createUpdateSchema`, and `createSelectSchema` through `drizzle-orm/valibot`. Use that built-in integration; no standalone adapter is needed. See [Drizzle's schema generators](https://orm.drizzle.team/docs/valibot) and [Valibot's strict objects](https://valibot.dev/api/strictObject/).
