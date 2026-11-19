@@ -557,3 +557,474 @@ describe('transaction creation and owned details', () => {
     }
   });
 });
+
+function patch(
+  cookie: string | undefined,
+  id: string,
+  body: unknown,
+  version?: string,
+) {
+  return app.request(`/api/v1/transactions/${id}`, {
+    method: 'PATCH',
+    headers: {
+      Origin: origin,
+      'Content-Type': 'application/json',
+      ...(cookie ? { Cookie: cookie } : {}),
+      ...(version === undefined ? {} : { 'If-Match': version }),
+    },
+    body: JSON.stringify(body),
+  });
+}
+function history(cookie: string | undefined, id: string, query = '') {
+  return app.request(`/api/v1/transactions/${id}/history${query}`, {
+    headers: cookie ? { Cookie: cookie } : {},
+  });
+}
+type HistoryResponse = {
+  data: {
+    id: string;
+    transactionId: string;
+    accountId: string;
+    version: number;
+    operation: string;
+    snapshot: Record<string, unknown>;
+    requestId: string;
+    recordedAt: string;
+  }[];
+  pagination: { page: number; limit: number; total: number };
+};
+async function existing() {
+  const owner = await signedIn();
+  const response = await create(owner.cookie, {
+    ...sample,
+    accountId: owner.accountId,
+    description: 'Original',
+  });
+  expect(response.status).toBe(201);
+  return {
+    ...owner,
+    transaction: ((await response.json()) as TransactionResponse).data,
+  };
+}
+
+describe('transaction corrections and history', () => {
+  test('updates allowed fields, preserves original facts, and appends snapshots with current account context', async () => {
+    const owner = await existing();
+    await database
+      .update(accounts)
+      .set({ isArchived: true, name: 'Renamed' })
+      .where(eq(accounts.id, owner.accountId));
+    const response = await patch(
+      owner.cookie,
+      owner.transaction.id,
+      {
+        amount: '150.00',
+        description: null,
+        occurredAt: '2024-02-29',
+      },
+      '"1"',
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('ETag')).toBe('"2"');
+    const { data } = (await response.json()) as TransactionResponse;
+    expect(data).toEqual({
+      ...owner.transaction,
+      amount: '150.00',
+      description: null,
+      occurredAt: '2024-02-29',
+      version: 2,
+      updatedAt: data.updatedAt,
+    });
+    expect(new Date(data.updatedAt).toISOString()).toBe(data.updatedAt);
+    expect(Date.parse(data.updatedAt)).toBeGreaterThanOrEqual(
+      Date.parse(data.createdAt),
+    );
+    const result = await history(owner.cookie, data.id);
+    expect(result.status).toBe(200);
+    expect(result.headers.get('Cache-Control')).toBe('no-store');
+    const body = (await result.json()) as HistoryResponse;
+    expect(body.pagination).toEqual({ page: 1, limit: 25, total: 2 });
+    expect(body.data.map((row) => row.version)).toEqual([2, 1]);
+    expect(body.data[0]).toEqual({
+      id: body.data[0]!.id,
+      transactionId: data.id,
+      accountId: owner.accountId,
+      version: 2,
+      operation: 'update',
+      requestId: response.headers.get('X-Request-Id')!,
+      recordedAt: body.data[0]!.recordedAt,
+      snapshot: {
+        ...data,
+        account: { id: owner.accountId, name: 'Renamed', currency: 'GBP' },
+      },
+    });
+    expect(body.data[1]!.snapshot).toEqual({
+      ...owner.transaction,
+      account: { id: owner.accountId, name: 'Checking', currency: 'GBP' },
+    });
+    const partial = await patch(
+      owner.cookie,
+      data.id,
+      { description: 'Corrected' },
+      '"2"',
+    );
+    expect(partial.status).toBe(200);
+    expect(partial.headers.get('ETag')).toBe('"3"');
+    expect(((await partial.json()) as TransactionResponse).data).toMatchObject({
+      amount: '150.00',
+      occurredAt: '2024-02-29',
+      description: 'Corrected',
+      version: 3,
+    });
+    expect((await detail(owner.cookie, data.id)).headers.get('ETag')).toBe(
+      '"3"',
+    );
+  });
+
+  test('rejects missing, malformed, and stale preconditions without changing current data or history', async () => {
+    const owner = await existing();
+    for (const [version, status, code] of [
+      [undefined, 428, 'PRECONDITION_REQUIRED'],
+      ['', 400, 'INVALID_INPUT'],
+      ['1', 400, 'INVALID_INPUT'],
+      ['W/"1"', 400, 'INVALID_INPUT'],
+      ['*', 400, 'INVALID_INPUT'],
+      ['"1", "2"', 400, 'INVALID_INPUT'],
+      ['"01"', 400, 'INVALID_INPUT'],
+      ['"0"', 400, 'INVALID_INPUT'],
+      ['"-1"', 400, 'INVALID_INPUT'],
+      ['"2147483648"', 400, 'INVALID_INPUT'],
+      ['"2"', 412, 'VERSION_MISMATCH'],
+    ] as const) {
+      const response = await patch(
+        owner.cookie,
+        owner.transaction.id,
+        { amount: '2.00' },
+        version,
+      );
+      expect(response.status).toBe(status);
+      expect(response.headers.has('ETag')).toBe(false);
+      expect(await response.json()).toMatchObject({ error: { code } });
+    }
+    expect(
+      (
+        (await (
+          await detail(owner.cookie, owner.transaction.id)
+        ).json()) as TransactionResponse
+      ).data,
+    ).toEqual(owner.transaction);
+    expect(
+      (
+        (await (
+          await history(owner.cookie, owner.transaction.id)
+        ).json()) as HistoryResponse
+      ).pagination.total,
+    ).toBe(1);
+  });
+
+  test('returns the same 404 for foreign and missing IDs before checking version headers', async () => {
+    const owner = await existing();
+    const other = await signedIn();
+    for (const id of [owner.transaction.id, crypto.randomUUID()]) {
+      for (const version of [undefined, 'invalid', '"999"']) {
+        const response = await patch(
+          other.cookie,
+          id,
+          { description: 'private' },
+          version,
+        );
+        expect(response.status).toBe(404);
+        expect(await response.json()).toMatchObject({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'The transaction was not found.',
+          },
+        });
+      }
+      expect((await history(other.cookie, id)).status).toBe(404);
+    }
+  });
+
+  test('rejects empty, protected, and invalid patches before opening a transaction', async () => {
+    const owner = await existing();
+    const transaction = spyOn(database, 'transaction');
+    try {
+      for (const body of [
+        {},
+        null,
+        [],
+        { amount: '0.00' },
+        { amount: 12 },
+        { amount: null },
+        { occurredAt: '2026-02-30' },
+        { occurredAt: '2026-11-19T00:00:00Z' },
+        { occurredAt: null },
+        { description: 'x'.repeat(2001) },
+        ...[
+          'accountId',
+          'userId',
+          'id',
+          'version',
+          'createdAt',
+          'updatedAt',
+          'tagIds',
+          'categoryId',
+          'currency',
+          'transferId',
+        ].map((key) => ({ description: 'private', [key]: owner.accountId })),
+      ]) {
+        const response = await patch(
+          owner.cookie,
+          owner.transaction.id,
+          body,
+          '"1"',
+        );
+        expect(response.status).toBe(400);
+        expect(await response.json()).toMatchObject({
+          error: { code: 'INVALID_INPUT' },
+        });
+      }
+      expect(
+        (await patch(owner.cookie, 'invalid-id', { amount: '1.00' }, '"1"'))
+          .status,
+      ).toBe(400);
+      expect(
+        (
+          await patch(
+            owner.cookie,
+            owner.transaction.id + '?q=x',
+            { amount: '1.00' },
+            '"1"',
+          )
+        ).status,
+      ).toBe(400);
+      const malformed = await app.request(
+        `/api/v1/transactions/${owner.transaction.id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Origin: origin,
+            Cookie: owner.cookie,
+            'Content-Type': 'application/json',
+            'If-Match': '"1"',
+          },
+          body: '{"private-value":',
+        },
+      );
+      expect(malformed.status).toBe(400);
+      expect(await malformed.text()).not.toContain('private-value');
+      const wrongType = await app.request(
+        `/api/v1/transactions/${owner.transaction.id}`,
+        {
+          method: 'PATCH',
+          headers: {
+            Origin: origin,
+            Cookie: owner.cookie,
+            'Content-Type': 'text/plain',
+          },
+          body: '{}',
+        },
+      );
+      expect(wrongType.status).toBe(415);
+      expect(transaction).not.toHaveBeenCalled();
+    } finally {
+      transaction.mockRestore();
+    }
+  });
+
+  test('allows one concurrent correction and rejects the other stale version', async () => {
+    const owner = await existing();
+    const responses = await Promise.all([
+      patch(owner.cookie, owner.transaction.id, { amount: '10.00' }, '"1"'),
+      patch(owner.cookie, owner.transaction.id, { amount: '20.00' }, '"1"'),
+    ]);
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      200, 412,
+    ]);
+    const winner = (await responses
+      .find((response) => response.status === 200)!
+      .json()) as TransactionResponse;
+    const result = (await (
+      await history(owner.cookie, owner.transaction.id)
+    ).json()) as HistoryResponse;
+    expect(result.data.map((row) => row.version)).toEqual([2, 1]);
+    expect(result.data[0]!.snapshot.amount).toBe(winner.data.amount);
+    expect(
+      (
+        (await (
+          await detail(owner.cookie, owner.transaction.id)
+        ).json()) as TransactionResponse
+      ).data,
+    ).toEqual(winner.data);
+  });
+
+  test('rolls back the updated fields, timestamp, and version if history insertion fails', async () => {
+    const owner = await existing();
+    const original = database.transaction.bind(database);
+    const transaction = spyOn(database, 'transaction').mockImplementation(
+      (callback) =>
+        original(async (tx) => {
+          const insert = spyOn(tx, 'insert').mockImplementation(() => {
+            throw new Error('private-history-passwordHash');
+          });
+          try {
+            return await callback(tx);
+          } finally {
+            insert.mockRestore();
+          }
+        }),
+    );
+    try {
+      const response = await patch(
+        owner.cookie,
+        owner.transaction.id,
+        { amount: '99.00' },
+        '"1"',
+      );
+      expect(response.status).toBe(500);
+      expect(response.headers.has('ETag')).toBe(false);
+      const text = await response.text();
+      expect(text).not.toContain('private-history');
+      expect(text).not.toContain('passwordHash');
+      expect(text).not.toContain(owner.cookie);
+    } finally {
+      transaction.mockRestore();
+    }
+    expect(
+      (
+        (await (
+          await detail(owner.cookie, owner.transaction.id)
+        ).json()) as TransactionResponse
+      ).data,
+    ).toEqual(owner.transaction);
+    expect(
+      (
+        (await (
+          await history(owner.cookie, owner.transaction.id)
+        ).json()) as HistoryResponse
+      ).pagination.total,
+    ).toBe(1);
+  });
+
+  test('paginates newest versions first with strict query bounds and no foreign data', async () => {
+    const owner = await existing();
+    await patch(
+      owner.cookie,
+      owner.transaction.id,
+      { description: 'Second' },
+      '"1"',
+    );
+    await patch(
+      owner.cookie,
+      owner.transaction.id,
+      { description: 'Third' },
+      '"2"',
+    );
+    const response = await history(
+      owner.cookie,
+      owner.transaction.id,
+      '?page=2&limit=1',
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as HistoryResponse;
+    expect(body.pagination).toEqual({ page: 2, limit: 1, total: 3 });
+    expect(body.data.map((row) => row.version)).toEqual([2]);
+    expect(JSON.stringify(body)).not.toContain('userId');
+    const beyond = (await (
+      await history(owner.cookie, owner.transaction.id, '?page=10001&limit=1')
+    ).json()) as HistoryResponse;
+    expect(beyond).toEqual({
+      data: [],
+      pagination: { page: 10001, limit: 1, total: 3 },
+    });
+    expect(
+      (await history(owner.cookie, owner.transaction.id, '?limit=100')).status,
+    ).toBe(200);
+    for (const query of [
+      '?page=0',
+      '?limit=101',
+      '?page=10002&limit=1',
+      '?page=102&limit=100',
+      '?page=1&page=2',
+      '?limit=1&limit=2',
+      '?page=1.5',
+      '?limit=-1',
+      '?limit=01',
+      '?userId=x',
+      '?q=x',
+    ]) {
+      expect(
+        (await history(owner.cookie, owner.transaction.id, query)).status,
+      ).toBe(400);
+    }
+    expect((await history(owner.cookie, 'invalid-id')).status).toBe(400);
+  });
+
+  test('returns empty history for an owned current row without history and hides missing rows', async () => {
+    const owner = await signedIn();
+    const [row] = await database
+      .insert(transactions)
+      .values({
+        userId: owner.id,
+        accountId: owner.accountId,
+        amount: '1.00',
+        occurredAt: '2026-11-19',
+      })
+      .returning({ id: transactions.id });
+    const response = await history(owner.cookie, row!.id);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      data: [],
+      pagination: { page: 1, limit: 25, total: 0 },
+    });
+    expect((await history(owner.cookie, crypto.randomUUID())).status).toBe(404);
+  });
+
+  test('requires sessions for correction and history and rejects write origins', async () => {
+    const owner = await existing();
+    expect(
+      (await patch(undefined, owner.transaction.id, { amount: '1.00' }, '"1"'))
+        .status,
+    ).toBe(401);
+    expect((await history(undefined, owner.transaction.id)).status).toBe(401);
+    expect(
+      (await history('session=invalid', owner.transaction.id)).status,
+    ).toBe(401);
+    const transaction = spyOn(database, 'transaction');
+    try {
+      for (const value of ['', 'null', 'http://untrusted.example']) {
+        const response = await app.request(
+          `/api/v1/transactions/${owner.transaction.id}`,
+          {
+            method: 'PATCH',
+            headers: {
+              Origin: value,
+              Cookie: owner.cookie,
+              'Content-Type': 'application/json',
+              'If-Match': '"1"',
+            },
+            body: '{"amount":"1.00"}',
+          },
+        );
+        expect(response.status).toBe(403);
+      }
+      await database.delete(sessions).where(eq(sessions.userId, owner.id));
+      expect(
+        (
+          await patch(
+            owner.cookie,
+            owner.transaction.id,
+            { amount: '1.00' },
+            '"1"',
+          )
+        ).status,
+      ).toBe(401);
+      expect((await history(owner.cookie, owner.transaction.id)).status).toBe(
+        401,
+      );
+      expect(transaction).not.toHaveBeenCalled();
+    } finally {
+      transaction.mockRestore();
+    }
+  });
+});

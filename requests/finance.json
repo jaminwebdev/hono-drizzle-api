@@ -177,6 +177,45 @@
       }
     },
     {
+      "name": "Correct transaction",
+      "request": {
+        "method": "PATCH",
+        "description": "Replace If-Match with the latest transaction ETag, including quotes, before each correction.",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{baseUrl}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "If-Match",
+            "value": "\"1\""
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": \"-23.50\",\n  \"description\": null,\n  \"occurredAt\": \"2026-11-19\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/api/v1/transactions/{{transactionId}}"
+      }
+    },
+    {
+      "name": "Transaction history",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/v1/transactions/{{transactionId}}/history?page=1&limit=25"
+      }
+    },
+    {
       "name": "Delete account",
       "request": {
         "method": "DELETE",

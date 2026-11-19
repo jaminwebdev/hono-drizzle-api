@@ -1,6 +1,6 @@
 # Phase 13 review: expired-session cleanup
 
-Status: Phases through 21 are implemented and verified. Phase 22 is next.
+Status: Phases through 22 are implemented and verified. Phase 23 is next.
 
 ## Roadmap continuity
 
@@ -65,7 +65,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Remaining roadmap carried forward
 
-The following phases were carried forward from the original contract. Phases 13–21 are now complete, with matching evidence in both roadmaps. Phases 22–41 remain unfinished and require their own approval.
+The following phases were carried forward from the original contract. Phases 13–22 are now complete, with matching evidence in both roadmaps. Phases 23–41 remain unfinished and require their own approval.
 
 ### Phase 13. Clean up expired session records explicitly
 
@@ -259,13 +259,17 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 22. Correct transactions and inspect history
 
-Expected files, 4: `src/features/transactions.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`, `requests/finance.json`.
+Review files, 8: `src/features/transactions.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`, `docs/setup.md`, `requests/finance.json`, `PROJECT_MAP.md`, and both session roadmaps.
 
-- [ ] Add transaction patches with required If-Match, owned-row locking, and an appended snapshot.
-- [ ] Add the bounded owner-scoped history endpoint for the current transaction model.
-- [ ] Test stale/concurrent patches, hash-free errors, snapshot rollback, and foreign IDs returning 404 before version errors; document corrections.
+- [x] Add transaction patches with required If-Match, owned-row locking, and an appended snapshot.
+- [x] Add the bounded owner-scoped history endpoint for the current transaction model.
+- [x] Test stale/concurrent patches, hash-free errors, snapshot rollback, and foreign IDs returning 404 before version errors; document corrections.
 
 Acceptance: S3–S4, S7–S8; PROJECT_MAP R3, R5–R8, R10–R11. Money, description, and occurrence date can change; account/user cannot. Tag/category patches remain unknown fields. No delete endpoint is bundled here.
+
+Validation: Bun 1.3.14 type checking, lint, all 114 unit tests, all 278 integration tests, and build passed. Tests cover partial corrections, clearing descriptions, immutable fields, real calendar dates, archived-account corrections, missing/malformed/stale If-Match, foreign IDs returning 404 before version errors, competing corrections, safe errors, and rollback after a history-write failure. History checks cover ownership, descending versions, paging bounds, empty pages, preserved earlier snapshots, and authentication. Only the isolated test database was used, with its volume preserved afterward. No schema, dependencies, development API processes, or delete endpoints changed.
+
+Request flow: PATCH validates the allowed JSON fields, locks the owned current row, then checks If-Match. A matching version allows the update and next snapshot to commit together. It returns the current representation and new ETag after commit. History returns owner-scoped snapshots with page/limit pagination, newest version first. Snapshot account names describe the account at the time each change was saved; older snapshots are not rewritten.
 
 Suggested commit: `feat: correct transactions with version checks and history`
 

@@ -1,6 +1,6 @@
 # Finance tracker architecture and implementation todos
 
-This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases through 21 are complete. Later phases remain subject to their individual approval gates.
+This implementation contract follows the original [project brief](../../docs/archive/new_start.md) and the user decisions below. Phases through 22 are complete. Later phases remain subject to their individual approval gates.
 
 ## Spec summary
 
@@ -486,7 +486,7 @@ The user also set a learning requirement for maintainability. Build authenticati
 
 Workflow update from the user on 2026-11-17: A request to continue with an existing phase authorizes implementing that phase directly from its todos. Do not create another proposed design or ask for another design approval before starting. Make routine implementation choices, keep the change limited to the requested phase, and present the finished result for review and adjustment. Continue to leave commits to the user.
 
-Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete, including the phase 9 cleanup follow-ups. Phase 4 was removed at the user's request. Phases 10–21 are complete; phase 22 is next. Continue only one approved phase at a time. The user reviews and makes every Git commit.
+Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete, including the phase 9 cleanup follow-ups. Phase 4 was removed at the user's request. Phases 10–22 are complete; phase 23 is next. Continue only one approved phase at a time. The user reviews and makes every Git commit.
 
 Each phase is one observable step in the current feature. Expected files are a scope estimate that includes tests, guides, and request examples, not permission to create an absent file early. The scaffold has eight planned files; later phases stay within nine. Before implementation, split a phase that would reach ten files or mix separate behaviors. Phase 5B is the documented exception for short settings call-site, test, and current-guide updates; it contains only the origin/CORS policy. Split within the same feature and update phase references before proceeding.
 
@@ -980,13 +980,17 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 22. Correct transactions and inspect history
 
-Expected files, 4: `src/features/transactions.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`, `requests/finance.json`.
+Review files, 8: `src/features/transactions.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`, `docs/setup.md`, `requests/finance.json`, `PROJECT_MAP.md`, and both session roadmaps.
 
-- [ ] Add transaction patches with required If-Match, owned-row locking, and an appended snapshot.
-- [ ] Add the bounded owner-scoped history endpoint for the current transaction model.
-- [ ] Test stale/concurrent patches, hash-free errors, snapshot rollback, and foreign IDs returning 404 before version errors; document corrections.
+- [x] Add transaction patches with required If-Match, owned-row locking, and an appended snapshot.
+- [x] Add the bounded owner-scoped history endpoint for the current transaction model.
+- [x] Test stale/concurrent patches, hash-free errors, snapshot rollback, and foreign IDs returning 404 before version errors; document corrections.
 
 Acceptance: S3–S4, S7–S8; PROJECT_MAP R3, R5–R8, R10–R11. Money, description, and occurrence date can change; account/user cannot. Tag/category patches remain unknown fields. No delete endpoint is bundled here.
+
+Validation: Bun 1.3.14 type checking, lint, all 114 unit tests, all 278 integration tests, and build passed. Tests cover partial corrections, clearing descriptions, immutable fields, real calendar dates, archived-account corrections, missing/malformed/stale If-Match, foreign IDs returning 404 before version errors, competing corrections, safe errors, and rollback after a history-write failure. History checks cover ownership, descending versions, paging bounds, empty pages, preserved earlier snapshots, and authentication. Only the isolated test database was used, with its volume preserved afterward. No schema, dependencies, development API processes, or delete endpoints changed.
+
+Request flow: PATCH validates the allowed JSON fields, locks the owned current row, then checks If-Match. A matching version allows the update and next snapshot to commit together. It returns the current representation and new ETag after commit. History returns owner-scoped snapshots with page/limit pagination, newest version first. Snapshot account names describe the account at the time each change was saved; older snapshots are not rewritten.
 
 Suggested commit: `feat: correct transactions with version checks and history`
 
@@ -1276,7 +1280,7 @@ Reviewed after adding authentication on 2026-10-28. This is a review of the prop
 | Is each review bounded?                            | Earlier reviews fit nine tracked files or fewer. Phase 5B is a documented 12-file exception for one origin/CORS policy, including short settings call-site changes, their tests, and accurate docs. Response negotiation and logging are separate in 5C. Other phases keep the nine-file target and their own gates. |
 | Are repetitive catalogs still reviewable?          | Tag/category catalog updates reuse the already explained account patterns in one feature file. If list/rename/delete becomes more than a small metadata diff, split that phase before adding links. A low file count alone does not prove a commit is small.                                                         |
 | Is push-only schema management preserved?          | Yes. Local, test, production-check, and CI workflows use explicit Drizzle pushes. There is no migration directory, generate/migrate script, automatic startup push, or volume reset.                                                                                                                                 |
-| Is approval preserved?                             | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete; phases 22–41 remain for later requests.                                                                                     |
+| Is approval preserved?                             | Yes. Phase 3 is split into 3A/3B/3C, phase 4 is removed, and phase 5 is split into 5A/5B/5C, leaving 44 review gates. Phases 1, 2, 3A, 3B, 3C, 5A, 5B, 5C, 6, 7, 8, and 9 are complete; phases 23–41 remain for later requests.                                                                                     |
 
 Structural checks confirmed consecutive phase numbers, matching feature order, 44 approval gates after splitting phases 3 and 5 and removing phase 4, valid JSON snippets, and existing local links. The auth primitive check used an invented password and verified the proposed Argon2id settings on Bun 1.3.14. Phase 1 type checks, lint, build, and HTTP smoke checks have passed. Phase 2 configuration, database health, and persistence checks have passed without changing older volumes. Phases 3A and 3B passed configuration tests, type checks, lint, and build within nine-file diffs. Phase 3B also passed isolated connection, timeout, and startup-failure checks. Phase 3C passed readiness success/failure checks and normal/fatal shutdown checks. Phase 5A passed common-error and JSON-reader tests, type checking, lint, and build. Phase 5B passed origin/CORS policy tests, configuration checks, type checking, lint, and build. Phase 5C passed negotiation and metadata-log tests, type checking, lint, and build. Future feature checks remain for their own phases.
 
@@ -1288,12 +1292,12 @@ The accompanying PROJECT_MAP records the user's confirmed stack, working rules, 
 
 ## RELAY
 
-Status: Phase 9 and its cleanup follow-ups are complete. Login issues an HttpOnly session cookie after password verification and locked session creation. Phases 10–21 are complete; phase 22 is next. Local development remains on HTTP.
+Status: Phase 9 and its cleanup follow-ups are complete. Login issues an HttpOnly session cookie after password verification and locked session creation. Phases 10–22 are complete; phase 23 is next. Local development remains on HTTP.
 
-Handoff note: Use the [current handoff before phase 10](#current-handoff-before-phase-10) for validation, throttling, Drizzle, and documentation decisions. Phase 13 now provides guarded manual cleanup with a 100-row limit. See [the backend contract](02-backend-todos.md) for its design and the carried-forward roadmap. Phase 14 is complete based on the user's manual Requestly verification. Phase 15 added the owned accounts table, checked with the isolated test database. Phase 16 added account create and owned-detail endpoints. Phase 17 added bounded owned-account listing and search. Phase 18 added owned-account renaming and archival with a single atomic update and its automatic row lock. Phase 19 added owned account deletion. Phase 20 added the transaction/history schema and referenced-account deletion restrictions. Phase 21 added transaction create/detail with atomic initial history and version ETags. Phase 22 adds transaction corrections and owned history reads when requested. The user can apply the local schema with `bun run db:push`.
+Handoff note: Use the [current handoff before phase 10](#current-handoff-before-phase-10) for validation, throttling, Drizzle, and documentation decisions. Phase 13 now provides guarded manual cleanup with a 100-row limit. See [the backend contract](02-backend-todos.md) for its design and the carried-forward roadmap. Phase 14 is complete based on the user's manual Requestly verification. Phase 15 added the owned accounts table, checked with the isolated test database. Phase 16 added account create and owned-detail endpoints. Phase 17 added bounded owned-account listing and search. Phase 18 added owned-account renaming and archival with a single atomic update and its automatic row lock. Phase 19 added owned account deletion. Phase 20 added the transaction/history schema and referenced-account deletion restrictions. Phase 21 added transaction create/detail with atomic initial history and version ETags. Phase 22 added version-checked transaction corrections and bounded owned history reads. Phase 23 adds transaction deletion with retained history when requested. The user can apply the local schema with `bun run db:push`.
 
 Architectural drift risks: bundling auth into the scaffold; creating future finance tables early; authenticating without enforcing ownership; missing ownership on deleted history or aggregates; accepting cross-user tag/category links; storing raw session credentials or putting them in Requestly variables; bypassing required Origin checks for desktop clients; disabling production Secure cookies to make an HTTP image check authenticate; generating migration files; reusing old volumes; adding service/repository layers; converting money to numbers; rewriting old snapshots during schema extension; exceeding a small reviewable diff.
 
-User action: Review phase 21 and try Create transaction and Transaction details in Requestly. The local database needs the phase 20 schema push if not applied yet. Request phase 22 to continue with transaction corrections and history reads. The agent must stop at each phase gate so the user can inspect the diff.
+User action: Review phase 22 and try Correct transaction and Transaction history in Requestly. Copy the latest transaction ETag into If-Match before correcting. Request phase 23 to continue with transaction deletion and retained history. The agent must stop at each phase gate so the user can inspect the diff.
 
-Suggested next specialist and prompt: Continue with the backend-expert skill. "Implement phase 22 from its existing todos. Add only version-checked transaction corrections and owned history reads, using the current validation and error conventions."
+Suggested next specialist and prompt: Continue with the backend-expert skill. "Implement phase 23 from its existing todos. Add only version-checked transaction deletion with retained history, using the current validation and error conventions."

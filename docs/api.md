@@ -128,7 +128,7 @@ The handler uses one atomic `DELETE ... RETURNING` statement scoped to both the 
 
 Active and archived accounts can be deleted only when they have no current transactions or retained history. Deletion removes the account permanently, so later detail reads and updates return `404`, and the account disappears from lists and totals. Other accounts, users, and sessions remain intact. Archiving is the option that keeps an account available for later use.
 
-The finance schema now includes current transactions and retained history. A reference from either table prevents account deletion and returns `409 RESOURCE_IN_USE` with `This account has transactions or history. Archive it instead.` Removing a current transaction does not remove its history, so an account with retained history remains protected. Account deletion still uses one statement: PostgreSQL enforces the references, and the handler translates only those known reference failures. Transaction creation and detail are available; history and transaction-deletion endpoints come later.
+The finance schema now includes current transactions and retained history. A reference from either table prevents account deletion and returns `409 RESOURCE_IN_USE` with `This account has transactions or history. Archive it instead.` Removing a current transaction does not remove its history, so an account with retained history remains protected. Account deletion still uses one statement: PostgreSQL enforces the references, and the handler translates only those known reference failures. Transaction creation, detail, corrections, and history reads are available. Transaction deletion comes later.
 
 For a Requestly walkthrough, create a temporary account and copy its returned ID into `accountId`. Send **Delete account** from [requests/finance.json](../requests/finance.json) or create the DELETE request manually, including `Origin: {{baseUrl}}`. The cookie jar supplies the session. Expect `204`, then `404` if you read or delete the same account again.
 
@@ -186,11 +186,58 @@ sequenceDiagram
     API-->>Client: 201 with Location, ETag, and transaction
 ```
 
-The initial snapshot contains the returned transaction fields plus the account's ID, name, and currency at creation. History records operation `create`, version 1, the owner, and the server-generated request ID. It contains no tag/category placeholders. There is no history endpoint yet.
+The initial snapshot contains the returned transaction fields plus the account's ID, name, and currency at creation. History records operation `create`, version 1, the owner, and the server-generated request ID. It contains no tag/category placeholders. The history endpoint below returns these snapshots.
 
-**POST is not idempotent.** Repeating the same request creates another transaction with a new ID and its own history. The API does not retry writes automatically. Transfers, corrections, transaction deletion, lists, and balance/summary endpoints remain outside the current API.
+**POST is not idempotent.** Repeating the same request creates another transaction with a new ID and its own history. The API does not retry writes automatically. Transfers, transaction deletion, lists, and balance/summary endpoints remain outside the current API.
 
 In Requestly, use **Create transaction** from [requests/finance.json](../requests/finance.json), or create the request manually. Set `accountId` to an active account you own, and reuse the session cookie jar. Copy only the returned transaction ID into `transactionId` for **Transaction details**; do not copy session credentials into variables or headers.
+
+## Correct a transaction and read its history
+
+Read the transaction first and copy its `ETag` response header, including the quotes. Send `PATCH /api/v1/transactions/:id` with that value in `If-Match`, the session cookie, an approved `Origin`, and `Content-Type: application/json`. For example, use `If-Match: "1"` with:
+
+```json
+{
+  "amount": "-23.50",
+  "description": null,
+  "occurredAt": "2026-11-19"
+}
+```
+
+Supply at least one field. Amount and date follow the creation rules. `description: null` clears the description; omitted fields keep their values. Account, owner, version, server timestamps, tags, categories, and unknown fields cannot be supplied. This endpoint accepts no query parameters. Existing transactions can be corrected after their account is archived.
+
+The route locks the current row selected by transaction ID and session owner, then checks the version. It updates the allowed fields, increments the version, sets `updatedAt`, and appends an `update` snapshot in the same database transaction. `createdAt` stays unchanged. Every accepted patch creates a new version, even if the supplied values equal the current values. Success returns `200` with the full public transaction and its new ETag, such as `"2"`. A failed history write rolls back the fields, timestamp, and version together.
+
+| If-Match condition | Response |
+| --- | --- |
+| Missing | `428 PRECONDITION_REQUIRED` |
+| Malformed, weak, wildcard, or multiple values | `400 INVALID_INPUT` |
+| One quoted positive integer that differs from the current version | `412 VERSION_MISMATCH` |
+| Matches the current version | Apply the correction and return its next ETag. |
+
+Versions use the database's positive integer range, up to 2147483647. For an otherwise valid request, foreign and missing transaction IDs return the same `404 NOT_FOUND` before any version-header error. If another correction wins first, read the latest transaction, review its changes, and submit an intentional correction with its latest ETag.
+
+```mermaid
+sequenceDiagram
+    participant Client as Signed-in client
+    participant API as Transaction route
+    participant DB as PostgreSQL
+    Client->>API: PATCH with latest If-Match
+    API->>DB: Begin and lock the owned transaction
+    API->>API: Compare If-Match with current version
+    API->>DB: Update fields, timestamp, and version
+    API->>DB: Append the new history snapshot
+    DB-->>API: Commit both writes
+    API-->>Client: 200 with transaction and next ETag
+```
+
+Read snapshots with `GET /api/v1/transactions/:id/history?page=1&limit=25`. It requires a session, but no Origin or If-Match header. Results use descending version order. Page defaults to 1 and limit to 25, with a maximum limit of 100. Pages may skip at most 10,000 rows. Unknown fields, duplicate query fields, and invalid bounds return `400 INVALID_INPUT`.
+
+The response is `{ "data": [...], "pagination": { "page": 1, "limit": 25, "total": 2 } }`. Each data entry contains `id`, `transactionId`, `accountId`, `version`, `operation`, `snapshot`, `recordedAt`, and `requestId`. The snapshot contains the public transaction fields and the account's ID, name, and currency when the change was saved. Later account renames do not rewrite earlier snapshots. Owner IDs and authentication fields are excluded. Earlier snapshots are returned as stored, without adding future tag/category fields.
+
+A page beyond the last entry returns an empty data array with the matching total. Foreign IDs return `404`. An owned transaction with no history returns an empty list; if neither the owned current row nor owned history exists, the response is `404`. Reads use the same `Cache-Control: no-store` behavior as the other finance endpoints.
+
+In Requestly, use **Correct transaction** and **Transaction history** from [requests/finance.json](../requests/finance.json). Set `transactionId` and replace the example `If-Match: "1"` with the latest ETag before each correction. The cookie jar supplies the session.
 
 ## Health requests
 
