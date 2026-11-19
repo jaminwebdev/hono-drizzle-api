@@ -1028,3 +1028,335 @@ describe('transaction corrections and history', () => {
     }
   });
 });
+
+function removeTransaction(
+  cookie: string | undefined,
+  id: string,
+  version?: string,
+  originValue = origin,
+) {
+  return app.request(`/api/v1/transactions/${id}`, {
+    method: 'DELETE',
+    headers: {
+      Origin: originValue,
+      ...(cookie ? { Cookie: cookie } : {}),
+      ...(version === undefined ? {} : { 'If-Match': version }),
+    },
+  });
+}
+
+describe('transaction deletion and retained history', () => {
+  test('retains the final snapshot and prior history while protecting the account', async () => {
+    const owner = await existing();
+    const other = await signedIn();
+    const corrected = await patch(
+      owner.cookie,
+      owner.transaction.id,
+      { amount: '-12.50' },
+      '"1"',
+    );
+    const { data } = (await corrected.json()) as TransactionResponse;
+    await database
+      .update(accounts)
+      .set({ name: 'Renamed', isArchived: true })
+      .where(eq(accounts.id, owner.accountId));
+    const response = await removeTransaction(owner.cookie, data.id, '"2"');
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
+    expect(response.headers.has('ETag')).toBe(false);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect((await detail(owner.cookie, data.id)).status).toBe(404);
+    expect(
+      (await patch(owner.cookie, data.id, { amount: '1.00' }, '"2"')).status,
+    ).toBe(404);
+    for (const version of [undefined, 'invalid', '"2"', '"3"']) {
+      expect(
+        (await removeTransaction(owner.cookie, data.id, version)).status,
+      ).toBe(404);
+    }
+    const retained = await history(owner.cookie, data.id);
+    expect(retained.status).toBe(200);
+    const body = (await retained.json()) as HistoryResponse;
+    expect(body.pagination.total).toBe(3);
+    expect(body.data.map((row) => [row.version, row.operation])).toEqual([
+      [3, 'delete'],
+      [2, 'update'],
+      [1, 'create'],
+    ]);
+    expect(body.data[0]).toMatchObject({
+      transactionId: data.id,
+      accountId: owner.accountId,
+      requestId: response.headers.get('X-Request-Id'),
+      snapshot: {
+        ...data,
+        version: 3,
+        account: { id: owner.accountId, name: 'Renamed', currency: 'GBP' },
+      },
+    });
+    expect(body.data[1]!.snapshot).toMatchObject({
+      ...data,
+      account: { name: 'Checking' },
+    });
+    expect(body.data[2]!.snapshot).toMatchObject(owner.transaction);
+    expect((await history(other.cookie, data.id)).status).toBe(404);
+    const paged = (await (
+      await history(owner.cookie, data.id, '?page=2&limit=1')
+    ).json()) as HistoryResponse;
+    expect(paged.data.map((row) => row.version)).toEqual([2]);
+    const blocked = await app.request(`/api/v1/accounts/${owner.accountId}`, {
+      method: 'DELETE',
+      headers: { Cookie: owner.cookie, Origin: origin },
+    });
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({
+      error: { code: 'RESOURCE_IN_USE' },
+    });
+    expect(
+      await database
+        .select()
+        .from(transactions)
+        .where(eq(transactions.id, data.id)),
+    ).toEqual([]);
+  });
+
+  test('requires valid matching versions without changing data on failure', async () => {
+    const owner = await existing();
+    for (const [version, status, code] of [
+      [undefined, 428, 'PRECONDITION_REQUIRED'],
+      ['', 400, 'INVALID_INPUT'],
+      ['1', 400, 'INVALID_INPUT'],
+      ['W/"1"', 400, 'INVALID_INPUT'],
+      ['*', 400, 'INVALID_INPUT'],
+      ['"1", "2"', 400, 'INVALID_INPUT'],
+      ['"01"', 400, 'INVALID_INPUT'],
+      ['"0"', 400, 'INVALID_INPUT'],
+      ['"-1"', 400, 'INVALID_INPUT'],
+      ['"2147483648"', 400, 'INVALID_INPUT'],
+      ['"2"', 412, 'VERSION_MISMATCH'],
+    ] as const) {
+      const response = await removeTransaction(
+        owner.cookie,
+        owner.transaction.id,
+        version,
+      );
+      expect(response.status).toBe(status);
+      expect(await response.json()).toMatchObject({ error: { code } });
+    }
+    expect(
+      (
+        (await (
+          await detail(owner.cookie, owner.transaction.id)
+        ).json()) as TransactionResponse
+      ).data,
+    ).toEqual(owner.transaction);
+    expect(
+      (
+        (await (
+          await history(owner.cookie, owner.transaction.id)
+        ).json()) as HistoryResponse
+      ).pagination.total,
+    ).toBe(1);
+  });
+
+  test('hides foreign IDs before checking versions and leaves their history untouched', async () => {
+    const owner = await existing();
+    const other = await signedIn();
+    for (const id of [owner.transaction.id, crypto.randomUUID()]) {
+      for (const version of [undefined, 'invalid', '"999"']) {
+        const response = await removeTransaction(other.cookie, id, version);
+        expect(response.status).toBe(404);
+        expect(await response.json()).toMatchObject({
+          error: {
+            code: 'NOT_FOUND',
+            message: 'The transaction was not found.',
+          },
+        });
+      }
+    }
+    expect((await detail(owner.cookie, owner.transaction.id)).status).toBe(200);
+    expect(
+      (
+        (await (
+          await history(owner.cookie, owner.transaction.id)
+        ).json()) as HistoryResponse
+      ).pagination.total,
+    ).toBe(1);
+  });
+
+  test('requires sessions and approved origins and rejects invalid IDs or query fields', async () => {
+    const owner = await existing();
+    expect(
+      (await removeTransaction(undefined, owner.transaction.id, '"1"')).status,
+    ).toBe(401);
+    expect(
+      (await removeTransaction('session=invalid', owner.transaction.id, '"1"'))
+        .status,
+    ).toBe(401);
+    const transaction = spyOn(database, 'transaction');
+    try {
+      for (const originValue of ['', 'null', 'http://untrusted.example']) {
+        expect(
+          (
+            await removeTransaction(
+              owner.cookie,
+              owner.transaction.id,
+              '"1"',
+              originValue,
+            )
+          ).status,
+        ).toBe(403);
+      }
+      expect(
+        (await removeTransaction(owner.cookie, 'invalid-id', '"1"')).status,
+      ).toBe(400);
+      expect(
+        (
+          await removeTransaction(
+            owner.cookie,
+            owner.transaction.id + '?force=true',
+            '"1"',
+          )
+        ).status,
+      ).toBe(400);
+      await database.delete(sessions).where(eq(sessions.userId, owner.id));
+      expect(
+        (await removeTransaction(owner.cookie, owner.transaction.id, '"1"'))
+          .status,
+      ).toBe(401);
+      expect(transaction).not.toHaveBeenCalled();
+    } finally {
+      transaction.mockRestore();
+    }
+  });
+
+  test.each(['insert', 'delete'] as const)(
+    'rolls back the entire deletion if %s fails',
+    async (failurePoint) => {
+      const owner = await existing();
+      const original = database.transaction.bind(database);
+      const transaction = spyOn(database, 'transaction').mockImplementation(
+        (callback) =>
+          original(async (tx) => {
+            const fail = () => {
+              throw new Error('private-deletion-passwordHash');
+            };
+            const operation =
+              failurePoint === 'insert'
+                ? spyOn(tx, 'insert').mockImplementation(fail)
+                : spyOn(tx, 'delete').mockImplementation(fail);
+            try {
+              return await callback(tx);
+            } finally {
+              operation.mockRestore();
+            }
+          }),
+      );
+      try {
+        const response = await removeTransaction(
+          owner.cookie,
+          owner.transaction.id,
+          '"1"',
+        );
+        expect(response.status).toBe(500);
+        expect(response.headers.has('ETag')).toBe(false);
+        const text = await response.text();
+        expect(text).not.toContain('private-deletion');
+        expect(text).not.toContain('passwordHash');
+        expect(text).not.toContain(owner.cookie);
+      } finally {
+        transaction.mockRestore();
+      }
+      expect(
+        (
+          (await (
+            await detail(owner.cookie, owner.transaction.id)
+          ).json()) as TransactionResponse
+        ).data,
+      ).toEqual(owner.transaction);
+      const retained = (await (
+        await history(owner.cookie, owner.transaction.id)
+      ).json()) as HistoryResponse;
+      expect(retained.data.map((row) => [row.version, row.operation])).toEqual([
+        [1, 'create'],
+      ]);
+    },
+  );
+
+  test.each(['patch', 'delete'] as const)(
+    'serializes competing patch and delete when %s commits first',
+    async (first) => {
+      const owner = await existing();
+      let reached!: () => void;
+      let release!: () => void;
+      const locked = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const original = database.transaction.bind(database);
+      const transaction = spyOn(database, 'transaction').mockImplementationOnce(
+        (callback) =>
+          original(async (tx) => {
+            const result = await callback(tx);
+            reached();
+            await gate;
+            return result;
+          }),
+      );
+      let winner: ReturnType<typeof removeTransaction> | undefined;
+      let loser: ReturnType<typeof removeTransaction> | undefined;
+      try {
+        winner =
+          first === 'patch'
+            ? patch(
+                owner.cookie,
+                owner.transaction.id,
+                { amount: '50.00' },
+                '"1"',
+              )
+            : removeTransaction(owner.cookie, owner.transaction.id, '"1"');
+        await locked;
+        loser =
+          first === 'patch'
+            ? removeTransaction(owner.cookie, owner.transaction.id, '"1"')
+            : patch(
+                owner.cookie,
+                owner.transaction.id,
+                { amount: '50.00' },
+                '"1"',
+              );
+        let waiting = false;
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const rows = await database.execute(
+            sql`select 1 from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and query like 'select%from "transactions"%for update%'`,
+          );
+          if (rows.length) {
+            waiting = true;
+            break;
+          }
+          await Bun.sleep(10);
+        }
+        expect(waiting).toBe(true);
+        release();
+        expect((await winner).status).toBe(first === 'patch' ? 200 : 204);
+        expect((await loser).status).toBe(first === 'patch' ? 412 : 404);
+      } finally {
+        release();
+        await winner;
+        await loser;
+        transaction.mockRestore();
+      }
+      const retained = (await (
+        await history(owner.cookie, owner.transaction.id)
+      ).json()) as HistoryResponse;
+      expect(retained.data.map((row) => [row.version, row.operation])).toEqual([
+        [2, first === 'patch' ? 'update' : 'delete'],
+        [1, 'create'],
+      ]);
+      expect((await detail(owner.cookie, owner.transaction.id)).status).toBe(
+        first === 'patch' ? 200 : 404,
+      );
+    },
+  );
+});

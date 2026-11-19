@@ -128,7 +128,7 @@ The handler uses one atomic `DELETE ... RETURNING` statement scoped to both the 
 
 Active and archived accounts can be deleted only when they have no current transactions or retained history. Deletion removes the account permanently, so later detail reads and updates return `404`, and the account disappears from lists and totals. Other accounts, users, and sessions remain intact. Archiving is the option that keeps an account available for later use.
 
-The finance schema now includes current transactions and retained history. A reference from either table prevents account deletion and returns `409 RESOURCE_IN_USE` with `This account has transactions or history. Archive it instead.` Removing a current transaction does not remove its history, so an account with retained history remains protected. Account deletion still uses one statement: PostgreSQL enforces the references, and the handler translates only those known reference failures. Transaction creation, detail, corrections, and history reads are available. Transaction deletion comes later.
+The finance schema now includes current transactions and retained history. A reference from either table prevents account deletion and returns `409 RESOURCE_IN_USE` with `This account has transactions or history. Archive it instead.` Removing a current transaction does not remove its history, so an account with retained history remains protected. Account deletion still uses one statement: PostgreSQL enforces the references, and the handler translates only those known reference failures. Transaction creation, detail, corrections, deletion, and history reads are available.
 
 For a Requestly walkthrough, create a temporary account and copy its returned ID into `accountId`. Send **Delete account** from [requests/finance.json](../requests/finance.json) or create the DELETE request manually, including `Origin: {{baseUrl}}`. The cookie jar supplies the session. Expect `204`, then `404` if you read or delete the same account again.
 
@@ -188,7 +188,7 @@ sequenceDiagram
 
 The initial snapshot contains the returned transaction fields plus the account's ID, name, and currency at creation. History records operation `create`, version 1, the owner, and the server-generated request ID. It contains no tag/category placeholders. The history endpoint below returns these snapshots.
 
-**POST is not idempotent.** Repeating the same request creates another transaction with a new ID and its own history. The API does not retry writes automatically. Transfers, transaction deletion, lists, and balance/summary endpoints remain outside the current API.
+**POST is not idempotent.** Repeating the same request creates another transaction with a new ID and its own history. The API does not retry writes automatically. Transfers, lists, and balance/summary endpoints remain outside the current API.
 
 In Requestly, use **Create transaction** from [requests/finance.json](../requests/finance.json), or create the request manually. Set `accountId` to an active account you own, and reuse the session cookie jar. Copy only the returned transaction ID into `transactionId` for **Transaction details**; do not copy session credentials into variables or headers.
 
@@ -238,6 +238,43 @@ The response is `{ "data": [...], "pagination": { "page": 1, "limit": 25, "total
 A page beyond the last entry returns an empty data array with the matching total. Foreign IDs return `404`. An owned transaction with no history returns an empty list; if neither the owned current row nor owned history exists, the response is `404`. Reads use the same `Cache-Control: no-store` behavior as the other finance endpoints.
 
 In Requestly, use **Correct transaction** and **Transaction history** from [requests/finance.json](../requests/finance.json). Set `transactionId` and replace the example `If-Match: "1"` with the latest ETag before each correction. The cookie jar supplies the session.
+
+## Delete a transaction and keep its history
+
+Send `DELETE /api/v1/transactions/:id` with the session cookie, an approved `Origin`, and `If-Match` containing the latest transaction ETag, including quotes. No JSON body is needed, and query parameters are rejected. For example:
+
+```http
+DELETE /api/v1/transactions/c8e9a8a6-871b-46f0-95d8-67987eedab56
+Origin: http://127.0.0.1:3000
+If-Match: "2"
+```
+
+The route locks the owned current row and applies the same version rules as PATCH. A missing header returns `428 PRECONDITION_REQUIRED`, a malformed header returns `400 INVALID_INPUT`, and a stale version returns `412 VERSION_MISMATCH`. Foreign and missing transaction IDs return `404 NOT_FOUND` before version-header errors. Transactions on archived accounts can still be deleted.
+
+With a matching version, the route appends a final `delete` snapshot at the next version and removes the current row in one database transaction. For example, deleting version 2 produces history version 3. The snapshot preserves the last transaction fields and its original `createdAt` and last `updatedAt`; `recordedAt` tracks when deletion was recorded. Account ID/name/currency reflect the account when deletion was saved. Earlier snapshots stay unchanged. Failure of either write rolls back both.
+
+Success returns an empty `204` with no ETag because there is no current representation. Subsequent detail, patch, or delete requests return `404`. Repeating deletion cannot append another snapshot. The owner can still call `GET /api/v1/transactions/:id/history`, with the same pagination, to inspect the final snapshot and all earlier versions. Other users receive `404`. Retained history continues to block account deletion with `409 RESOURCE_IN_USE`; archive the account instead.
+
+```mermaid
+sequenceDiagram
+    participant Client as Signed-in client
+    participant API as Transaction route
+    participant DB as PostgreSQL
+    Client->>API: DELETE with latest If-Match
+    API->>DB: Begin and lock owned current row
+    API->>API: Check the version
+    API->>DB: Append next-version delete snapshot
+    API->>DB: Remove current transaction
+    DB-->>API: Commit both writes
+    API-->>Client: Empty 204
+    Client->>API: GET transaction history
+    API->>DB: Read owned retained snapshots
+    API-->>Client: 200 with history, newest first
+```
+
+If PATCH commits first, a waiting DELETE with the older version returns `412`. If DELETE commits first, a waiting PATCH returns `404`. Neither losing request writes history.
+
+In Requestly, use **Delete transaction** from [requests/finance.json](../requests/finance.json). Replace its example `If-Match` with the latest ETag. If you already save the ETag as `transactionEtag`, set the header value to `{{transactionEtag}}` without extra quotes. Read **Transaction history** afterward to inspect the retained records.
 
 ## Health requests
 

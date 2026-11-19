@@ -1,6 +1,6 @@
 # Phase 13 review: expired-session cleanup
 
-Status: Phases through 22 are implemented and verified. Phase 23 is next.
+Status: Phases through 23 are implemented and verified. Phase 24 is next.
 
 ## Roadmap continuity
 
@@ -65,7 +65,7 @@ PAUSE — user must approve before continuing to next batch.
 
 ## Remaining roadmap carried forward
 
-The following phases were carried forward from the original contract. Phases 13–22 are now complete, with matching evidence in both roadmaps. Phases 23–41 remain unfinished and require their own approval.
+The following phases were carried forward from the original contract. Phases 13–23 are now complete, with matching evidence in both roadmaps. Phases 24–41 remain unfinished and require their own approval.
 
 ### Phase 13. Clean up expired session records explicitly
 
@@ -277,13 +277,17 @@ PAUSE — user must approve before continuing to next batch.
 
 ### Phase 23. Delete transactions while retaining owned history
 
-Expected files, 5: `src/features/transactions.ts`, `tests/integration/transactions.test.ts`, `tests/integration/accounts.test.ts`, `docs/api.md`, `requests/finance.json`.
+Review files, 8: `src/features/transactions.ts`, `tests/integration/transactions.test.ts`, `docs/api.md`, `docs/setup.md`, `requests/finance.json`, `PROJECT_MAP.md`, and both session roadmaps. Account restriction is exercised through the API in the transaction suite; the existing account suite remains unchanged.
 
-- [ ] Add version-checked transaction deletion with its final snapshot and atomic current-row removal.
-- [ ] Keep history readable only by its owner after deletion and keep used-account deletion restricted.
-- [ ] Test patch/delete races, history-write rollback, cross-user deleted-history access, and transaction creation versus account archival.
+- [x] Add version-checked transaction deletion with its final snapshot and atomic current-row removal.
+- [x] Keep history readable only by its owner after deletion and keep used-account deletion restricted.
+- [x] Test patch/delete races, history-write rollback, cross-user deleted-history access, and transaction creation versus account archival.
 
 Acceptance: S3–S4, S7–S8; PROJECT_MAP R3, R5–R8, R10–R11. Deletion cannot erase audit snapshots or allow a foreign user to inspect them. Revoked sessions and rejected origins cannot reach the mutation. Run focused transaction/account integration tests.
+
+Validation: Bun 1.3.14 type checking, lint, all 114 unit tests, all 286 integration tests, and build passed. New checks cover deletion with retained owner-only history, pagination after deletion, final snapshot/request metadata, archived-account deletion, repeated deletes, rejected version headers, missing/foreign IDs, revoked sessions, rejected origins, invalid IDs and query fields, and account deletion blocked by history alone. Forced history-insert and current-delete failures both roll back. Controlled lock waits verify patch-first returns a stale-delete 412 and delete-first returns a missing-patch 404, with only the winning snapshot committed. Existing creation-versus-archival and account tests also pass. Only isolated fixtures were created and removed; the test volume was preserved. No schema, dependencies, development API processes, commits, or later-phase endpoints changed.
+
+Request flow: DELETE validates the ID and rejects query fields, locks the owned current row, then checks If-Match. It appends the next-version delete snapshot and removes the current row in one database transaction. An empty 204 is returned after commit. The final snapshot retains the transaction's creation and last-update timestamps; its recordedAt identifies the deletion time. History remains readable by its owner and keeps the account referenced. Missing or already deleted current rows return 404 without another history write.
 
 Suggested commit: `feat: delete transactions and preserve owned history`
 

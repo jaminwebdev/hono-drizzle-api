@@ -208,6 +208,24 @@
       }
     },
     {
+      "name": "Delete transaction",
+      "request": {
+        "method": "DELETE",
+        "description": "Use the latest transaction ETag in If-Match, or {{transactionEtag}} if you use a capture script. Deletion retains owned history and returns an empty 204.",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{baseUrl}}"
+          },
+          {
+            "key": "If-Match",
+            "value": "\"1\""
+          }
+        ],
+        "url": "{{baseUrl}}/api/v1/transactions/{{transactionId}}"
+      }
+    },
+    {
       "name": "Transaction history",
       "request": {
         "method": "GET",

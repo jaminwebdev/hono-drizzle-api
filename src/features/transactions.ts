@@ -295,6 +295,74 @@ export function createTransactionRoutes(
     },
   );
 
+  routes.delete('/:id', noQuery, validTransactionId, async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('session').user.id;
+    await database.transaction(async (tx) => {
+      const owned = and(
+        eq(transactions.id, id),
+        eq(transactions.userId, userId),
+      );
+      const [current] = await tx
+        .select(transactionSelection)
+        .from(transactions)
+        .where(owned)
+        .for('update');
+      if (!current) {
+        throw new ApiError(404, 'NOT_FOUND', 'The transaction was not found.');
+      }
+      const expected = c.req.header('If-Match');
+      if (expected === undefined) {
+        throw new ApiError(
+          428,
+          'PRECONDITION_REQUIRED',
+          'Provide the transaction ETag in If-Match.',
+        );
+      }
+      if (
+        !/^"[1-9]\d{0,9}"$/.test(expected) ||
+        expected !== expected.trim() ||
+        Number(expected.slice(1, -1)) > 2_147_483_647
+      ) {
+        throw new ApiError(
+          400,
+          'INVALID_INPUT',
+          'If-Match must contain one quoted positive transaction version.',
+        );
+      }
+      if (Number(expected.slice(1, -1)) !== current.version) {
+        throw new ApiError(
+          412,
+          'VERSION_MISMATCH',
+          'The transaction has changed. Read it again before deleting.',
+        );
+      }
+      const [account] = await tx
+        .select({
+          id: accounts.id,
+          name: accounts.name,
+          currency: accounts.currency,
+        })
+        .from(accounts)
+        .where(
+          and(eq(accounts.id, current.accountId), eq(accounts.userId, userId)),
+        );
+      if (!account) throw new Error('Transaction account was not found.');
+      const version = current.version + 1;
+      await tx.insert(transactionHistory).values({
+        userId,
+        transactionId: id,
+        accountId: current.accountId,
+        version,
+        operation: 'delete',
+        requestId: c.get('requestId'),
+        snapshot: { ...current, version, account },
+      });
+      await tx.delete(transactions).where(owned);
+    });
+    return c.body(null, 204);
+  });
+
   routes.get(
     '/:id/history',
     validTransactionId,
